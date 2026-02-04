@@ -2,7 +2,7 @@
 // Purpose: Define contracts for persistence.
 
 import { AgentConfig } from '../../types';
-import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1 } from '../domain/entities';
+import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1, LLMVacancyEvalBatchV1, ApplyQueueV1 } from '../domain/entities';
 import { TargetingSpecV1 } from '../domain/llm_contracts';
 
 export interface StoragePort {
@@ -76,6 +76,14 @@ export interface StoragePort {
   // Phase D1: Extraction Batch
   saveVacancyExtractionBatch(siteId: string, batch: VacancyExtractionBatchV1): Promise<void>;
   getVacancyExtractionBatch(siteId: string, batchId: string): Promise<VacancyExtractionBatchV1 | null>;
+
+  // Phase D2: LLM Eval Batch
+  saveLLMVacancyEvalBatch(siteId: string, batch: LLMVacancyEvalBatchV1): Promise<void>;
+  getLLMVacancyEvalBatch(siteId: string, batchId: string): Promise<LLMVacancyEvalBatchV1 | null>;
+
+  // Phase D2.2: Apply Queue
+  saveApplyQueue(siteId: string, queue: ApplyQueueV1): Promise<void>;
+  getApplyQueue(siteId: string, queueId: string): Promise<ApplyQueueV1 | null>;
 
   // Data (Stub for future vacanies/profiles)
   saveDataStub(key: string, data: unknown): Promise<void>;

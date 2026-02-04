@@ -2,7 +2,7 @@
 // Purpose: Define contracts for AI/LLM interaction.
 
 import { SearchUISpecV1 } from '../domain/entities';
-import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, LLMScreeningInputV1, LLMScreeningOutputV1 } from '../domain/llm_contracts';
+import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, LLMScreeningInputV1, LLMScreeningOutputV1, EvaluateExtractsInputV1, EvaluateExtractsOutputV1 } from '../domain/llm_contracts';
 
 export interface LLMProviderPort {
   /**
@@ -30,4 +30,12 @@ export interface LLMProviderPort {
    * @returns Decisions (READ/DEFER/IGNORE) for each card
    */
   screenVacancyCardsBatch(input: LLMScreeningInputV1): Promise<LLMScreeningOutputV1>;
+
+  /**
+   * Phase D2: Evaluates detailed extracts of vacancies to make final Apply decisions.
+   * 
+   * @param input - Batch of extracted vacancy data + Profile + Targeting
+   * @returns Final Decisions (APPLY/SKIP/NEEDS_HUMAN) with reasoning
+   */
+  evaluateVacancyExtractsBatch(input: EvaluateExtractsInputV1): Promise<EvaluateExtractsOutputV1>;
 }

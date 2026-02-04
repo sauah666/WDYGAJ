@@ -1,7 +1,7 @@
 // Layer: DOMAIN
 // Purpose: Data Transfer Objects (DTOs) and Contracts for LLM interactions.
 
-import { RawFormField } from './entities';
+import { RawFormField, VacancySalary } from './entities';
 
 // --- Enums for Validation ---
 
@@ -89,6 +89,47 @@ export interface LLMScreeningOutputV1 {
     decision: 'READ' | 'DEFER' | 'IGNORE';
     confidence: number; // 0.0 - 1.0
     reasons: string[]; 
+  }[];
+  tokenUsage: {
+    input: number;
+    output: number;
+  };
+}
+
+// --- Phase D2: Batch Evaluation Input/Output ---
+
+export interface EvalCandidate {
+  id: string;
+  title: string;
+  sections: {
+    requirements: string[];
+    responsibilities: string[];
+    conditions: string[];
+  };
+  derived: {
+    salary?: VacancySalary;
+    workMode?: string; // 'remote', 'office', 'unknown'
+  };
+}
+
+export interface EvaluateExtractsInputV1 {
+  profileSummary: string; // from ProfileSnapshot
+  targetingRules: {
+    targetRoles: string[];
+    workModeRules: { strictMode: boolean };
+    minSalary?: number | null;
+  };
+  candidates: EvalCandidate[];
+}
+
+export interface EvaluateExtractsOutputV1 {
+  results: {
+    id: string;
+    decision: 'APPLY' | 'SKIP' | 'NEEDS_HUMAN';
+    confidence: number;
+    reasons: string[];
+    risks: string[];
+    factsUsed: string[];
   }[];
   tokenUsage: {
     input: number;

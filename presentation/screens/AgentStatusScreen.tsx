@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit, FileSearch, CheckSquare } from 'lucide-react';
+import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit, FileSearch, CheckSquare, Award, Send } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentStatus } from '../../types';
-import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep, ControlVerificationResult, VacancyCardV1, VacancyDecision, VacancyExtractV1 } from '../../core/domain/entities';
+import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep, ControlVerificationResult, VacancyCardV1, VacancyDecision, VacancyExtractV1, LLMVacancyEvalResult, ApplyQueueItem } from '../../core/domain/entities';
 
 interface Props {
   state: AgentState;
@@ -26,6 +26,8 @@ interface Props {
   onRunPrefilter?: () => void;
   onRunLLMScreening?: () => void;
   onRunExtraction?: () => void; // Phase D1
+  onRunLLMEvalBatch?: () => void; // Phase D2
+  onBuildApplyQueue?: () => void; // Phase D2.2
 }
 
 export const AgentStatusScreen: React.FC<Props> = ({ 
@@ -48,7 +50,9 @@ export const AgentStatusScreen: React.FC<Props> = ({
   onDedupBatch,
   onRunPrefilter,
   onRunLLMScreening,
-  onRunExtraction
+  onRunExtraction,
+  onRunLLMEvalBatch,
+  onBuildApplyQueue
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [localPrefs, setLocalPrefs] = useState<UserSearchPrefsV1 | null>(null);
@@ -115,6 +119,8 @@ export const AgentStatusScreen: React.FC<Props> = ({
       case AgentStatus.LLM_SCREENING_DONE: return 'text-purple-400';
       case AgentStatus.EXTRACTING_VACANCIES: return 'text-pink-400';
       case AgentStatus.VACANCIES_EXTRACTED: return 'text-pink-500';
+      case AgentStatus.EVALUATION_DONE: return 'text-yellow-300';
+      case AgentStatus.APPLY_QUEUE_READY: return 'text-green-300';
       case AgentStatus.COMPLETED: return 'text-green-500';
       case AgentStatus.FAILED: return 'text-red-500';
       default: return 'text-gray-100';
@@ -141,14 +147,16 @@ export const AgentStatusScreen: React.FC<Props> = ({
     if (status === AgentStatus.PREFILTER_DONE) return <FilterX />;
     if (status === AgentStatus.LLM_SCREENING_DONE) return <BrainCircuit />;
     if (status === AgentStatus.VACANCIES_EXTRACTED) return <FileSearch />;
+    if (status === AgentStatus.EVALUATION_DONE) return <Award />;
+    if (status === AgentStatus.APPLY_QUEUE_READY) return <Send />;
     if (status === AgentStatus.COMPLETED) return <CheckCircle />;
     return <Terminal />;
   };
 
-  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED;
+  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY;
   const isFinished = state.status === AgentStatus.COMPLETED || state.status === AgentStatus.FAILED;
   // Can reset profile if captured OR targeting ready OR dom ready OR waiting prefs OR plan ready
-  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED;
+  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY;
 
   const renderVerificationRow = (res: ControlVerificationResult) => {
       let color = 'text-gray-400';
@@ -270,6 +278,83 @@ export const AgentStatusScreen: React.FC<Props> = ({
                       </div>
                   </div>
               )}
+          </div>
+      );
+  };
+
+  const renderEvaluatedCard = (result: LLMVacancyEvalResult) => {
+      const card = state.activeVacancyBatch?.cards.find(c => c.id === result.vacancyId);
+      let borderColor = 'border-gray-700';
+      let bgColor = 'bg-gray-800';
+      let statusColor = 'text-gray-400';
+
+      if (result.decision === 'APPLY') {
+          borderColor = 'border-green-500';
+          bgColor = 'bg-green-900/20';
+          statusColor = 'text-green-400';
+      } else if (result.decision === 'SKIP') {
+          borderColor = 'border-red-900';
+          bgColor = 'bg-gray-800/50 opacity-60';
+          statusColor = 'text-red-400';
+      } else if (result.decision === 'NEEDS_HUMAN') {
+          borderColor = 'border-yellow-600';
+          bgColor = 'bg-yellow-900/10';
+          statusColor = 'text-yellow-500';
+      }
+
+      return (
+          <div key={result.vacancyId} className={`p-4 mb-2 rounded border-l-4 ${borderColor} ${bgColor} shadow-sm`}>
+               <div className="flex justify-between items-start">
+                   <div>
+                       <div className="font-bold text-sm text-white">{card?.title}</div>
+                       <div className="text-xs text-gray-400">{card?.company}</div>
+                   </div>
+                   <div className="text-right">
+                       <div className={`text-xs font-bold ${statusColor} uppercase tracking-wider`}>
+                           {result.decision} ({(result.confidence * 100).toFixed(0)}%)
+                       </div>
+                   </div>
+               </div>
+
+               {/* Reasons */}
+               <div className="mt-2 flex flex-wrap gap-1">
+                   {result.reasons.map(r => (
+                       <span key={r} className="px-1.5 py-0.5 bg-gray-700/50 rounded text-[10px] text-gray-300 border border-gray-600">
+                           {r}
+                       </span>
+                   ))}
+               </div>
+
+               {/* Risks */}
+               {result.risks.length > 0 && (
+                   <div className="mt-2 text-[10px] text-red-300 flex flex-wrap gap-1">
+                       <span className="font-bold">RISKS:</span>
+                       {result.risks.map(r => (
+                           <span key={r} className="underline decoration-red-500/50">{r}</span>
+                       ))}
+                   </div>
+               )}
+          </div>
+      );
+  };
+
+  const renderQueueItem = (item: ApplyQueueItem) => {
+      const card = state.activeVacancyBatch?.cards.find(c => c.id === item.vacancyId);
+      
+      return (
+          <div key={item.vacancyId} className="p-3 mb-2 rounded bg-gray-800 border border-gray-700 flex justify-between items-center hover:border-blue-500 transition-all">
+              <div>
+                  <div className="font-bold text-sm text-white">{card?.title}</div>
+                  <div className="text-xs text-gray-400">{card?.company}</div>
+              </div>
+              <div className="flex items-center gap-3">
+                  <div className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 uppercase font-mono">
+                      {item.status}
+                  </div>
+                  {item.status === 'PENDING' && (
+                       <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                  )}
+              </div>
           </div>
       );
   };
@@ -497,7 +582,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 )}
 
                 {/* EXTRACTION BATCH VIEW */}
-                {state.activeExtractionBatch && (
+                {state.activeExtractionBatch && !state.activeEvalBatch && (
                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
                          <div className="mb-6 border-b border-gray-800 pb-4">
                             <div className="flex items-center text-pink-500 mb-2">
@@ -521,6 +606,78 @@ export const AgentStatusScreen: React.FC<Props> = ({
                          </div>
                     </div>
                 )}
+
+                {/* EVALUATION BATCH VIEW (KEPT VISIBLE) */}
+                {state.activeEvalBatch && (
+                    <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                        <div className="mb-6 border-b border-gray-800 pb-4">
+                            <div className="flex items-center text-yellow-300 mb-2">
+                                <Award size={24} className="mr-3" />
+                                <h3 className="font-bold text-xl text-white">Evaluation Results</h3>
+                            </div>
+                            <div className="grid grid-cols-3 gap-4 text-center mt-2">
+                                <div className="bg-green-900/30 p-2 rounded">
+                                    <div className="text-xs text-green-500">APPLY</div>
+                                    <div className="text-lg font-bold text-green-400">{state.activeEvalBatch.summary.apply}</div>
+                                </div>
+                                <div className="bg-red-900/30 p-2 rounded">
+                                    <div className="text-xs text-red-500">SKIP</div>
+                                    <div className="text-lg font-bold text-red-400">{state.activeEvalBatch.summary.skip}</div>
+                                </div>
+                                <div className="bg-yellow-900/30 p-2 rounded">
+                                    <div className="text-xs text-yellow-500">NEEDS HUMAN</div>
+                                    <div className="text-lg font-bold text-yellow-400">{state.activeEvalBatch.summary.needsHuman}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                             {/* Prioritize APPLY */}
+                             {state.activeEvalBatch.results
+                              .filter(r => r.decision === 'APPLY')
+                              .map(renderEvaluatedCard)}
+                             
+                             {/* Then NEEDS HUMAN */}
+                             {state.activeEvalBatch.results
+                              .filter(r => r.decision === 'NEEDS_HUMAN')
+                              .map(renderEvaluatedCard)}
+
+                             {/* Then SKIP */}
+                             {state.activeEvalBatch.results
+                              .filter(r => r.decision === 'SKIP')
+                              .map(renderEvaluatedCard)}
+                        </div>
+                    </div>
+                )}
+
+                {/* APPLY QUEUE VIEW */}
+                {state.activeApplyQueue && (
+                    <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                        <div className="mb-6 border-b border-gray-800 pb-4">
+                            <div className="flex items-center text-green-300 mb-2">
+                                <Send size={24} className="mr-3" />
+                                <h3 className="font-bold text-xl text-white">Apply Queue</h3>
+                            </div>
+                            <div className="grid grid-cols-3 gap-4 text-center mt-2">
+                                <div className="bg-blue-900/30 p-2 rounded">
+                                    <div className="text-xs text-blue-500">PENDING</div>
+                                    <div className="text-lg font-bold text-blue-400">{state.activeApplyQueue.summary.pending}</div>
+                                </div>
+                                <div className="bg-green-900/30 p-2 rounded">
+                                    <div className="text-xs text-green-500">APPLIED</div>
+                                    <div className="text-lg font-bold text-green-400">{state.activeApplyQueue.summary.applied}</div>
+                                </div>
+                                <div className="bg-red-900/30 p-2 rounded">
+                                    <div className="text-xs text-red-500">FAILED</div>
+                                    <div className="text-lg font-bold text-red-400">{state.activeApplyQueue.summary.failed}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                             {state.activeApplyQueue.items.map(renderQueueItem)}
+                        </div>
+                    </div>
+                )}
+
              </div>
           </div>
           
@@ -630,6 +787,30 @@ export const AgentStatusScreen: React.FC<Props> = ({
                     <button onClick={onRunExtraction} className="flex items-center space-x-2 bg-pink-600 hover:bg-pink-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-pink-900/20">
                         <FileSearch size={18} />
                         <span>EXTRACT DETAILS</span>
+                    </button>
+                )}
+
+                {/* VACANCIES_EXTRACTED -> RUN LLM EVAL (D2) */}
+                {state.status === AgentStatus.VACANCIES_EXTRACTED && onRunLLMEvalBatch && (
+                    <button onClick={onRunLLMEvalBatch} className="flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-yellow-900/20">
+                        <Award size={18} />
+                        <span>RUN LLM EVALUATION</span>
+                    </button>
+                )}
+
+                {/* EVALUATION_DONE -> BUILD APPLY QUEUE (D2.2) */}
+                {state.status === AgentStatus.EVALUATION_DONE && onBuildApplyQueue && (
+                    <button onClick={onBuildApplyQueue} className="flex items-center space-x-2 bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-green-900/20">
+                        <List size={18} />
+                        <span>PREPARE APPLY QUEUE</span>
+                    </button>
+                )}
+
+                {/* APPLY_QUEUE_READY -> AUTO APPLY (Phase E - Future) */}
+                {state.status === AgentStatus.APPLY_QUEUE_READY && (
+                    <button disabled className="flex items-center space-x-2 bg-gray-700 text-gray-400 px-6 py-2 rounded-lg font-bold cursor-not-allowed border border-gray-600">
+                        <Send size={18} />
+                        <span>START AUTO APPLY (SOON)</span>
                     </button>
                 )}
 

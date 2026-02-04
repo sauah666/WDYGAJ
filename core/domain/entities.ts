@@ -318,6 +318,65 @@ export interface VacancyExtractionBatchV1 {
   };
 }
 
+// --- Phase D2: LLM Eval Batch ---
+
+export type VacancyEvalDecision = 'APPLY' | 'SKIP' | 'NEEDS_HUMAN';
+
+export interface LLMVacancyEvalResult {
+  vacancyId: string;
+  decision: VacancyEvalDecision;
+  confidence: number;
+  reasons: string[]; // e.g. "strong_stack_match", "salary_fit"
+  risks: string[]; // e.g. "questionnaire_detected", "salary_missing"
+  factsUsed: string[]; // e.g. "requirements", "conditions"
+}
+
+export interface LLMVacancyEvalBatchV1 {
+  id: string;
+  siteId: string;
+  inputExtractionBatchId: string;
+  decidedAt: number;
+  modelId: string;
+  results: LLMVacancyEvalResult[];
+  summary: {
+    apply: number;
+    skip: number;
+    needsHuman: number;
+  };
+  tokenUsage: {
+    input: number;
+    output: number;
+  };
+  status: 'OK' | 'FAILED_SCHEMA' | 'FAILED_CALL';
+}
+
+// --- Phase D2.2: Apply Queue ---
+
+export type ApplyQueueStatus = 'PENDING' | 'APPLIED' | 'FAILED' | 'SKIPPED';
+
+export interface ApplyQueueItem {
+  vacancyId: string;
+  url: string;
+  decision: VacancyEvalDecision; // Should be 'APPLY' mostly
+  status: ApplyQueueStatus;
+  generatedCoverLetter?: string; // Phase E1 will populate this
+  applicationResult?: string; // timestamp or result ID
+}
+
+export interface ApplyQueueV1 {
+  id: string;
+  siteId: string;
+  inputEvalBatchId: string;
+  createdAt: number;
+  items: ApplyQueueItem[];
+  summary: {
+    total: number;
+    pending: number;
+    applied: number;
+    failed: number;
+  };
+}
+
 // --- Core State ---
 
 export interface AgentState {
@@ -340,6 +399,8 @@ export interface AgentState {
   activePrefilterBatch?: PreFilterResultBatchV1 | null; // Phase C1: Script Filter Results
   activeLLMBatch?: LLMDecisionBatchV1 | null; // Phase C2: LLM Screening Results
   activeExtractionBatch?: VacancyExtractionBatchV1 | null; // Phase D1: Extracted Details
+  activeEvalBatch?: LLMVacancyEvalBatchV1 | null; // Phase D2: Evaluated Vacancies
+  activeApplyQueue?: ApplyQueueV1 | null; // Phase D2.2: Queue for Auto Apply
 }
 
 export interface ProfileSnapshot {
@@ -367,5 +428,7 @@ export const createInitialAgentState = (): AgentState => ({
   activeDedupedBatch: null,
   activePrefilterBatch: null,
   activeLLMBatch: null,
-  activeExtractionBatch: null
+  activeExtractionBatch: null,
+  activeEvalBatch: null,
+  activeApplyQueue: null
 });

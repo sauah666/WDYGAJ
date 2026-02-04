@@ -1,4 +1,4 @@
-# 📘 PROJECT DOCUMENTATION — v1.12
+# 📘 PROJECT DOCUMENTATION — v1.14
 
 **Проект:** Agent-based Job Search Automation  
 **Аудитория:** LLM-агент-разработчик (Gemini / GPT / Claude)  
@@ -85,14 +85,24 @@ MASTER PLAN v1.0 — JobSearch Agent (Mode 1: HH.ru, затем мультиса
 - LLM screening на основе листинга (Title, Salary, Company)
 - LLMDecisionBatchV1 (READ/DEFER/IGNORE)
 - Token Telemetry
+✅ Done-D1: OpenVacancy & ExtractRelevantSections (script)
+- Только условия/требования/обязанности/ограничения
+- Игнорирование "воды" (О компании)
+✅ Done-D2: LLM Batch Evaluation
+- LLMVacancyEvalBatchV1 (APPLY/SKIP/NEEDS_HUMAN)
+✅ Done-D2.2: Build Apply Queue
+- ApplyQueueV1 (Только APPLY)
 
 2) MASTER PLAN — от “сейчас” до “финиша”
 PHASE D — Deep Read (извлечь только важные куски текста)
-D1. OpenVacancy & ExtractRelevantSections (script) (DONE)
-- Только условия/требования/обязанности/ограничения
-- Игнорирование "воды" (О компании)
-D2. LLM Batch Evaluation (10–15 извлечений → 1 запрос)
-- apply_yes/apply_no + red flags
+D2. LLM Batch Evaluation (10–15 извлечений → 1 запрос) (DONE)
+- EvaluateExtractsInputV1 -> LLM -> EvaluateExtractsOutputV1
+- Decisions: APPLY / SKIP / NEEDS_HUMAN
+- Artifact: LLMVacancyEvalBatchV1
+
+D2.2. Build Apply Queue (DONE)
+- Filter APPLY -> QueueItems
+- Idempotency check
 
 PHASE E — Auto Apply (отклики)
 E1. Apply With Cover Letter (script)
@@ -126,23 +136,22 @@ UI: выбор режима/сайта/настроек и reset’ов.
 Документация: позволяет новому агенту продолжить без истории.
 
 4) Текущая точка
-Последний завершённый этап: PHASE D1 — OPEN & EXTRACT
-Текущий этап: PHASE D2 — LLM BATCH EVALUATION
+Последний завершённый этап: PHASE D2.2 — BUILD APPLY QUEUE
+Текущий этап: PHASE E — AUTO APPLY
 
 ---
 
-## Progress Update — PHASE D1
+## Progress Update — PHASE D2.2
 
 ### WHAT WAS ADDED
-*   **Entity:** `VacancyExtractV1`, `VacancyExtractionBatchV1`.
-*   **UseCase:** `runVacancyExtraction` — opens pages from `read_queue` via browser port.
-*   **Port:** `extractVacancyPage` in BrowserPort.
-*   **UI:** Visualization of extracted details (Requirements, Responsibilities, Conditions counts).
+*   **Entity:** `ApplyQueueV1`, `ApplyQueueItem`.
+*   **UseCase:** `buildApplyQueue` — Filters `APPLY` decisions into a persistent queue.
+*   **UI:** Visualization of Apply Queue (Pending/Applied).
 
 ### WHY
-We need detailed information (tech stack specifics, exact conditions) to make a final decision, but we cannot feed the entire HTML of 15 pages to an LLM (too expensive/slow). We use a script-based extractor to distill the page down to just the "meat" before the D2 LLM pass.
+To separate the "Decision" phase from the "Execution" phase. Allows inspection of decisions (especially NEEDS_HUMAN in the evaluation batch) before automated actions begin. Ensures idempotency of the application process.
 
 ### RULES
-*   **No LLM**: Extraction is pure DOM parsing/regex.
-*   **Strict Sectioning**: Discard "About Company" or generic marketing text.
-*   **Iterative**: Process the read queue sequentially with delays to be polite to the site.
+*   **Queue Source**: Only `APPLY` decisions from `activeEvalBatch`.
+*   **Safety**: `NEEDS_HUMAN` are NOT queued (user must review them in EvalBatch view).
+*   **Idempotency**: Re-running build queue does not duplicate pending items.

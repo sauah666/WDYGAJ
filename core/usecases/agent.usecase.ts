@@ -6,8 +6,8 @@ import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
 import { AgentStatus, AgentConfig } from '../../types';
-import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus } from '../domain/entities';
-import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode, LLMScreeningInputV1, ScreeningCard } from '../domain/llm_contracts';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem } from '../domain/entities';
+import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode, LLMScreeningInputV1, ScreeningCard, EvaluateExtractsInputV1, EvalCandidate } from '../domain/llm_contracts';
 
 export class AgentUseCase {
   constructor(
@@ -1520,6 +1520,188 @@ export class AgentUseCase {
           activeExtractionBatch: extractionBatch,
           logs: [...currentState.logs, `Extraction Complete. Success: ${successCount}, Failed: ${failedCount}.`]
       });
+  }
+
+  // --- Phase D2: LLM Batch Evaluation ---
+  async runLLMEvalBatch(state: AgentState, siteId: string): Promise<AgentState> {
+      // 1. Context Check
+      const extractionBatch = state.activeExtractionBatch;
+      const targeting = await this.storage.getTargetingSpec(siteId);
+      const profile = await this.storage.getProfile(siteId);
+
+      if (!extractionBatch || !targeting || !profile) {
+           return this.failSession(state, "Missing Context for Evaluation (ExtractionBatch, Targeting, or Profile).");
+      }
+
+      // 2. Select Items to Evaluate (Only Successfully Extracted)
+      // Limit to 15 max per rule D2.1
+      const candidatesToEval = extractionBatch.results
+          .filter(r => r.extractionStatus === 'COMPLETE')
+          .slice(0, 15); // Batch rule
+
+      if (candidatesToEval.length === 0) {
+           return this.updateState({
+              ...state,
+              status: AgentStatus.EVALUATION_DONE,
+              logs: [...state.logs, "No successfully extracted candidates to evaluate. Skipping phase."]
+           });
+      }
+
+      let currentState = await this.updateState({
+          ...state,
+          logs: [...state.logs, `Preparing LLM evaluation for ${candidatesToEval.length} candidates...`]
+      });
+
+      // 3. Construct Input Payload
+      const evalCandidates: EvalCandidate[] = [];
+      for (const extract of candidatesToEval) {
+           const originalCard = state.activeVacancyBatch?.cards.find(c => c.id === extract.vacancyId);
+           if (!originalCard) continue;
+
+           evalCandidates.push({
+               id: extract.vacancyId,
+               title: originalCard.title,
+               sections: {
+                   requirements: extract.sections.requirements,
+                   responsibilities: extract.sections.responsibilities,
+                   conditions: extract.sections.conditions
+               },
+               derived: {
+                   salary: extract.sections.salary,
+                   workMode: extract.sections.workMode
+               }
+           });
+      }
+      
+      const input: EvaluateExtractsInputV1 = {
+          profileSummary: profile.rawContent, // Full text normalized
+          targetingRules: {
+              targetRoles: [...targeting.targetRoles.ruTitles, ...targeting.targetRoles.enTitles],
+              workModeRules: { strictMode: targeting.workModeRules.strictMode },
+              minSalary: state.activeSearchPrefs?.minSalary
+          },
+          candidates: evalCandidates
+      };
+
+      try {
+          // 4. Call LLM
+          currentState = await this.updateState({
+              ...currentState,
+              logs: [...currentState.logs, `Calling LLM (Batch Size: ${evalCandidates.length})...`]
+          });
+
+          const output = await this.llm.evaluateVacancyExtractsBatch(input);
+
+          // 5. Transform to Artifact
+          const results: LLMVacancyEvalResult[] = output.results.map(r => ({
+              vacancyId: r.id,
+              decision: r.decision,
+              confidence: r.confidence,
+              reasons: r.reasons,
+              risks: r.risks,
+              factsUsed: r.factsUsed
+          }));
+
+          const evalBatch: LLMVacancyEvalBatchV1 = {
+              id: crypto.randomUUID(),
+              siteId,
+              inputExtractionBatchId: extractionBatch.id,
+              decidedAt: Date.now(),
+              modelId: 'mock-llm-pro',
+              results,
+              summary: {
+                  apply: results.filter(r => r.decision === 'APPLY').length,
+                  skip: results.filter(r => r.decision === 'SKIP').length,
+                  needsHuman: results.filter(r => r.decision === 'NEEDS_HUMAN').length
+              },
+              tokenUsage: output.tokenUsage,
+              status: 'OK'
+          };
+
+          // 6. Save
+          await this.storage.saveLLMVacancyEvalBatch(siteId, evalBatch);
+
+          // 7. Update State
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.EVALUATION_DONE,
+              activeEvalBatch: evalBatch,
+              logs: [...currentState.logs, `Evaluation Done. APPLY: ${evalBatch.summary.apply}, SKIP: ${evalBatch.summary.skip}, HUMAN: ${evalBatch.summary.needsHuman}`]
+          });
+
+      } catch (e: any) {
+          console.error(e);
+          return this.failSession(currentState, `LLM Evaluation Failed: ${e.message}`);
+      }
+  }
+
+  // --- Phase D2.2: Build Apply Queue ---
+  async buildApplyQueue(state: AgentState, siteId: string): Promise<AgentState> {
+      // 1. Context Check
+      if (!state.activeEvalBatch) {
+          return this.failSession(state, "No evaluation batch found to build queue from.");
+      }
+
+      const logs = [...state.logs, "Building Application Queue..."];
+      let currentState = await this.updateState({ ...state, logs });
+
+      try {
+          // 2. Filter Candidates (Only APPLY)
+          const applyCandidates = state.activeEvalBatch.results.filter(r => r.decision === 'APPLY');
+          
+          if (applyCandidates.length === 0) {
+               return this.updateState({
+                   ...currentState,
+                   status: AgentStatus.APPLY_QUEUE_READY,
+                   logs: [...currentState.logs, "No candidates suitable for AUTO-APPLY. Queue is empty."]
+               });
+          }
+
+          // 3. Construct Queue Items
+          const items: ApplyQueueItem[] = [];
+          
+          for (const cand of applyCandidates) {
+               const card = state.activeVacancyBatch?.cards.find(c => c.id === cand.vacancyId);
+               if (!card) continue;
+
+               items.push({
+                   vacancyId: card.id,
+                   url: card.url,
+                   decision: cand.decision,
+                   status: 'PENDING'
+               });
+          }
+
+          // 4. Create Queue Entity
+          const queue: ApplyQueueV1 = {
+              id: crypto.randomUUID(),
+              siteId,
+              inputEvalBatchId: state.activeEvalBatch.id,
+              createdAt: Date.now(),
+              items,
+              summary: {
+                  total: items.length,
+                  pending: items.length,
+                  applied: 0,
+                  failed: 0
+              }
+          };
+
+          // 5. Save
+          await this.storage.saveApplyQueue(siteId, queue);
+
+          // 6. Update State
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.APPLY_QUEUE_READY,
+              activeApplyQueue: queue,
+              logs: [...currentState.logs, `Queue Built: ${items.length} vacancies ready for auto-apply.`]
+          });
+
+      } catch (e: any) {
+          console.error(e);
+          return this.failSession(currentState, `Build Queue Failed: ${e.message}`);
+      }
   }
 
 

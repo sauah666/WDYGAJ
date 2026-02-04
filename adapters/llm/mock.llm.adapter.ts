@@ -2,7 +2,7 @@
 // Purpose: Mock implementation of LLM Port for development.
 
 import { LLMProviderPort } from '../../core/ports/llm.port';
-import { ProfileSummaryV1, TargetingSpecV1, WorkMode, SeniorityLevel, RoleCategory, SearchUIAnalysisInputV1, LLMScreeningInputV1, LLMScreeningOutputV1 } from '../../core/domain/llm_contracts';
+import { ProfileSummaryV1, TargetingSpecV1, WorkMode, SeniorityLevel, RoleCategory, SearchUIAnalysisInputV1, LLMScreeningInputV1, LLMScreeningOutputV1, EvaluateExtractsInputV1, EvaluateExtractsOutputV1 } from '../../core/domain/llm_contracts';
 import { SearchUISpecV1 } from '../../core/domain/entities';
 
 export class MockLLMAdapter implements LLMProviderPort {
@@ -160,5 +160,94 @@ export class MockLLMAdapter implements LLMProviderPort {
             output: input.cards.length * 20
         }
     };
+  }
+
+  async evaluateVacancyExtractsBatch(input: EvaluateExtractsInputV1): Promise<EvaluateExtractsOutputV1> {
+      console.log(`[MockLLMAdapter] Evaluating batch of ${input.candidates.length} extractions...`);
+      await new Promise(resolve => setTimeout(resolve, 2500));
+
+      const results = input.candidates.map(candidate => {
+           // Strict Deterministic Logic
+           const factsUsed: string[] = [];
+           const risks: string[] = [];
+           const reasons: string[] = [];
+           let decision: 'APPLY' | 'SKIP' | 'NEEDS_HUMAN' = 'NEEDS_HUMAN'; // Default safe state
+           let confidence = 0.5;
+
+           // 1. Trace Inputs
+           if (candidate.derived.salary !== undefined) factsUsed.push('derived.salary');
+           if (candidate.derived.workMode !== undefined) factsUsed.push('derived.workMode');
+           if (candidate.sections.requirements.length > 0) factsUsed.push('sections.requirements');
+
+           // 2. Salary Analysis
+           const vacSalary = candidate.derived.salary;
+           const userMinSalary = input.targetingRules.minSalary;
+
+           if (!vacSalary) {
+               risks.push('salary_missing');
+           } else if (userMinSalary && vacSalary.max && vacSalary.max < userMinSalary) {
+               decision = 'SKIP';
+               reasons.push('salary_too_low');
+               confidence = 0.95;
+               return { id: candidate.id, decision, confidence, reasons, risks, factsUsed }; // Early Exit
+           }
+
+           // 3. Work Mode Analysis
+           const vacWorkMode = candidate.derived.workMode || 'unknown';
+           const isRemote = vacWorkMode === 'remote';
+           const strictMode = input.targetingRules.workModeRules.strictMode;
+
+           if (vacWorkMode === 'unknown') {
+               risks.push('workmode_unknown');
+           } else if (!isRemote) {
+               // Assuming user preference is Remote based on strictMode usage context in this mock
+               if (strictMode) {
+                   decision = 'SKIP';
+                   reasons.push('workmode_mismatch');
+                   confidence = 0.95;
+                   return { id: candidate.id, decision, confidence, reasons, risks, factsUsed }; // Early Exit
+               } else {
+                   risks.push('workmode_mismatch');
+               }
+           }
+
+           // 4. Requirements/Stack Analysis
+           const reqsText = candidate.sections.requirements.join(' ').toLowerCase();
+           const hasStack = reqsText.includes('react') || reqsText.includes('frontend') || reqsText.includes('typescript');
+
+           if (!hasStack) {
+               decision = 'SKIP';
+               reasons.push('stack_mismatch');
+               confidence = 0.8;
+           } else {
+               // 5. Final Decision
+               if (risks.length > 0) {
+                   decision = 'NEEDS_HUMAN';
+                   reasons.push('risks_detected');
+                   confidence = 0.7;
+               } else {
+                   decision = 'APPLY';
+                   reasons.push('strong_match');
+                   confidence = 0.95;
+               }
+           }
+
+           return {
+               id: candidate.id,
+               decision,
+               confidence,
+               reasons,
+               risks,
+               factsUsed
+           };
+      });
+
+      return {
+          results,
+          tokenUsage: {
+              input: input.candidates.length * 500,
+              output: input.candidates.length * 50
+          }
+      };
   }
 }

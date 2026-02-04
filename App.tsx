@@ -97,6 +97,8 @@ export default function App() {
 
   // Phase D Actions
   const handleRunExtraction = () => agentPresenter.runVacancyExtraction(agentState);
+  const handleRunLLMEvalBatch = () => agentPresenter.runLLMEvalBatch(agentState);
+  const handleBuildApplyQueue = () => agentPresenter.buildApplyQueue(agentState);
 
   // Router
   let screen;
@@ -133,6 +135,8 @@ export default function App() {
           onRunPrefilter={handleRunPrefilter}
           onRunLLMScreening={handleRunLLMScreening}
           onRunExtraction={handleRunExtraction}
+          onRunLLMEvalBatch={handleRunLLMEvalBatch}
+          onBuildApplyQueue={handleBuildApplyQueue}
         />
       );
       break;

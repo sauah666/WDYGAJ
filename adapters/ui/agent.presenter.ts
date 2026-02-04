@@ -242,6 +242,30 @@ export class AgentPresenter implements UIPort {
       }
   }
 
+  // Phase D2: LLM Eval Batch
+  async runLLMEvalBatch(currentState: AgentState) {
+      if (!this.useCase) return;
+      try {
+          const site = this.currentConfig.targetSite || 'hh.ru';
+          await this.useCase.runLLMEvalBatch(currentState, site);
+      } catch (e) {
+          console.error(e);
+          await this.useCase.failSession(currentState, "LLM Evaluation Error");
+      }
+  }
+
+  // Phase D2.2: Build Apply Queue
+  async buildApplyQueue(currentState: AgentState) {
+      if (!this.useCase) return;
+      try {
+          const site = this.currentConfig.targetSite || 'hh.ru';
+          await this.useCase.buildApplyQueue(currentState, site);
+      } catch (e) {
+          console.error(e);
+          await this.useCase.failSession(currentState, "Build Apply Queue Error");
+      }
+  }
+
   async resetProfile(currentState: AgentState) {
       if (!this.useCase) return;
       try {

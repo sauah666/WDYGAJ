@@ -54,6 +54,12 @@ export enum AgentStatus {
   EXTRACTING_VACANCIES = 'EXTRACTING_VACANCIES', // In progress
   VACANCIES_EXTRACTED = 'VACANCIES_EXTRACTED', // Done
 
+  // Phase D2
+  EVALUATION_DONE = 'EVALUATION_DONE', // LLM Eval batch executed
+
+  // Phase D2.2
+  APPLY_QUEUE_READY = 'APPLY_QUEUE_READY', // Queue built, ready for Phase E
+
   COMPLETED = 'COMPLETED',
   FAILED = 'FAILED'
 }
