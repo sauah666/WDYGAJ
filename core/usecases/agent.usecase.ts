@@ -6,8 +6,8 @@ import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
 import { AgentStatus, AgentConfig } from '../../types';
-import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType } from '../domain/entities';
-import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode } from '../domain/llm_contracts';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1 } from '../domain/entities';
+import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode, LLMScreeningInputV1, ScreeningCard } from '../domain/llm_contracts';
 
 export class AgentUseCase {
   constructor(
@@ -1289,6 +1289,120 @@ export class AgentUseCase {
       } catch (e: any) {
           console.error(e);
           return this.failSession(currentState, `Prefilter Failed: ${e.message}`);
+      }
+  }
+
+  // --- Phase C2: LLM Batch Screening ---
+  async runLLMBatchScreening(state: AgentState, siteId: string): Promise<AgentState> {
+      // 1. Context Check
+      if (!state.activePrefilterBatch || !state.activeVacancyBatch) {
+          return this.failSession(state, "No prefilter batch results found for LLM screening.");
+      }
+
+      const targeting = await this.storage.getTargetingSpec(siteId);
+      if (!targeting) {
+          return this.failSession(state, "Missing targeting spec.");
+      }
+
+      const logs = [...state.logs, "Running LLM Batch Screening..."];
+      let currentState = await this.updateState({ ...state, logs });
+
+      try {
+          const prefilterBatch = state.activePrefilterBatch;
+          
+          // 2. Select Candidates (Priority: READ > DEFER, Score Desc)
+          const candidates = prefilterBatch.results
+              .filter(r => r.decision === 'READ_CANDIDATE' || r.decision === 'DEFER')
+              .sort((a, b) => {
+                  // Prioritize READ over DEFER
+                  if (a.decision === 'READ_CANDIDATE' && b.decision !== 'READ_CANDIDATE') return -1;
+                  if (a.decision !== 'READ_CANDIDATE' && b.decision === 'READ_CANDIDATE') return 1;
+                  // Then by Score Desc
+                  return b.score - a.score;
+              });
+
+          if (candidates.length === 0) {
+             return this.updateState({
+                 ...currentState,
+                 status: AgentStatus.LLM_SCREENING_DONE,
+                 logs: [...currentState.logs, "No candidates passed prefilter. LLM screening skipped."]
+             });
+          }
+
+          // Limit to 15 items per batch
+          const batchSize = 15;
+          const selection = candidates.slice(0, batchSize);
+          
+          // 3. Prepare Input
+          const inputCards: ScreeningCard[] = [];
+          for (const sel of selection) {
+              const card = state.activeVacancyBatch!.cards.find(c => c.id === sel.cardId);
+              if (card) {
+                  inputCards.push({
+                      id: card.id,
+                      title: card.title,
+                      company: card.company,
+                      salary: card.salary ? `${card.salary.min || ''}-${card.salary.max || ''} ${card.salary.currency || ''}` : null,
+                      workMode: card.workMode,
+                      url: card.url
+                  });
+              }
+          }
+
+          const llmInput: LLMScreeningInputV1 = {
+              siteId,
+              targetingSpec: {
+                  targetRoles: [...targeting.targetRoles.ruTitles, ...targeting.targetRoles.enTitles],
+                  seniority: targeting.seniorityLevels,
+                  matchWeights: targeting.titleMatchWeights
+              },
+              cards: inputCards
+          };
+
+          // 4. Call LLM
+          const llmOutput = await this.llm.screenVacancyCardsBatch(llmInput);
+
+          // 5. Validate output (Basic check that all IDs are present or at least processed)
+          // Ideally we check length matches or handle missing keys
+
+          // 6. Artifact
+          const decisions: LLMDecisionV1[] = llmOutput.results.map(r => ({
+              cardId: r.cardId,
+              decision: r.decision,
+              confidence: r.confidence,
+              reasons: r.reasons
+          }));
+
+          const llmBatch: LLMDecisionBatchV1 = {
+              id: crypto.randomUUID(),
+              siteId,
+              inputPrefilterBatchId: prefilterBatch.id,
+              decidedAt: Date.now(),
+              modelId: 'mock-llm', // Dynamic in future
+              decisions,
+              summary: {
+                  read: decisions.filter(d => d.decision === 'READ').length,
+                  defer: decisions.filter(d => d.decision === 'DEFER').length,
+                  ignore: decisions.filter(d => d.decision === 'IGNORE').length
+              },
+              tokenUsage: llmOutput.tokenUsage
+          };
+
+          await this.storage.saveLLMDecisionBatch(siteId, llmBatch);
+
+          // 7. Update State
+          const finalLog = `LLM Screened ${decisions.length} cards. READ: ${llmBatch.summary.read}, DEFER: ${llmBatch.summary.defer}, IGNORE: ${llmBatch.summary.ignore}.`;
+          
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.LLM_SCREENING_DONE,
+              activeLLMBatch: llmBatch,
+              logs: [...currentState.logs, finalLog]
+          });
+
+      } catch (e: any) {
+          console.error(e);
+          return this.failSession(currentState, `LLM Screening Failed: ${e.message}`);
       }
   }
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX } from 'lucide-react';
+import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentStatus } from '../../types';
 import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep, ControlVerificationResult, VacancyCardV1, VacancyDecision } from '../../core/domain/entities';
@@ -24,6 +24,7 @@ interface Props {
   onCollectBatch?: () => void;
   onDedupBatch?: () => void;
   onRunPrefilter?: () => void;
+  onRunLLMScreening?: () => void;
 }
 
 export const AgentStatusScreen: React.FC<Props> = ({ 
@@ -44,7 +45,8 @@ export const AgentStatusScreen: React.FC<Props> = ({
   onVerifyFilters,
   onCollectBatch,
   onDedupBatch,
-  onRunPrefilter
+  onRunPrefilter,
+  onRunLLMScreening
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [localPrefs, setLocalPrefs] = useState<UserSearchPrefsV1 | null>(null);
@@ -108,6 +110,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
       case AgentStatus.VACANCIES_CAPTURED: return 'text-teal-400';
       case AgentStatus.VACANCIES_DEDUPED: return 'text-cyan-500';
       case AgentStatus.PREFILTER_DONE: return 'text-orange-400';
+      case AgentStatus.LLM_SCREENING_DONE: return 'text-purple-400';
       case AgentStatus.COMPLETED: return 'text-green-500';
       case AgentStatus.FAILED: return 'text-red-500';
       default: return 'text-gray-100';
@@ -132,14 +135,15 @@ export const AgentStatusScreen: React.FC<Props> = ({
     if (status === AgentStatus.VACANCIES_CAPTURED) return <DownloadCloud />;
     if (status === AgentStatus.VACANCIES_DEDUPED) return <Layers />;
     if (status === AgentStatus.PREFILTER_DONE) return <FilterX />;
+    if (status === AgentStatus.LLM_SCREENING_DONE) return <BrainCircuit />;
     if (status === AgentStatus.COMPLETED) return <CheckCircle />;
     return <Terminal />;
   };
 
-  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE;
+  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE;
   const isFinished = state.status === AgentStatus.COMPLETED || state.status === AgentStatus.FAILED;
   // Can reset profile if captured OR targeting ready OR dom ready OR waiting prefs OR plan ready
-  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE;
+  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE;
 
   const renderVerificationRow = (res: ControlVerificationResult) => {
       let color = 'text-gray-400';
@@ -157,7 +161,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
       );
   };
 
-  const renderVacancyCard = (card: VacancyCardV1, decision?: string, prefilterData?: {score: number, reasons: string[]}) => {
+  const renderVacancyCard = (card: VacancyCardV1, decision?: string, extraData?: {score?: number, reasons?: string[], confidence?: number}) => {
      let borderClass = 'border-gray-700';
      let statusBadge = null;
 
@@ -173,16 +177,32 @@ export const AgentStatusScreen: React.FC<Props> = ({
          statusBadge = <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Already Seen</span>;
      }
      
-     // PREFILTER logic (overrides if present)
-     if (prefilterData && decision === 'READ_CANDIDATE') {
-         borderClass = 'border-l-4 border-l-emerald-500 border-t border-r border-b border-gray-700 bg-emerald-900/10';
-         statusBadge = <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide">CANDIDATE ({(prefilterData.score).toFixed(1)})</span>;
-     } else if (prefilterData && decision === 'DEFER') {
-         borderClass = 'border-l-4 border-l-blue-500 border-t border-r border-b border-gray-700';
-         statusBadge = <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wide">DEFER ({(prefilterData.score).toFixed(1)})</span>;
-     } else if (prefilterData && decision === 'REJECT') {
-         borderClass = 'border-l-4 border-l-red-500 border-t border-r border-b border-gray-700 opacity-50';
-         statusBadge = <span className="text-[10px] font-bold text-red-400 uppercase tracking-wide">REJECT ({(prefilterData.score).toFixed(1)})</span>;
+     // PREFILTER logic
+     if (extraData?.score !== undefined) {
+         if (decision === 'READ_CANDIDATE') {
+             borderClass = 'border-l-4 border-l-emerald-500 border-t border-r border-b border-gray-700 bg-emerald-900/10';
+             statusBadge = <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide">CANDIDATE ({(extraData.score).toFixed(1)})</span>;
+         } else if (decision === 'DEFER') {
+             borderClass = 'border-l-4 border-l-blue-500 border-t border-r border-b border-gray-700';
+             statusBadge = <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wide">DEFER ({(extraData.score).toFixed(1)})</span>;
+         } else if (decision === 'REJECT') {
+             borderClass = 'border-l-4 border-l-red-500 border-t border-r border-b border-gray-700 opacity-50';
+             statusBadge = <span className="text-[10px] font-bold text-red-400 uppercase tracking-wide">REJECT ({(extraData.score).toFixed(1)})</span>;
+         }
+     }
+
+     // LLM logic (Phase C2)
+     if (extraData?.confidence !== undefined) {
+        if (decision === 'READ') {
+            borderClass = 'border-l-4 border-l-purple-500 border-t border-r border-b border-gray-700 bg-purple-900/20';
+            statusBadge = <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wide">AI READ ({(extraData.confidence).toFixed(2)})</span>;
+        } else if (decision === 'DEFER') {
+             borderClass = 'border-l-4 border-l-indigo-500 border-t border-r border-b border-gray-700';
+             statusBadge = <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wide">AI DEFER ({(extraData.confidence).toFixed(2)})</span>;
+        } else if (decision === 'IGNORE') {
+             borderClass = 'border-l-4 border-l-gray-600 border-t border-r border-b border-gray-700 opacity-40';
+             statusBadge = <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">AI IGNORE ({(extraData.confidence).toFixed(2)})</span>;
+        }
      }
 
      return (
@@ -196,9 +216,9 @@ export const AgentStatusScreen: React.FC<Props> = ({
                <div className="text-xs text-gray-500 mt-1">
                  {card.city || 'Anywhere'} &bull; {card.workMode}
                </div>
-               {prefilterData && (
+               {extraData?.reasons && (
                    <div className="mt-1 flex flex-wrap gap-1">
-                       {prefilterData.reasons.map(r => (
+                       {extraData.reasons.map(r => (
                            <span key={r} className="text-[9px] bg-gray-700 text-gray-300 px-1 rounded">{r}</span>
                        ))}
                    </div>
@@ -324,7 +344,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 )}
                 
                 {/* PREFILTER BATCH VIEW */}
-                {state.activePrefilterBatch && (
+                {state.activePrefilterBatch && !state.activeLLMBatch && (
                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
                         <div className="mb-6 border-b border-gray-800 pb-4">
                             <div className="flex items-center text-orange-400 mb-2">
@@ -372,6 +392,67 @@ export const AgentStatusScreen: React.FC<Props> = ({
                                 const card = state.activeVacancyBatch!.cards.find(c => c.id === r.cardId);
                                 if (!card) return null;
                                 return renderVacancyCard(card, r.decision, {score: r.score, reasons: r.reasons});
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* LLM BATCH VIEW */}
+                {state.activeLLMBatch && (
+                    <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                        <div className="mb-6 border-b border-gray-800 pb-4">
+                            <div className="flex items-center text-purple-400 mb-2">
+                                <BrainCircuit size={24} className="mr-3" />
+                                <h3 className="font-bold text-xl text-white">LLM Batch Screening</h3>
+                            </div>
+                            <div className="grid grid-cols-4 gap-4 text-center mt-2">
+                                <div className="bg-purple-900/30 p-2 rounded">
+                                    <div className="text-xs text-purple-500">READ</div>
+                                    <div className="text-lg font-bold text-purple-400">{state.activeLLMBatch.summary.read}</div>
+                                </div>
+                                <div className="bg-indigo-900/30 p-2 rounded">
+                                    <div className="text-xs text-indigo-500">DEFER</div>
+                                    <div className="text-lg font-bold text-indigo-400">{state.activeLLMBatch.summary.defer}</div>
+                                </div>
+                                <div className="bg-gray-800 p-2 rounded">
+                                    <div className="text-xs text-gray-500">IGNORE</div>
+                                    <div className="text-lg font-bold text-gray-400">{state.activeLLMBatch.summary.ignore}</div>
+                                </div>
+                                <div className="bg-gray-800 p-2 rounded flex flex-col justify-center">
+                                    <div className="text-xs text-gray-500">TOKENS</div>
+                                    <div className="text-xs font-mono text-gray-300">
+                                      IN: {state.activeLLMBatch.tokenUsage.input}<br/>
+                                      OUT: {state.activeLLMBatch.tokenUsage.output}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                             {/* Show READ First */}
+                            {state.activeLLMBatch.decisions
+                              .filter(d => d.decision === 'READ')
+                              .map(d => {
+                                const card = state.activeVacancyBatch!.cards.find(c => c.id === d.cardId);
+                                if (!card) return null;
+                                return renderVacancyCard(card, d.decision, {confidence: d.confidence, reasons: d.reasons});
+                            })}
+                            
+                            {/* Then DEFER */}
+                             {state.activeLLMBatch.decisions
+                              .filter(d => d.decision === 'DEFER')
+                              .map(d => {
+                                const card = state.activeVacancyBatch!.cards.find(c => c.id === d.cardId);
+                                if (!card) return null;
+                                return renderVacancyCard(card, d.decision, {confidence: d.confidence, reasons: d.reasons});
+                            })}
+                            
+                            {/* Then IGNORE */}
+                            {state.activeLLMBatch.decisions
+                              .filter(d => d.decision === 'IGNORE')
+                              .map(d => {
+                                const card = state.activeVacancyBatch!.cards.find(c => c.id === d.cardId);
+                                if (!card) return null;
+                                return renderVacancyCard(card, d.decision, {confidence: d.confidence, reasons: d.reasons});
                             })}
                         </div>
                     </div>
@@ -469,6 +550,14 @@ export const AgentStatusScreen: React.FC<Props> = ({
                     <button onClick={onRunPrefilter} className="flex items-center space-x-2 bg-orange-600 hover:bg-orange-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-orange-900/20">
                         <FilterX size={18} />
                         <span>RUN SCRIPT FILTER</span>
+                    </button>
+                )}
+
+                {/* PREFILTER_DONE -> LLM SCREENING */}
+                {state.status === AgentStatus.PREFILTER_DONE && onRunLLMScreening && (
+                    <button onClick={onRunLLMScreening} className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-purple-900/20">
+                        <BrainCircuit size={18} />
+                        <span>RUN LLM SCREENING</span>
                     </button>
                 )}
 

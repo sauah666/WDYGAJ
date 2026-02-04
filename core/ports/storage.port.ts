@@ -2,7 +2,7 @@
 // Purpose: Define contracts for persistence.
 
 import { AgentConfig } from '../../types';
-import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1 } from '../domain/entities';
+import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1 } from '../domain/entities';
 import { TargetingSpecV1 } from '../domain/llm_contracts';
 
 export interface StoragePort {
@@ -68,6 +68,10 @@ export interface StoragePort {
   // Phase C1: Prefilter
   savePreFilterResultBatch(siteId: string, batch: PreFilterResultBatchV1): Promise<void>;
   getPreFilterResultBatch(siteId: string, batchId: string): Promise<PreFilterResultBatchV1 | null>;
+
+  // Phase C2: LLM Decision Batch
+  saveLLMDecisionBatch(siteId: string, batch: LLMDecisionBatchV1): Promise<void>;
+  getLLMDecisionBatch(siteId: string, batchId: string): Promise<LLMDecisionBatchV1 | null>;
 
   // Data (Stub for future vacanies/profiles)
   saveDataStub(key: string, data: unknown): Promise<void>;

@@ -253,6 +253,35 @@ export interface PreFilterResultBatchV1 {
   };
 }
 
+// --- Phase C2: LLM Batch Screening ---
+
+export type LLMDecisionType = 'READ' | 'DEFER' | 'IGNORE';
+
+export interface LLMDecisionV1 {
+  cardId: string;
+  decision: LLMDecisionType;
+  confidence: number; // 0.0 - 1.0
+  reasons: string[]; // short codes or phrases
+}
+
+export interface LLMDecisionBatchV1 {
+  id: string;
+  siteId: string;
+  inputPrefilterBatchId: string; // Link to C1
+  decidedAt: number;
+  modelId: string; // e.g. "mock-llm", "gemini-2.0-flash"
+  decisions: LLMDecisionV1[];
+  summary: {
+    read: number;
+    defer: number;
+    ignore: number;
+  };
+  tokenUsage: {
+    input: number;
+    output: number;
+  };
+}
+
 // --- Core State ---
 
 export interface AgentState {
@@ -273,6 +302,7 @@ export interface AgentState {
   activeVacancyBatch?: VacancyCardBatchV1 | null; // Phase B1: Captured Vacancies
   activeDedupedBatch?: DedupedVacancyBatchV1 | null; // Phase B2: Deduped Vacancies
   activePrefilterBatch?: PreFilterResultBatchV1 | null; // Phase C1: Script Filter Results
+  activeLLMBatch?: LLMDecisionBatchV1 | null; // Phase C2: LLM Screening Results
 }
 
 export interface ProfileSnapshot {
@@ -298,5 +328,6 @@ export const createInitialAgentState = (): AgentState => ({
   activeVerification: null,
   activeVacancyBatch: null,
   activeDedupedBatch: null,
-  activePrefilterBatch: null
+  activePrefilterBatch: null,
+  activeLLMBatch: null
 });

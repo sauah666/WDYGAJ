@@ -218,6 +218,18 @@ export class AgentPresenter implements UIPort {
       }
   }
 
+  // Phase C2: LLM Batch Screening
+  async runLLMBatchScreening(currentState: AgentState) {
+      if (!this.useCase) return;
+      try {
+          const site = this.currentConfig.targetSite || 'hh.ru';
+          await this.useCase.runLLMBatchScreening(currentState, site);
+      } catch (e) {
+          console.error(e);
+          await this.useCase.failSession(currentState, "LLM Screening Error");
+      }
+  }
+
   async resetProfile(currentState: AgentState) {
       if (!this.useCase) return;
       try {

@@ -1,4 +1,4 @@
-# 📘 PROJECT DOCUMENTATION — v1.10
+# 📘 PROJECT DOCUMENTATION — v1.11
 
 **Проект:** Agent-based Job Search Automation  
 **Аудитория:** LLM-агент-разработчик (Gemini / GPT / Claude)  
@@ -76,17 +76,18 @@ MASTER PLAN v1.0 — JobSearch Agent (Mode 1: HH.ru, затем мультиса
 - Выбор карточки в группе по городу (UserPrefs)
 - Seen Index (исключение ранее просмотренных)
 - DedupedVacancyBatchV1
+✅ Done-C1: Script PreFilter (без LLM)
+- Salary & WorkMode Gates
+- Title Scoring (fuzzy/exact)
+- PreFilterResultBatchV1
 
 2) MASTER PLAN — от “сейчас” до “финиша”
 PHASE C — Pre-Screen (LLM батч по карточкам)
-C1. Script PreFilter (без LLM) (DONE)
-- зарплата: если указана и < min → reject
-- work_mode: не совпадает → reject
-- title matching по TargetingSpec: вычислить score
-- PreFilterResultBatchV1
-
-C2. LLM Batch Screening (10–15 карточек → 1 запрос)
-- Выход: read/defer/ignore + причины + пороги
+C2. LLM Batch Screening (10–15 карточек → 1 запрос) (DONE)
+- Выбор лучших кандидатов из C1
+- LLM screening на основе листинга (Title, Salary, Company)
+- LLMDecisionBatchV1 (READ/DEFER/IGNORE)
+- Token Telemetry
 
 PHASE D — Deep Read (извлечь только важные куски текста)
 D1. OpenVacancy & ExtractRelevantSections (script)
@@ -126,23 +127,23 @@ UI: выбор режима/сайта/настроек и reset’ов.
 Документация: позволяет новому агенту продолжить без истории.
 
 4) Текущая точка
-Последний завершённый этап: PHASE C1 — SCRIPT PREFILTER
-Текущий этап: PHASE C2 — LLM BATCH SCREENING
+Последний завершённый этап: PHASE C2 — LLM BATCH SCREENING
+Текущий этап: PHASE D1 — OPEN & EXTRACT
 
 ---
 
-## Progress Update — PHASE C1
+## Progress Update — PHASE C2
 
 ### WHAT WAS ADDED
-*   **Entity:** `PreFilterResultBatchV1`, `PreFilterDecisionV1`
-*   **UseCase:** `runScriptPrefilter` — deterministic filtering logic.
-*   **UI:** Visualization of prefilter results (Read/Defer/Reject counts and reasons).
+*   **Entity:** `LLMDecisionBatchV1`, `LLMDecisionV1`.
+*   **UseCase:** `runLLMBatchScreening` — batches 15 candidates from C1 and asks LLM.
+*   **Port:** `screenVacancyCardsBatch` in LLMProviderPort.
+*   **UI:** Visualization of LLM decisions and Token Usage.
 
 ### WHY
-We need to cheaply discard irrelevant vacancies (wrong salary, wrong work mode, irrelevant titles) before invoking expensive LLM operations.
+Pre-filtering (C1) is crude. C2 uses LLM intelligence on the "listing view" data to discard vacancies with bad titles/companies/salaries before we spend resources opening the full page.
 
 ### RULES
-*   **Salary Gate**: Reject if vacancy max < user min. Pass if unknown.
-*   **WorkMode Gate**: Reject if strict mode is ON and mode mismatch.
-*   **Title Score**: -1.0 for negative keywords, +1.0 for exact matches, +0.5 for fuzzy matches.
-*   **Thresholds**: Read >= 0.7, Defer >= 0.4.
+*   **Batching**: Strict 15 items max per LLM call.
+*   **Input**: Only Listing Data (Title, Company, Salary, WorkMode). No full text.
+*   **Telemetry**: Track tokens for cost control.

@@ -2,7 +2,7 @@
 // Purpose: Mock implementation of LLM Port for development.
 
 import { LLMProviderPort } from '../../core/ports/llm.port';
-import { ProfileSummaryV1, TargetingSpecV1, WorkMode, SeniorityLevel, RoleCategory, SearchUIAnalysisInputV1 } from '../../core/domain/llm_contracts';
+import { ProfileSummaryV1, TargetingSpecV1, WorkMode, SeniorityLevel, RoleCategory, SearchUIAnalysisInputV1, LLMScreeningInputV1, LLMScreeningOutputV1 } from '../../core/domain/llm_contracts';
 import { SearchUISpecV1 } from '../../core/domain/entities';
 
 export class MockLLMAdapter implements LLMProviderPort {
@@ -105,6 +105,60 @@ export class MockLLMAdapter implements LLMProviderPort {
         ],
         unsupportedFields: [],
         assumptions: ['Assuming "Уровень дохода" implies monthly salary in local currency.']
+    };
+  }
+
+  async screenVacancyCardsBatch(input: LLMScreeningInputV1): Promise<LLMScreeningOutputV1> {
+    console.log(`[MockLLMAdapter] Screening batch of ${input.cards.length} vacancies against Targeting Spec...`);
+
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    const results = input.cards.map(card => {
+        const titleLower = card.title.toLowerCase();
+        let decision: 'READ' | 'DEFER' | 'IGNORE' = 'IGNORE';
+        let confidence = 0.3;
+        const reasons: string[] = [];
+
+        // Simple Mock Logic imitating LLM reasoning
+        if (titleLower.includes('senior') || titleLower.includes('lead')) {
+            decision = 'READ';
+            confidence = 0.9;
+            reasons.push('seniority_match');
+        } else if (titleLower.includes('middle')) {
+            decision = 'DEFER';
+            confidence = 0.6;
+            reasons.push('mid_level_potential');
+        } else if (titleLower.includes('junior')) {
+            decision = 'IGNORE';
+            confidence = 0.95;
+            reasons.push('too_junior');
+        } else {
+             // Default fallback for ambiguous
+             if (card.salary && card.salary.includes('USD')) {
+                 decision = 'READ';
+                 confidence = 0.85;
+                 reasons.push('high_salary_potential');
+             } else {
+                 decision = 'DEFER';
+                 confidence = 0.5;
+                 reasons.push('ambiguous_title');
+             }
+        }
+
+        return {
+            cardId: card.id,
+            decision,
+            confidence,
+            reasons
+        };
+    });
+
+    return {
+        results,
+        tokenUsage: {
+            input: input.cards.length * 150, // approx
+            output: input.cards.length * 20
+        }
     };
   }
 }

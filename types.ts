@@ -47,6 +47,9 @@ export enum AgentStatus {
   // Phase C1
   PREFILTER_DONE = 'PREFILTER_DONE', // Script prefilter executed
 
+  // Phase C2
+  LLM_SCREENING_DONE = 'LLM_SCREENING_DONE', // LLM Batch screening executed
+
   COMPLETED = 'COMPLETED',
   FAILED = 'FAILED'
 }

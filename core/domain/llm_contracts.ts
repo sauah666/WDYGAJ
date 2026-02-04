@@ -62,6 +62,40 @@ export interface SearchUIAnalysisInputV1 {
   };
 }
 
+// --- Phase C2: Batch Screening Input/Output ---
+
+export interface ScreeningCard {
+  id: string; // Internal Ref
+  title: string;
+  company: string | null;
+  salary: string | null; // Normalized string e.g. "100k-200k RUB"
+  workMode: string;
+  url: string;
+}
+
+export interface LLMScreeningInputV1 {
+  siteId: string;
+  targetingSpec: {
+    targetRoles: string[]; // Merged
+    seniority: string[];
+    matchWeights: TitleMatchWeights; // Reuse existing type logic
+  };
+  cards: ScreeningCard[];
+}
+
+export interface LLMScreeningOutputV1 {
+  results: {
+    cardId: string;
+    decision: 'READ' | 'DEFER' | 'IGNORE';
+    confidence: number; // 0.0 - 1.0
+    reasons: string[]; 
+  }[];
+  tokenUsage: {
+    input: number;
+    output: number;
+  };
+}
+
 // --- Output Contract ---
 
 export interface TitleMatchWeights {

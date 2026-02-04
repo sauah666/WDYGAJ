@@ -2,7 +2,7 @@
 // Purpose: Define contracts for AI/LLM interaction.
 
 import { SearchUISpecV1 } from '../domain/entities';
-import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1 } from '../domain/llm_contracts';
+import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, LLMScreeningInputV1, LLMScreeningOutputV1 } from '../domain/llm_contracts';
 
 export interface LLMProviderPort {
   /**
@@ -22,4 +22,12 @@ export interface LLMProviderPort {
    * @returns Semantic UI Specification
    */
   analyzeSearchDOM(input: SearchUIAnalysisInputV1): Promise<SearchUISpecV1>;
+
+  /**
+   * Phase C2: Batch screens vacancy cards based on limited listing data.
+   * 
+   * @param input - Batch of 10-15 cards + Targeting Context
+   * @returns Decisions (READ/DEFER/IGNORE) for each card
+   */
+  screenVacancyCardsBatch(input: LLMScreeningInputV1): Promise<LLMScreeningOutputV1>;
 }
