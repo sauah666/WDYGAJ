@@ -675,18 +675,24 @@ export class AgentUseCase {
               siteId,
               createdAt: Date.now(),
               lastUpdatedAt: Date.now(),
+              overallStatus: 'IN_PROGRESS',
               results: []
           };
       }
 
       // 2. Determine Next Step
-      // Find the first step in plan that is NOT in snapshot results (or failed)
-      const appliedStepIds = new Set(snapshot.results.map(r => r.stepId));
-      const nextStep = plan.steps.find(s => !appliedStepIds.has(s.stepId));
+      // Find the first step in plan that is NOT in snapshot results as SUCCESS
+      // This implicitly allows Retries (if a step failed, it's not successful, so it is picked again)
+      const successfulStepIds = new Set(snapshot.results.filter(r => r.success).map(r => r.stepId));
+      const nextStep = plan.steps.find(s => !successfulStepIds.has(s.stepId));
 
       if (!nextStep) {
           // All steps done!
-          const logs = [...state.logs, "All steps executed. Moving to SEARCH_READY."];
+          const logs = [...state.logs, "All steps executed successfully. Moving to SEARCH_READY."];
+          snapshot.overallStatus = 'COMPLETED';
+          snapshot.lastUpdatedAt = Date.now();
+          await this.storage.saveAppliedFiltersSnapshot(siteId, snapshot);
+          
           return this.updateState({
               ...state,
               status: AgentStatus.SEARCH_READY,
@@ -698,7 +704,7 @@ export class AgentUseCase {
       // 3. Prepare Execution
       const fieldDef = spec.fields.find(f => f.key === nextStep.fieldKey);
       if (!fieldDef) {
-          // Critical error: Plan refers to missing field
+           // Critical error: Plan refers to missing field
            return this.failSession(state, `Plan references unknown field key: ${nextStep.fieldKey}`);
       }
 
@@ -726,6 +732,7 @@ export class AgentUseCase {
           // 5. Update Snapshot
           snapshot.results.push(stepResult);
           snapshot.lastUpdatedAt = Date.now();
+          snapshot.overallStatus = 'IN_PROGRESS';
           await this.storage.saveAppliedFiltersSnapshot(siteId, snapshot);
 
           // 6. Update State
@@ -748,6 +755,72 @@ export class AgentUseCase {
               status: AgentStatus.APPLY_STEP_FAILED,
               logs: [...currentState.logs, `Execution Error: ${e.message}`]
            });
+      }
+  }
+
+  // --- Phase A1.2: Execute Plan Cycle ---
+  async executeApplyPlanCycle(state: AgentState, siteId: string): Promise<AgentState> {
+      let currentState = state;
+      const MAX_RETRIES = 3;
+
+      while (true) {
+          // 1. Check for Stop Condition from outside? (Not implemented in this loop, assumes run to completion)
+          
+          // 2. Get Snapshot for retry check
+          const snapshot = await this.storage.getAppliedFiltersSnapshot(siteId);
+          if (snapshot && snapshot.overallStatus === 'FAILED') {
+              return this.failSession(currentState, "Plan execution previously failed permanently.");
+          }
+
+          // 3. Identify Next Step (Peek)
+          const plan = await this.storage.getSearchApplyPlan(siteId);
+          if (!plan) return this.failSession(currentState, "No plan found.");
+
+          const successfulStepIds = new Set(snapshot?.results.filter(r => r.success).map(r => r.stepId) || []);
+          const nextStep = plan.steps.find(s => !successfulStepIds.has(s.stepId));
+
+          if (!nextStep) {
+               // Nothing left to do, ensure state is updated final time
+               return this.executeSearchPlanStep(currentState, siteId); 
+          }
+
+          // 4. Retry Policy Check
+          const failuresForStep = snapshot?.results.filter(r => r.stepId === nextStep.stepId && !r.success).length || 0;
+          if (failuresForStep >= MAX_RETRIES) {
+               const logs = [...currentState.logs, `Step ${nextStep.fieldKey} failed ${failuresForStep} times. Aborting session.`];
+               if (snapshot) {
+                   snapshot.overallStatus = 'FAILED';
+                   await this.storage.saveAppliedFiltersSnapshot(siteId, snapshot);
+               }
+               return this.updateState({
+                   ...currentState,
+                   status: AgentStatus.FAILED,
+                   activeAppliedFilters: snapshot || undefined,
+                   logs
+               });
+          }
+
+          // 5. Execute Step
+          currentState = await this.executeSearchPlanStep(currentState, siteId);
+
+          // 6. Evaluate Result
+          if (currentState.status === AgentStatus.SEARCH_READY) {
+              return currentState; // Done
+          }
+
+          if (currentState.status === AgentStatus.FAILED) {
+              return currentState; // Critical error
+          }
+
+          if (currentState.status === AgentStatus.APPLY_STEP_FAILED) {
+              // Wait before retry
+              await new Promise(r => setTimeout(r, 1000));
+          } else if (currentState.status === AgentStatus.APPLY_STEP_DONE) {
+              // Small delay for realism
+              await new Promise(r => setTimeout(r, 500));
+          }
+          
+          // Loop continues...
       }
   }
 

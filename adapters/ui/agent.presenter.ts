@@ -157,6 +157,18 @@ export class AgentPresenter implements UIPort {
         await this.useCase.failSession(currentState, "Execution Error");
     }
   }
+  
+  // Phase A1.2: Execute Plan Cycle
+  async executePlanCycle(currentState: AgentState) {
+    if (!this.useCase) return;
+    try {
+        const site = this.currentConfig.targetSite || 'hh.ru';
+        await this.useCase.executeApplyPlanCycle(currentState, site);
+    } catch (e) {
+        console.error(e);
+        await this.useCase.failSession(currentState, "Auto-Execution Error");
+    }
+  }
 
   async resetProfile(currentState: AgentState) {
       if (!this.useCase) return;

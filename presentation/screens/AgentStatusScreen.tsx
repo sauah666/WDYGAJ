@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap } from 'lucide-react';
+import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentStatus } from '../../types';
 import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep } from '../../core/domain/entities';
@@ -19,6 +19,7 @@ interface Props {
   onSubmitSearchPrefs?: (prefs: UserSearchPrefsV1) => void;
   onBuildPlan?: () => void;
   onExecuteStep?: () => void;
+  onExecuteCycle?: () => void;
 }
 
 export const AgentStatusScreen: React.FC<Props> = ({ 
@@ -34,7 +35,8 @@ export const AgentStatusScreen: React.FC<Props> = ({
   onAnalyzeSearchUI,
   onSubmitSearchPrefs,
   onBuildPlan,
-  onExecuteStep
+  onExecuteStep,
+  onExecuteCycle
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [localPrefs, setLocalPrefs] = useState<UserSearchPrefsV1 | null>(null);
@@ -208,7 +210,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                                 <h3 className="font-bold text-xl text-white">Execution Plan</h3>
                             </div>
                             <p className="text-gray-400 text-sm">
-                                Progress: {state.activeAppliedFilters?.results.length || 0} / {state.activeSearchApplyPlan.steps.length} steps completed.
+                                Progress: {state.activeAppliedFilters?.results.filter(r=>r.success).length || 0} / {state.activeSearchApplyPlan.steps.length} steps completed.
                             </p>
                         </div>
                         <div className="max-w-2xl mx-auto space-y-2 bg-gray-900 rounded border border-gray-800">
@@ -267,11 +269,17 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 )}
 
                 {/* APPLY_PLAN_READY | STEP DONE -> EXECUTE NEXT STEP */}
-                {(state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.APPLY_STEP_FAILED) && onExecuteStep && (
-                   <button onClick={onExecuteStep} className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-blue-900/20">
-                    <Zap size={18} fill="currentColor" />
-                    <span>EXECUTE NEXT STEP</span>
-                  </button>
+                {(state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.APPLY_STEP_FAILED) && onExecuteStep && onExecuteCycle && (
+                   <div className="flex space-x-2">
+                       <button onClick={onExecuteStep} className="flex items-center space-x-2 bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded-lg font-bold transition-all">
+                        <Zap size={18} fill="currentColor" />
+                        <span>STEP</span>
+                      </button>
+                      <button onClick={onExecuteCycle} className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-blue-900/20">
+                        <Repeat size={18} />
+                        <span>AUTO-EXECUTE PLAN</span>
+                      </button>
+                   </div>
                 )}
 
                 {/* RUNNING -> STOP */}

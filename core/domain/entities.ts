@@ -126,10 +126,13 @@ export interface AppliedStepResult extends ExecutionResult {
   intendedValue: any;
 }
 
+export type ExecutionStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+
 export interface AppliedFiltersSnapshotV1 {
   siteId: string;
   createdAt: number;
   lastUpdatedAt: number;
+  overallStatus: ExecutionStatus;
   results: AppliedStepResult[];
 }
 

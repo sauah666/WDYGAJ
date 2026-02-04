@@ -1,30 +1,26 @@
 # Developer Context (Save Game)
 
-**Last Updated**: Phase A1.1 Verified
+**Last Updated**: Phase A1.2 Execution
 **Role**: Senior Agent Architect
 **Manifesto**: See `docs/PROJECT_DOCUMENTATION.md` (Rule D-01)
 
 ## Где мы сейчас?
-Мы закончили **PHASE A1.1: Apply Plan Step Execution (One Step)**.
+Мы находимся в **PHASE A1.2: Apply Search Plan (All Steps)**.
 
 ### Что сделано:
-1.  **Architecture**: Введена сущность `AppliedFiltersSnapshotV1` для истории исполнения плана.
-2.  **UseCase**: Реализован метод `executeSearchPlanStep`, который берет следующий шаг из `SearchApplyPlanV1` и выполняет его.
-3.  **Ports**: `BrowserPort.applyControlAction` изолирует логику DOM-манипуляций.
-4.  **UI**: Можно выполнять план пошагово кнопкой "EXECUTE NEXT STEP".
+1.  **Auto Cycle**: `executeApplyPlanCycle` выполняет весь план от начала до конца.
+2.  **Robustness**: Retry policy (3 попытки на шаг).
+3.  **Resume Capability**: Если цикл прерван, перезапуск продолжит с первого невыполненного шага.
+4.  **UI**: Добавлена кнопка "AUTO-EXECUTE PLAN".
 
 ### Текущее техническое состояние:
-*   Агент имеет план (Plan).
-*   Агент имеет историю исполнения (Snapshot).
-*   Агент умеет выполнять атомарное действие "Set Field X to Value Y".
-*   Статус: `APPLY_STEP_DONE` или `APPLY_STEP_FAILED`.
+*   `AppliedFiltersSnapshotV1` хранит историю всех попыток.
+*   `AgentStatus` переходит в `SEARCH_READY` только после успешного выполнения всего плана.
 
 ### Следующий шаг (IMMEDIATE NEXT):
-**PHASE A1.2 — APPLY_SEARCH_PLAN (ALL STEPS)**:
-1.  Автоматизировать цикл выполнения шагов.
-2.  Обработать финальный шаг (Submit).
-3.  Дождаться перехода на страницу результатов.
-4.  Перейти в статус `SEARCH_READY`.
+**PHASE A2.1 — VERIFY FILTERS**:
+1.  Проверить, что фильтры действительно применились (DOM check).
+2.  Если расхождение — попробовать исправить (до 3 раз) или упасть.
 
 ## Известные ограничения (Stub/Mock)
 *   **Browser**: `MockBrowserAdapter` симулирует успешное выполнение действий.
