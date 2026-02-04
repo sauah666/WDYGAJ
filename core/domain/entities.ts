@@ -136,6 +136,27 @@ export interface AppliedFiltersSnapshotV1 {
   results: AppliedStepResult[];
 }
 
+// --- Phase A2.1: Verification ---
+
+export type VerificationStatus = 'MATCH' | 'MISMATCH' | 'UNKNOWN';
+export type VerificationSource = 'CONTROL_VALUE' | 'URL_PARAMS' | 'UNKNOWN';
+
+export interface ControlVerificationResult {
+  fieldKey: string;
+  expectedValue: any;
+  actualValue: any;
+  source: VerificationSource;
+  status: VerificationStatus;
+}
+
+export interface FiltersAppliedVerificationV1 {
+  siteId: string;
+  verifiedAt: number;
+  verified: boolean; // true if NO mismatches (UNKNOWN is tolerated)
+  results: ControlVerificationResult[];
+  mismatches: ControlVerificationResult[];
+}
+
 // --- Core State ---
 
 export interface AgentState {
@@ -152,6 +173,7 @@ export interface AgentState {
   activeSearchPrefs?: UserSearchPrefsV1 | null; // Stage 5.3: User Choices
   activeSearchApplyPlan?: SearchApplyPlanV1 | null; // Stage 5.4: Execution Plan
   activeAppliedFilters?: AppliedFiltersSnapshotV1 | null; // Phase A1.1: Execution Progress
+  activeVerification?: FiltersAppliedVerificationV1 | null; // Phase A2.1: Verification Report
 }
 
 export interface ProfileSnapshot {
@@ -173,5 +195,6 @@ export const createInitialAgentState = (): AgentState => ({
   activeSearchUISpec: null,
   activeSearchPrefs: null,
   activeSearchApplyPlan: null,
-  activeAppliedFilters: null
+  activeAppliedFilters: null,
+  activeVerification: null
 });

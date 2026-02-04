@@ -62,6 +62,13 @@ export interface BrowserPort {
   applyControlAction(fieldDef: SearchFieldDefinition, actionType: ApplyActionType, value: any): Promise<ExecutionResult>;
 
   /**
+   * Reads the current state/value of a form control without modifying it.
+   * Used for verification (Phase A2.1).
+   * @param fieldDef - The semantic definition
+   */
+  readControlValue(fieldDef: SearchFieldDefinition): Promise<{ value: any; source: 'CONTROL_VALUE' | 'URL_PARAMS' | 'UNKNOWN' }>;
+
+  /**
    * Closes the browser session.
    */
   close(): Promise<void>;

@@ -1,30 +1,30 @@
 # Developer Context (Save Game)
 
-**Last Updated**: Phase A1.2 Execution
+**Last Updated**: Phase A2.1 Execution
 **Role**: Senior Agent Architect
 **Manifesto**: See `docs/PROJECT_DOCUMENTATION.md` (Rule D-01)
 
 ## Где мы сейчас?
-Мы находимся в **PHASE A1.2: Apply Search Plan (All Steps)**.
+Мы находимся в **PHASE A2.1: Verify Filters Applied**.
 
 ### Что сделано:
-1.  **Auto Cycle**: `executeApplyPlanCycle` выполняет весь план от начала до конца.
-2.  **Robustness**: Retry policy (3 попытки на шаг).
-3.  **Resume Capability**: Если цикл прерван, перезапуск продолжит с первого невыполненного шага.
-4.  **UI**: Добавлена кнопка "AUTO-EXECUTE PLAN".
+1.  **Verification Logic**: Агент читает состояние DOM после применения фильтров.
+2.  **Reporting**: UI показывает таблицу (Expected vs Actual) и статус (MATCH/MISMATCH).
+3.  **Persistence**: Отчет сохраняется в LocalStorage.
 
 ### Текущее техническое состояние:
-*   `AppliedFiltersSnapshotV1` хранит историю всех попыток.
-*   `AgentStatus` переходит в `SEARCH_READY` только после успешного выполнения всего плана.
+*   `FiltersAppliedVerificationV1` создается после нажатия "VERIFY FILTERS".
+*   `AgentStatus` остается `SEARCH_READY`, но в стейте появляется `activeVerification`.
 
 ### Следующий шаг (IMMEDIATE NEXT):
-**PHASE A2.1 — VERIFY FILTERS**:
-1.  Проверить, что фильтры действительно применились (DOM check).
-2.  Если расхождение — попробовать исправить (до 3 раз) или упасть.
+**PHASE B1 — COLLECT VACANCY CARDS**:
+1.  Начать сбор карточек вакансий со страницы результатов.
+2.  Извлекать базовые данные: Title, Company, Salary, Link.
+3.  Сохранять в `VacancyListSnapshotV1`.
 
 ## Известные ограничения (Stub/Mock)
-*   **Browser**: `MockBrowserAdapter` симулирует успешное выполнение действий.
-*   **LLM**: Mock.
+*   **Browser**: `MockBrowserAdapter` использует `formState` для симуляции памяти страницы.
+*   **Verification**: Сейчас только `CONTROL_VALUE`. В будущем можно добавить проверку URL параметров.
 
 ## Правила разработки (Strict)
 См. `docs/PROJECT_DOCUMENTATION.md`

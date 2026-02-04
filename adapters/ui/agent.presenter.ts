@@ -170,6 +170,18 @@ export class AgentPresenter implements UIPort {
     }
   }
 
+  // Phase A2.1: Verify Filters
+  async verifySearchFilters(currentState: AgentState) {
+    if (!this.useCase) return;
+    try {
+        const site = this.currentConfig.targetSite || 'hh.ru';
+        await this.useCase.verifyAppliedFilters(currentState, site);
+    } catch (e) {
+        console.error(e);
+        await this.useCase.failSession(currentState, "Verification Error");
+    }
+  }
+
   async resetProfile(currentState: AgentState) {
       if (!this.useCase) return;
       try {

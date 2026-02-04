@@ -6,6 +6,9 @@ import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult }
 
 export class MockBrowserAdapter implements BrowserPort {
   private currentUrlVal: string = 'about:blank';
+  
+  // Simulated State of the Page Forms
+  private formState: Record<string, any> = {};
 
   async launch(): Promise<void> {
     console.log('[BrowserAdapter] Launching virtual browser session...');
@@ -114,13 +117,32 @@ export class MockBrowserAdapter implements BrowserPort {
     // Simulate latency
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Simple Mock Success Logic
-    // In real implementation, this would use Puppeteer to find element by fieldDef.domHint
-    
+    // Persist to mock state
+    if (actionType !== 'CLICK' && fieldDef.domHint) {
+       // Simple hash of hint as key
+       this.formState[fieldDef.domHint] = value;
+    }
+
     return {
       success: true,
-      observedValue: value // We assume it worked
+      observedValue: value
     };
+  }
+
+  async readControlValue(fieldDef: SearchFieldDefinition): Promise<{ value: any; source: 'CONTROL_VALUE' | 'URL_PARAMS' | 'UNKNOWN' }> {
+      console.log(`[BrowserAdapter] READING state of "${fieldDef.label}"...`);
+      await new Promise(resolve => setTimeout(resolve, 200)); // Fast read
+
+      // In real browser: perform page.eval using domHint
+      // In Mock: read from formState
+      if (fieldDef.domHint && this.formState[fieldDef.domHint] !== undefined) {
+          return {
+              value: this.formState[fieldDef.domHint],
+              source: 'CONTROL_VALUE'
+          };
+      }
+
+      return { value: null, source: 'UNKNOWN' };
   }
 
   async close(): Promise<void> {

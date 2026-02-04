@@ -81,9 +81,11 @@ export default function App() {
   const handleAnalyzeSearchUI = () => agentPresenter.analyzeSearchUI(agentState);
   const handleSubmitSearchPrefs = (prefs: UserSearchPrefsV1) => agentPresenter.submitSearchPrefs(agentState, prefs);
   const handleBuildPlan = () => agentPresenter.planSearchActions(agentState);
-  // Phase A1 Actions
+  
+  // Phase A Actions
   const handleExecuteStep = () => agentPresenter.executePlanStep(agentState);
   const handleExecuteCycle = () => agentPresenter.executePlanCycle(agentState);
+  const handleVerifyFilters = () => agentPresenter.verifySearchFilters(agentState);
 
   // Router
   let screen;
@@ -114,6 +116,7 @@ export default function App() {
           onBuildPlan={handleBuildPlan}
           onExecuteStep={handleExecuteStep}
           onExecuteCycle={handleExecuteCycle}
+          onVerifyFilters={handleVerifyFilters}
         />
       );
       break;

@@ -2,7 +2,7 @@
 // Purpose: Define contracts for persistence.
 
 import { AgentConfig } from '../../types';
-import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1 } from '../domain/entities';
+import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1 } from '../domain/entities';
 import { TargetingSpecV1 } from '../domain/llm_contracts';
 
 export interface StoragePort {
@@ -48,6 +48,11 @@ export interface StoragePort {
   saveAppliedFiltersSnapshot(siteId: string, snapshot: AppliedFiltersSnapshotV1): Promise<void>;
   getAppliedFiltersSnapshot(siteId: string): Promise<AppliedFiltersSnapshotV1 | null>;
   deleteAppliedFiltersSnapshot(siteId: string): Promise<void>;
+
+  // Phase A2.1 Verification
+  saveFiltersAppliedVerification(siteId: string, verification: FiltersAppliedVerificationV1): Promise<void>;
+  getFiltersAppliedVerification(siteId: string): Promise<FiltersAppliedVerificationV1 | null>;
+  deleteFiltersAppliedVerification(siteId: string): Promise<void>;
 
   // Data (Stub for future vacanies/profiles)
   saveDataStub(key: string, data: unknown): Promise<void>;

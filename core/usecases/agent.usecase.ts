@@ -6,7 +6,7 @@ import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
 import { AgentStatus, AgentConfig } from '../../types';
-import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult } from '../domain/entities';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource } from '../domain/entities';
 import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode } from '../domain/llm_contracts';
 
 export class AgentUseCase {
@@ -824,6 +824,97 @@ export class AgentUseCase {
       }
   }
 
+  // --- Phase A2.1: Verify Applied Filters ---
+  async verifyAppliedFilters(state: AgentState, siteId: string): Promise<AgentState> {
+      // 1. Load context
+      const snapshot = await this.storage.getAppliedFiltersSnapshot(siteId);
+      const spec = await this.storage.getSearchUISpec(siteId);
+      
+      if (!snapshot || !spec) {
+          return this.failSession(state, "Missing snapshot or spec for verification.");
+      }
+
+      const logs = [...state.logs, "Verifying applied filters against actual DOM state..."];
+      let currentState = await this.updateState({ ...state, logs });
+
+      const results: ControlVerificationResult[] = [];
+      const mismatches: ControlVerificationResult[] = [];
+
+      // 2. Identify unique fields processed successfully
+      const processedFields = new Map<string, AppliedStepResult>();
+      
+      // Iterate strictly in order, overwriting with latest success
+      for (const step of snapshot.results) {
+          if (step.success) {
+              processedFields.set(step.fieldKey, step);
+          }
+      }
+
+      // 3. Verify each field
+      for (const [key, step] of processedFields) {
+           const fieldDef = spec.fields.find(f => f.key === key);
+           if (!fieldDef || fieldDef.semanticType === 'SUBMIT') continue; // Skip buttons/unknowns
+
+           // a. Read from Browser
+           const readResult = await this.browser.readControlValue(fieldDef);
+           
+           // b. Compare
+           const isMatch = this.looseEquals(step.intendedValue, readResult.value);
+           const status: VerificationStatus = readResult.source === 'UNKNOWN' ? 'UNKNOWN' : (isMatch ? 'MATCH' : 'MISMATCH');
+
+           const result: ControlVerificationResult = {
+               fieldKey: key,
+               expectedValue: step.intendedValue,
+               actualValue: readResult.value,
+               source: readResult.source,
+               status
+           };
+
+           results.push(result);
+           if (status === 'MISMATCH') {
+               mismatches.push(result);
+           }
+      }
+
+      // 4. Create Verification Record
+      const verification: FiltersAppliedVerificationV1 = {
+          siteId,
+          verifiedAt: Date.now(),
+          verified: mismatches.length === 0,
+          results,
+          mismatches
+      };
+
+      await this.storage.saveFiltersAppliedVerification(siteId, verification);
+
+      // 5. Update State
+      const finalLog = mismatches.length === 0 
+        ? `Verification Passed: All ${results.length} controls match.` 
+        : `Verification WARNING: ${mismatches.length} mismatches detected.`;
+
+      return this.updateState({
+          ...currentState,
+          activeVerification: verification,
+          logs: [...currentState.logs, finalLog]
+      });
+  }
+
+  // Helper for Comparison
+  private looseEquals(expected: any, actual: any): boolean {
+      if (expected === actual) return true;
+      if (expected === null || actual === null || expected === undefined || actual === undefined) return false;
+
+      // String vs Number
+      if (String(expected) === String(actual)) return true;
+
+      // Boolean "true" vs true
+      if (typeof expected === 'boolean' || typeof actual === 'boolean') {
+          return String(expected).toLowerCase() === String(actual).toLowerCase();
+      }
+
+      return false;
+  }
+
   private getSemanticPriority(type: SemanticFieldType): number {
       switch (type) {
           case 'LOCATION': return 10;
@@ -854,6 +945,7 @@ export class AgentUseCase {
       await this.storage.deleteUserSearchPrefs(siteId); // Cascade
       await this.storage.deleteSearchApplyPlan(siteId); // Cascade
       await this.storage.deleteAppliedFiltersSnapshot(siteId); // Cascade
+      await this.storage.deleteFiltersAppliedVerification(siteId); // Cascade
 
       const logs = [...state.logs, `Profile data, targeting rules, search prefs, and plans for ${siteId} cleared.`];
       return this.updateState({ 
@@ -863,6 +955,7 @@ export class AgentUseCase {
         activeSearchPrefs: null,
         activeSearchApplyPlan: null,
         activeAppliedFilters: null,
+        activeVerification: null,
         logs 
       });
   }

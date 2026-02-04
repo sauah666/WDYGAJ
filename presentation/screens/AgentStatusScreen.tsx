@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat } from 'lucide-react';
+import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentStatus } from '../../types';
-import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep } from '../../core/domain/entities';
+import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep, ControlVerificationResult } from '../../core/domain/entities';
 
 interface Props {
   state: AgentState;
@@ -20,6 +20,7 @@ interface Props {
   onBuildPlan?: () => void;
   onExecuteStep?: () => void;
   onExecuteCycle?: () => void;
+  onVerifyFilters?: () => void;
 }
 
 export const AgentStatusScreen: React.FC<Props> = ({ 
@@ -36,7 +37,8 @@ export const AgentStatusScreen: React.FC<Props> = ({
   onSubmitSearchPrefs,
   onBuildPlan,
   onExecuteStep,
-  onExecuteCycle
+  onExecuteCycle,
+  onVerifyFilters
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [localPrefs, setLocalPrefs] = useState<UserSearchPrefsV1 | null>(null);
@@ -96,6 +98,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
       case AgentStatus.APPLYING_FILTERS: return 'text-blue-400';
       case AgentStatus.APPLY_STEP_DONE: return 'text-blue-500';
       case AgentStatus.APPLY_STEP_FAILED: return 'text-red-400';
+      case AgentStatus.SEARCH_READY: return 'text-indigo-400';
       case AgentStatus.COMPLETED: return 'text-green-500';
       case AgentStatus.FAILED: return 'text-red-500';
       default: return 'text-gray-100';
@@ -116,20 +119,19 @@ export const AgentStatusScreen: React.FC<Props> = ({
     if (status === AgentStatus.APPLY_PLAN_READY) return <List />;
     if (status === AgentStatus.APPLY_STEP_DONE) return <CheckCircle />;
     if (status === AgentStatus.APPLY_STEP_FAILED) return <AlertCircle />;
+    if (status === AgentStatus.SEARCH_READY) return <ShieldCheck />;
     if (status === AgentStatus.COMPLETED) return <CheckCircle />;
     return <Terminal />;
   };
 
-  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED;
+  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY;
   const isFinished = state.status === AgentStatus.COMPLETED || state.status === AgentStatus.FAILED;
   // Can reset profile if captured OR targeting ready OR dom ready OR waiting prefs OR plan ready
-  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE;
+  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY;
 
   // Helper to render form fields
   const renderFieldInput = (field: SearchFieldDefinition) => {
     const value = localPrefs?.additionalFilters[field.key] ?? '';
-    // ... (Implementation unchanged, reusing existing render logic for clarity or keeping brevity)
-    // Simplified for this snippet since we mostly care about the Plan View now
     return (
         <div key={field.key} className="flex flex-col space-y-1">
              <label className="text-xs text-gray-400 uppercase font-bold flex justify-between">
@@ -144,7 +146,6 @@ export const AgentStatusScreen: React.FC<Props> = ({
   };
 
   const renderPlanStep = (step: SearchApplyStep, idx: number) => {
-      // Check if step is done
       const isDone = state.activeAppliedFilters?.results.some(r => r.stepId === step.stepId && r.success);
       const isFailed = state.activeAppliedFilters?.results.some(r => r.stepId === step.stepId && !r.success);
 
@@ -178,6 +179,22 @@ export const AgentStatusScreen: React.FC<Props> = ({
       );
   };
 
+  const renderVerificationRow = (res: ControlVerificationResult) => {
+      let color = 'text-gray-400';
+      if (res.status === 'MATCH') color = 'text-green-400';
+      if (res.status === 'MISMATCH') color = 'text-red-400';
+      if (res.status === 'UNKNOWN') color = 'text-yellow-500';
+
+      return (
+          <tr key={res.fieldKey} className="border-b border-gray-800 last:border-0 text-sm">
+             <td className="p-2 font-mono text-gray-300">{res.fieldKey}</td>
+             <td className="p-2 text-gray-400">{String(res.expectedValue)}</td>
+             <td className="p-2 text-gray-400">{String(res.actualValue)}</td>
+             <td className={`p-2 font-bold ${color}`}>{res.status}</td>
+          </tr>
+      );
+  };
+
   return (
     <Layout title="Live Agent Monitor" currentStep={2}>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-180px)]">
@@ -195,8 +212,6 @@ export const AgentStatusScreen: React.FC<Props> = ({
 
              {/* Mock Viewport */}
              <div className="flex-1 bg-gray-900/50 m-1 rounded-lg flex items-center justify-center border border-gray-800/50 border-dashed relative overflow-auto">
-                {/* ... (Previous states omitted for brevity, keeping only relevant active state logic) ... */}
-                
                 {state.status === AgentStatus.IDLE && (
                    <div className="text-center"><Terminal size={48} className="mx-auto text-gray-700 mb-4" /><p className="text-gray-600 font-mono">Waiting for initialization...</p></div>
                 )}
@@ -215,6 +230,37 @@ export const AgentStatusScreen: React.FC<Props> = ({
                         </div>
                         <div className="max-w-2xl mx-auto space-y-2 bg-gray-900 rounded border border-gray-800">
                              {state.activeSearchApplyPlan.steps.map((step, idx) => renderPlanStep(step, idx))}
+                        </div>
+                    </div>
+                )}
+
+                {/* VERIFICATION REPORT */}
+                {state.status === AgentStatus.SEARCH_READY && state.activeVerification && (
+                    <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                         <div className="mb-6 border-b border-gray-800 pb-4">
+                             <div className="flex items-center text-green-400 mb-2">
+                                <ShieldCheck size={24} className="mr-3" />
+                                <h3 className="font-bold text-xl text-white">Verification Report</h3>
+                            </div>
+                            <p className="text-gray-400 text-sm">
+                                Verified {state.activeVerification.results.length} controls. 
+                                {state.activeVerification.verified ? <span className="text-green-500 ml-2 font-bold">ALL PASS</span> : <span className="text-red-500 ml-2 font-bold">{state.activeVerification.mismatches.length} MISMATCHES</span>}
+                            </p>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="text-xs text-gray-500 border-b border-gray-700">
+                                        <th className="p-2">Field</th>
+                                        <th className="p-2">Expected</th>
+                                        <th className="p-2">Actual</th>
+                                        <th className="p-2">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {state.activeVerification.results.map(renderVerificationRow)}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 )}
@@ -280,6 +326,14 @@ export const AgentStatusScreen: React.FC<Props> = ({
                         <span>AUTO-EXECUTE PLAN</span>
                       </button>
                    </div>
+                )}
+                
+                {/* SEARCH_READY -> VERIFY */}
+                {state.status === AgentStatus.SEARCH_READY && onVerifyFilters && (
+                    <button onClick={onVerifyFilters} className="flex items-center space-x-2 bg-teal-600 hover:bg-teal-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-teal-900/20">
+                        <ShieldCheck size={18} />
+                        <span>VERIFY FILTERS</span>
+                    </button>
                 )}
 
                 {/* RUNNING -> STOP */}

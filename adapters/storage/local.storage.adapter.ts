@@ -2,7 +2,7 @@
 
 import { StoragePort } from '../../core/ports/storage.port';
 import { AgentConfig } from '../../types';
-import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1 } from '../../core/domain/entities';
+import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1 } from '../../core/domain/entities';
 import { TargetingSpecV1 } from '../../core/domain/llm_contracts';
 
 const KEY_CONFIG = 'as_config';
@@ -14,6 +14,7 @@ const KEY_SEARCH_UI_PREFIX = 'as_search_ui_';
 const KEY_SEARCH_PREFS_PREFIX = 'as_search_prefs_';
 const KEY_SEARCH_PLAN_PREFIX = 'as_search_plan_';
 const KEY_APPLIED_SNAPSHOT_PREFIX = 'as_applied_snap_';
+const KEY_VERIFICATION_PREFIX = 'as_verification_';
 
 export class LocalStorageAdapter implements StoragePort {
   async saveConfig(config: AgentConfig): Promise<void> {
@@ -123,6 +124,21 @@ export class LocalStorageAdapter implements StoragePort {
 
   async deleteAppliedFiltersSnapshot(siteId: string): Promise<void> {
     localStorage.removeItem(KEY_APPLIED_SNAPSHOT_PREFIX + siteId);
+  }
+
+  // --- Phase A2.1 Implementation ---
+
+  async saveFiltersAppliedVerification(siteId: string, verification: FiltersAppliedVerificationV1): Promise<void> {
+    localStorage.setItem(KEY_VERIFICATION_PREFIX + siteId, JSON.stringify(verification));
+  }
+
+  async getFiltersAppliedVerification(siteId: string): Promise<FiltersAppliedVerificationV1 | null> {
+    const raw = localStorage.getItem(KEY_VERIFICATION_PREFIX + siteId);
+    return raw ? JSON.parse(raw) : null;
+  }
+
+  async deleteFiltersAppliedVerification(siteId: string): Promise<void> {
+     localStorage.removeItem(KEY_VERIFICATION_PREFIX + siteId);
   }
 
   // -----------------------------
