@@ -6,7 +6,7 @@ import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
 import { AgentStatus, AgentConfig } from '../../types';
-import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1 } from '../domain/entities';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult } from '../domain/entities';
 import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode } from '../domain/llm_contracts';
 
 export class AgentUseCase {
@@ -499,7 +499,7 @@ export class AgentUseCase {
       }
   }
 
-  // --- Stage 5.4: Create Draft Prefs ---
+  // --- Stage 5.3: Create Draft Prefs ---
   private createDraftPrefs(siteId: string, spec: SearchUISpecV1, targeting: TargetingSpecV1, config: Partial<AgentConfig>): UserSearchPrefsV1 {
     const additionalFilters: Record<string, any> = {};
 
@@ -561,7 +561,7 @@ export class AgentUseCase {
     };
   }
 
-  // --- Stage 5.4: Submit Prefs ---
+  // --- Stage 5.3: Submit Prefs ---
   async submitSearchPrefs(state: AgentState, prefs: UserSearchPrefsV1): Promise<AgentState> {
       // 1. Save to storage
       await this.storage.saveUserSearchPrefs(prefs.siteId, prefs);
@@ -571,8 +571,207 @@ export class AgentUseCase {
           ...state,
           status: AgentStatus.SEARCH_PREFS_SAVED,
           activeSearchPrefs: prefs,
-          logs: [...state.logs, `User Search Preferences saved. Ready to apply filters.`]
+          logs: [...state.logs, `User Search Preferences saved. Ready to build plan.`]
       });
+  }
+
+  // --- Stage 5.4: Build Apply Plan ---
+  async buildSearchApplyPlan(state: AgentState, siteId: string): Promise<AgentState> {
+      // 1. Checks
+      const spec = await this.storage.getSearchUISpec(siteId);
+      const prefs = await this.storage.getUserSearchPrefs(siteId);
+
+      if (!spec || !prefs) {
+          return this.failSession(state, "Cannot build Apply Plan: Missing Spec or Prefs.");
+      }
+
+      const existingPlan = await this.storage.getSearchApplyPlan(siteId);
+      if (existingPlan) {
+          // Also load existing execution snapshot if any
+          const existingSnapshot = await this.storage.getAppliedFiltersSnapshot(siteId);
+
+          return this.updateState({
+             ...state,
+             status: AgentStatus.APPLY_PLAN_READY,
+             activeSearchApplyPlan: existingPlan,
+             activeAppliedFilters: existingSnapshot,
+             logs: [...state.logs, `Apply Plan already exists (${existingPlan.steps.length} steps). Ready to apply.`]
+          });
+      }
+
+      // 2. Build Steps
+      const steps: SearchApplyStep[] = [];
+      const logs = [...state.logs, 'Building execution plan from user preferences...'];
+
+      for (const field of spec.fields) {
+          if (field.defaultBehavior === 'IGNORE' || field.defaultBehavior === 'EXCLUDE') continue;
+
+          // Special Case: SUBMIT button
+          if (field.semanticType === 'SUBMIT') {
+              steps.push({
+                  stepId: crypto.randomUUID(),
+                  fieldKey: field.key,
+                  actionType: 'CLICK',
+                  value: true,
+                  rationale: 'Submitting the search form',
+                  priority: 100 // High priority (last)
+              });
+              continue;
+          }
+
+          const userValue = prefs.additionalFilters[field.key];
+          
+          // Only add step if user provided a value
+          if (userValue !== undefined && userValue !== null && userValue !== '') {
+               const priority = this.getSemanticPriority(field.semanticType);
+               const action = this.mapControlTypeToAction(field.uiControlType);
+               
+               steps.push({
+                   stepId: crypto.randomUUID(),
+                   fieldKey: field.key,
+                   actionType: action,
+                   value: userValue,
+                   rationale: `User preference for ${field.semanticType} (${field.label})`,
+                   priority
+               });
+          }
+      }
+
+      // 3. Sort Steps
+      // Logic: Fill Location -> Work Mode -> Salary -> Other Inputs -> Submit
+      steps.sort((a, b) => a.priority - b.priority);
+
+      // 4. Create & Save Plan
+      const plan: SearchApplyPlanV1 = {
+          siteId,
+          createdAt: Date.now(),
+          steps
+      };
+
+      await this.storage.saveSearchApplyPlan(siteId, plan);
+
+      // 5. Update State
+      return this.updateState({
+          ...state,
+          status: AgentStatus.APPLY_PLAN_READY,
+          activeSearchApplyPlan: plan,
+          logs: [...logs, `Plan built: ${steps.length} steps scheduled. Waiting for execution.`]
+      });
+  }
+
+  // --- Phase A1.1: Execute Single Step ---
+  async executeSearchPlanStep(state: AgentState, siteId: string): Promise<AgentState> {
+      // 1. Load context
+      const plan = await this.storage.getSearchApplyPlan(siteId);
+      const spec = await this.storage.getSearchUISpec(siteId);
+      let snapshot = await this.storage.getAppliedFiltersSnapshot(siteId);
+
+      if (!plan || !spec) {
+          return this.failSession(state, "Missing Plan or Spec for execution.");
+      }
+
+      if (!snapshot) {
+          snapshot = {
+              siteId,
+              createdAt: Date.now(),
+              lastUpdatedAt: Date.now(),
+              results: []
+          };
+      }
+
+      // 2. Determine Next Step
+      // Find the first step in plan that is NOT in snapshot results (or failed)
+      const appliedStepIds = new Set(snapshot.results.map(r => r.stepId));
+      const nextStep = plan.steps.find(s => !appliedStepIds.has(s.stepId));
+
+      if (!nextStep) {
+          // All steps done!
+          const logs = [...state.logs, "All steps executed. Moving to SEARCH_READY."];
+          return this.updateState({
+              ...state,
+              status: AgentStatus.SEARCH_READY,
+              activeAppliedFilters: snapshot,
+              logs
+          });
+      }
+
+      // 3. Prepare Execution
+      const fieldDef = spec.fields.find(f => f.key === nextStep.fieldKey);
+      if (!fieldDef) {
+          // Critical error: Plan refers to missing field
+           return this.failSession(state, `Plan references unknown field key: ${nextStep.fieldKey}`);
+      }
+
+      let currentState = await this.updateState({
+          ...state,
+          status: AgentStatus.APPLYING_FILTERS,
+          logs: [...state.logs, `Executing Step: ${nextStep.actionType} on ${fieldDef.label}...`]
+      });
+
+      // 4. Execute via Port
+      try {
+          const result = await this.browser.applyControlAction(fieldDef, nextStep.actionType, nextStep.value);
+          
+          const stepResult: AppliedStepResult = {
+              stepId: nextStep.stepId,
+              fieldKey: nextStep.fieldKey,
+              timestamp: Date.now(),
+              actionType: nextStep.actionType,
+              intendedValue: nextStep.value,
+              success: result.success,
+              observedValue: result.observedValue,
+              error: result.error
+          };
+
+          // 5. Update Snapshot
+          snapshot.results.push(stepResult);
+          snapshot.lastUpdatedAt = Date.now();
+          await this.storage.saveAppliedFiltersSnapshot(siteId, snapshot);
+
+          // 6. Update State
+          const status = result.success ? AgentStatus.APPLY_STEP_DONE : AgentStatus.APPLY_STEP_FAILED;
+          const logMsg = result.success 
+              ? `Step Success: Set ${fieldDef.label} = ${nextStep.value}` 
+              : `Step Failed: ${result.error}`;
+
+          return this.updateState({
+              ...currentState,
+              status,
+              activeAppliedFilters: snapshot,
+              logs: [...currentState.logs, logMsg]
+          });
+
+      } catch (e: any) {
+           console.error(e);
+           return this.updateState({
+              ...currentState,
+              status: AgentStatus.APPLY_STEP_FAILED,
+              logs: [...currentState.logs, `Execution Error: ${e.message}`]
+           });
+      }
+  }
+
+  private getSemanticPriority(type: SemanticFieldType): number {
+      switch (type) {
+          case 'LOCATION': return 10;
+          case 'WORK_MODE': return 20;
+          case 'SALARY': return 30;
+          case 'KEYWORD': return 40;
+          case 'SUBMIT': return 100;
+          default: return 50;
+      }
+  }
+
+  private mapControlTypeToAction(uiType: SearchFieldType): ApplyActionType {
+      switch (uiType) {
+          case 'CHECKBOX': return 'TOGGLE_CHECKBOX';
+          case 'SELECT': return 'SELECT_OPTION';
+          case 'TEXT': 
+          case 'RANGE':
+             return 'FILL_TEXT';
+          case 'BUTTON': return 'CLICK';
+          default: return 'UNKNOWN';
+      }
   }
 
   async resetProfileData(state: AgentState, siteId: string): Promise<AgentState> {
@@ -580,13 +779,17 @@ export class AgentUseCase {
       await this.storage.deleteTargetingSpec(siteId); 
       await this.storage.deleteSearchUISpec(siteId); // Cascade 
       await this.storage.deleteUserSearchPrefs(siteId); // Cascade
-      
-      const logs = [...state.logs, `Profile data, targeting rules, and search prefs for ${siteId} cleared.`];
+      await this.storage.deleteSearchApplyPlan(siteId); // Cascade
+      await this.storage.deleteAppliedFiltersSnapshot(siteId); // Cascade
+
+      const logs = [...state.logs, `Profile data, targeting rules, search prefs, and plans for ${siteId} cleared.`];
       return this.updateState({ 
         ...state, 
         activeTargetingSpec: null, 
         activeSearchUISpec: null,
         activeSearchPrefs: null,
+        activeSearchApplyPlan: null,
+        activeAppliedFilters: null,
         logs 
       });
   }

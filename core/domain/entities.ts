@@ -91,6 +91,48 @@ export interface SearchDOMSnapshotV1 {
   fields: RawFormField[];
 }
 
+// --- Stage 5.4: Apply Plan ---
+
+export type ApplyActionType = 'FILL_TEXT' | 'SELECT_OPTION' | 'TOGGLE_CHECKBOX' | 'CLICK' | 'UNKNOWN';
+
+export interface SearchApplyStep {
+  stepId: string;
+  fieldKey: string;
+  actionType: ApplyActionType;
+  value: string | number | boolean | string[];
+  rationale: string;
+  priority: number; // Internal for sorting
+}
+
+export interface SearchApplyPlanV1 {
+  siteId: string;
+  createdAt: number;
+  steps: SearchApplyStep[];
+}
+
+// --- Phase A1.1: Execution Tracking ---
+
+export interface ExecutionResult {
+    success: boolean;
+    observedValue?: any;
+    error?: string;
+}
+
+export interface AppliedStepResult extends ExecutionResult {
+  stepId: string;
+  fieldKey: string;
+  timestamp: number;
+  actionType: ApplyActionType;
+  intendedValue: any;
+}
+
+export interface AppliedFiltersSnapshotV1 {
+  siteId: string;
+  createdAt: number;
+  lastUpdatedAt: number;
+  results: AppliedStepResult[];
+}
+
 // --- Core State ---
 
 export interface AgentState {
@@ -104,7 +146,9 @@ export interface AgentState {
   activeTargetingSpec?: TargetingSpecV1 | null; // Stage 4: Job Requirements
   activeSearchDOMSnapshot?: SearchDOMSnapshotV1 | null; // Stage 5.2.3: Raw DOM
   activeSearchUISpec?: SearchUISpecV1 | null;   // Stage 5.3: Processed Spec
-  activeSearchPrefs?: UserSearchPrefsV1 | null; // Stage 5.4: User Choices
+  activeSearchPrefs?: UserSearchPrefsV1 | null; // Stage 5.3: User Choices
+  activeSearchApplyPlan?: SearchApplyPlanV1 | null; // Stage 5.4: Execution Plan
+  activeAppliedFilters?: AppliedFiltersSnapshotV1 | null; // Phase A1.1: Execution Progress
 }
 
 export interface ProfileSnapshot {
@@ -124,5 +168,7 @@ export const createInitialAgentState = (): AgentState => ({
   activeTargetingSpec: null,
   activeSearchDOMSnapshot: null,
   activeSearchUISpec: null,
-  activeSearchPrefs: null
+  activeSearchPrefs: null,
+  activeSearchApplyPlan: null,
+  activeAppliedFilters: null
 });

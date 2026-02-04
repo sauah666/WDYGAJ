@@ -123,7 +123,7 @@ export class AgentPresenter implements UIPort {
       }
   }
 
-  // Step 5.4: Submit Preferences
+  // Step 5.3: Submit Preferences
   async submitSearchPrefs(currentState: AgentState, prefs: UserSearchPrefsV1) {
     if (!this.useCase) return;
     try {
@@ -131,6 +131,30 @@ export class AgentPresenter implements UIPort {
     } catch (e) {
         console.error(e);
         await this.useCase.failSession(currentState, "Preferences Save Error");
+    }
+  }
+
+  // Step 5.4: Plan Search Actions
+  async planSearchActions(currentState: AgentState) {
+    if (!this.useCase) return;
+    try {
+        const site = this.currentConfig.targetSite || 'hh.ru';
+        await this.useCase.buildSearchApplyPlan(currentState, site);
+    } catch (e) {
+        console.error(e);
+        await this.useCase.failSession(currentState, "Planning Error");
+    }
+  }
+
+  // Phase A1.1: Execute Single Step
+  async executePlanStep(currentState: AgentState) {
+    if (!this.useCase) return;
+    try {
+        const site = this.currentConfig.targetSite || 'hh.ru';
+        await this.useCase.executeSearchPlanStep(currentState, site);
+    } catch (e) {
+        console.error(e);
+        await this.useCase.failSession(currentState, "Execution Error");
     }
   }
 

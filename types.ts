@@ -28,7 +28,14 @@ export enum AgentStatus {
   
   WAITING_FOR_SEARCH_PREFS = 'WAITING_FOR_SEARCH_PREFS', // Human Gate
   SEARCH_PREFS_SAVED = 'SEARCH_PREFS_SAVED',
-  APPLYING_FILTERS = 'APPLYING_FILTERS',
+  
+  APPLY_PLAN_READY = 'APPLY_PLAN_READY', // Plan built and saved
+  
+  // Phase A1.1 Execution Statuses
+  APPLYING_FILTERS = 'APPLYING_FILTERS', // In process
+  APPLY_STEP_DONE = 'APPLY_STEP_DONE',   // One step finished successfully
+  APPLY_STEP_FAILED = 'APPLY_STEP_FAILED', // One step failed
+  
   SEARCH_READY = 'SEARCH_READY', // Filters applied, ready to parse list
 
   COMPLETED = 'COMPLETED',

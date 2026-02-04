@@ -2,7 +2,7 @@
 // Purpose: Implementation of ports. External world details.
 
 import { BrowserPort } from '../../core/ports/browser.port';
-import { RawFormField } from '../../core/domain/entities';
+import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult } from '../../core/domain/entities';
 
 export class MockBrowserAdapter implements BrowserPort {
   private currentUrlVal: string = 'about:blank';
@@ -106,6 +106,21 @@ export class MockBrowserAdapter implements BrowserPort {
             isVisible: true
         }
     ];
+  }
+
+  async applyControlAction(fieldDef: SearchFieldDefinition, actionType: ApplyActionType, value: any): Promise<ExecutionResult> {
+    console.log(`[BrowserAdapter] EXECUTING: ${actionType} on "${fieldDef.label}" (Hint: ${fieldDef.domHint}) with value: ${value}`);
+    
+    // Simulate latency
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Simple Mock Success Logic
+    // In real implementation, this would use Puppeteer to find element by fieldDef.domHint
+    
+    return {
+      success: true,
+      observedValue: value // We assume it worked
+    };
   }
 
   async close(): Promise<void> {

@@ -1,7 +1,7 @@
 // Layer: PORTS
 // Purpose: Define contracts for external services (secondary adapters).
 
-import { RawFormField } from '../domain/entities';
+import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult } from '../domain/entities';
 
 export interface BrowserPort {
   /**
@@ -51,6 +51,15 @@ export interface BrowserPort {
    * Does NOT analyze logic, just returns raw structure.
    */
   scanPageInteractionElements(): Promise<RawFormField[]>;
+
+  /**
+   * Executes a specific action on a form control.
+   * Used for applying search filters.
+   * @param fieldDef - The semantic definition of the field (contains domHint)
+   * @param actionType - What to do (fill, select, toggle, click)
+   * @param value - The value to apply
+   */
+  applyControlAction(fieldDef: SearchFieldDefinition, actionType: ApplyActionType, value: any): Promise<ExecutionResult>;
 
   /**
    * Closes the browser session.
