@@ -7,7 +7,7 @@ import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
 import { AgentStatus } from '../../types';
 import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition } from '../domain/entities';
-import { ProfileSummaryV1, TargetingSpecV1, WorkMode } from '../domain/llm_contracts';
+import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode } from '../domain/llm_contracts';
 
 export class AgentUseCase {
   constructor(
@@ -404,6 +404,77 @@ export class AgentUseCase {
             logs: [...currentState.logs, `DOM Scan Failed: ${e.message}`]
         });
     }
+  }
+
+  // --- Stage 5.3: LLM Analysis of Search DOM ---
+  async performSearchUIAnalysis(state: AgentState, siteId: string): Promise<AgentState> {
+      // 1. Preconditions
+      const snapshot = await this.storage.getSearchDOMSnapshot(siteId);
+      const targeting = await this.storage.getTargetingSpec(siteId);
+
+      if (!snapshot || !targeting) {
+          return this.failSession(state, "Missing DOM Snapshot or Targeting Spec for analysis.");
+      }
+
+      // 2. Check Existance
+      const existingSpec = await this.storage.getSearchUISpec(siteId);
+      if (existingSpec) {
+          return this.updateState({
+              ...state,
+              status: AgentStatus.WAITING_FOR_SEARCH_PREFS,
+              activeSearchUISpec: existingSpec,
+              logs: [...state.logs, `Loaded existing UI Spec (v${existingSpec.version}). Skipping analysis.`]
+          });
+      }
+
+      // 3. Prepare Input
+      let currentState = await this.updateState({
+          ...state,
+          status: AgentStatus.ANALYZING_SEARCH_UI,
+          logs: [...state.logs, `Sending ${snapshot.fields.length} DOM elements to LLM for semantic analysis...`]
+      });
+
+      const input: SearchUIAnalysisInputV1 = {
+          siteId,
+          domSnapshot: {
+              pageUrl: snapshot.pageUrl,
+              fields: snapshot.fields
+          },
+          targetingContext: {
+              targetRoles: [...targeting.targetRoles.ruTitles, ...targeting.targetRoles.enTitles],
+              workModeRules: { strictMode: targeting.workModeRules.strictMode },
+              salaryRules: { minThresholdStrategy: targeting.salaryRules.minThresholdStrategy }
+          }
+      };
+
+      try {
+          // 4. LLM Call
+          const spec = await this.llm.analyzeSearchDOM(input);
+
+          // 5. Validate (Basic)
+          if (!spec.fields.some(f => f.semanticType !== 'OTHER')) {
+             throw new Error("LLM failed to identify any semantic fields.");
+          }
+
+          // 6. Save
+          await this.storage.saveSearchUISpec(siteId, spec);
+
+          // 7. Finalize
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.WAITING_FOR_SEARCH_PREFS,
+              activeSearchUISpec: spec,
+              logs: [...currentState.logs, `Analysis complete. Identified ${spec.fields.length} fields. Waiting for confirmation.`]
+          });
+
+      } catch (e: any) {
+          console.error(e);
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.FAILED,
+              logs: [...currentState.logs, `UI Analysis Failed: ${e.message}`]
+          });
+      }
   }
 
   async resetProfileData(state: AgentState, siteId: string): Promise<AgentState> {

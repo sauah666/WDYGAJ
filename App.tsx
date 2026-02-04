@@ -78,6 +78,7 @@ export default function App() {
   // Stage 5 Actions (Search Config)
   const handleContinueToSearch = () => agentPresenter.continueToSearch(agentState);
   const handleScanSearchUI = () => agentPresenter.scanSearchUI(agentState);
+  const handleAnalyzeSearchUI = () => agentPresenter.analyzeSearchUI(agentState);
 
   // Router
   let screen;
@@ -103,6 +104,7 @@ export default function App() {
           onReset={handleReset}
           onContinueToSearch={handleContinueToSearch}
           onScanSearchUI={handleScanSearchUI}
+          onAnalyzeSearchUI={handleAnalyzeSearchUI}
         />
       );
       break;

@@ -86,7 +86,7 @@ export class AgentPresenter implements UIPort {
       }
   }
 
-  // Step 4 (NEW): Continue to Search Page
+  // Step 4: Continue to Search Page
   async continueToSearch(currentState: AgentState) {
       if (!this.useCase) return;
       try {
@@ -99,7 +99,7 @@ export class AgentPresenter implements UIPort {
       }
   }
 
-  // Step 5 (NEW): Scan Search UI (DOM Snapshot)
+  // Step 5.2: Scan Search UI (DOM Snapshot)
   async scanSearchUI(currentState: AgentState) {
       if (!this.useCase) return;
       try {
@@ -108,6 +108,18 @@ export class AgentPresenter implements UIPort {
       } catch (e) {
          console.error(e);
          await this.useCase.failSession(currentState, "DOM Scan Error");
+      }
+  }
+
+  // Step 5.3: LLM Analyze Search UI
+  async analyzeSearchUI(currentState: AgentState) {
+      if (!this.useCase) return;
+      try {
+         const site = this.currentConfig.targetSite || 'hh.ru';
+         await this.useCase.performSearchUIAnalysis(currentState, site);
+      } catch (e) {
+         console.error(e);
+         await this.useCase.failSession(currentState, "UI Analysis Error");
       }
   }
 

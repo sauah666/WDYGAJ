@@ -1,35 +1,37 @@
 # Developer Context (Save Game)
 
-**Last Updated**: Stage 5.2.2 Verified
+**Last Updated**: Stage 5.2.3 Verified
 **Role**: Senior Agent Architect
 **Manifesto**: See `docs/PROJECT_DOCUMENTATION.md` (Rule D-01)
 
 ## Где мы сейчас?
-Мы закончили **Этап 5.2: DOM Snapshot Capture**.
+Мы закончили **Этап 5.3: LLM Analysis of Search UI**.
 
-### Что сделано (Stage 5.2.2):
-1.  **SearchDOMSnapshotV1**: Реализована сущность для хранения "сырой" структуры формы поиска.
-2.  **BrowserPort**: Добавлен метод `scanPageInteractionElements` (возвращает `RawFormField[]`).
-3.  **AgentUseCase**: Реализован метод `scanSearchPageDOM`.
-    *   Проверяет наличие снапшота в Storage.
-    *   Если нет -> сканирует -> сохраняет -> статус `SEARCH_DOM_READY`.
-4.  **UI**: Добавлены кнопки навигации и сканирования, визуализация JSON снапшота.
+### Что сделано (Stage 5.2.3):
+1.  **SearchUISpecV1**: Реализована семантическая карта формы поиска (fields, semanticType, uiControlType).
+2.  **LLM Integration**: Метод `analyzeSearchDOM` принимает сырой DOM и возвращает типизированную спецификацию.
+3.  **AgentUseCase**: Реализован метод `performSearchUIAnalysis`.
+    *   Проверяет наличие `SearchDOMSnapshot` и `TargetingSpec`.
+    *   Вызывает LLM (один раз).
+    *   Сохраняет результат.
+    *   Статус переходит в `WAITING_FOR_SEARCH_PREFS`.
+4.  **Safety**: Повторный запуск использует сохраненный Spec.
 
 ### Текущее техническое состояние:
-*   Агент умеет находить страницу поиска.
-*   Агент умеет "видеть" поля ввода (inputs, selects, buttons).
-*   Агент **НЕ ПОНИМАЕТ**, что эти поля значат (для него это просто набор тегов и атрибутов).
+*   Агент "видит" DOM и "понимает" семантику полей (где зарплата, где город).
+*   Есть `activeSearchUISpec` в стейте.
+*   Система ждет подтверждения параметров поиска от пользователя (или авто-запуска).
 
 ### Следующий шаг (IMMEDIATE NEXT):
-**Этап 5.3 — Search UI Spec (LLM Analysis)**:
-1.  Отправить `SearchDOMSnapshot` в LLM.
-2.  LLM должна вернуть `SearchUISpec` — семантическую карту (где поле зарплаты, где чекбокс удаленки).
-3.  Сохранить `SearchUISpec`.
-4.  Статус: `WAITING_FOR_SEARCH_PREFS`.
+**Этап 5.4 — User Search Preferences**:
+1.  Показать пользователю найденные фильтры (`SearchUISpec`).
+2.  Предзаполнить их значениями из `TargetingSpec` (авто-маппинг).
+3.  Дать пользователю возможность изменить значения (Human-in-the-loop).
+4.  Сохранить итоговый конфиг (`UserSearchPrefsV1`) и перейти к применению фильтров (`APPLYING_FILTERS`).
 
 ## Известные ограничения (Stub/Mock)
-*   **Browser**: `MockBrowserAdapter` возвращает хардкод полей (эмуляция hh.ru).
-*   **LLM**: Пока не реализован метод анализа DOM (нужен новый метод в порту).
+*   **Browser**: `MockBrowserAdapter` возвращает хардкод полей.
+*   **LLM**: Mock возвращает фиксированный маппинг.
 
 ## Правила разработки (Strict)
 См. `docs/PROJECT_DOCUMENTATION.md`

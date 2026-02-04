@@ -22,7 +22,8 @@ export interface SiteDefinition {
 
 // --- Stage 5: Search Configuration Entities ---
 
-export type SearchFieldType = 'CHECKBOX' | 'SELECT' | 'RANGE' | 'TEXT' | 'UNKNOWN';
+export type SearchFieldType = 'CHECKBOX' | 'SELECT' | 'RANGE' | 'TEXT' | 'BUTTON' | 'UNKNOWN';
+export type SemanticFieldType = 'LOCATION' | 'SALARY' | 'WORK_MODE' | 'SCHEDULE' | 'KEYWORD' | 'EXPERIENCE' | 'SUBMIT' | 'OTHER';
 
 export interface SearchFieldOption {
   value: string;
@@ -30,18 +31,31 @@ export interface SearchFieldOption {
 }
 
 export interface SearchFieldDefinition {
-  key: string;        // Unique internal ID for the field
+  key: string;        // Unique internal ID for the field (e.g. "salary_input")
   label: string;      // Visual label
-  type: SearchFieldType;
+  
+  // Technical Type
+  uiControlType: SearchFieldType;
+  
+  // Semantic Analysis Results
+  semanticType: SemanticFieldType;
   options?: SearchFieldOption[]; // For SELECT type
-  domHint?: string;   // Implementation detail (data-qa, name, etc.) - handled by Adapters later
+  
+  // Behavior rules derived by LLM
+  defaultBehavior: 'IGNORE' | 'INCLUDE' | 'EXCLUDE' | 'RANGE' | 'CLICK'; 
+  
+  // Implementation detail (data-qa, name, etc.) - handled by Adapters later
+  domHint?: string;   
+  confidence: number; // 0.0 - 1.0
 }
 
 export interface SearchUISpecV1 {
   siteId: string;
-  capturedAt: number;
+  derivedAt: number;
   sourceUrl: string;
   fields: SearchFieldDefinition[];
+  unsupportedFields: string[]; // List of field IDs that couldn't be mapped
+  assumptions: string[];
   version: string; // 'v1'
 }
 

@@ -1,6 +1,8 @@
 // Layer: DOMAIN
 // Purpose: Data Transfer Objects (DTOs) and Contracts for LLM interactions.
 
+import { RawFormField } from './entities';
+
 // --- Enums for Validation ---
 
 export enum WorkMode {
@@ -43,6 +45,21 @@ export interface ProfileSummaryV1 {
   profileHash: string;
   profileTextNormalized: string; // The raw blob we captured
   userConstraints: UserConstraints;
+}
+
+// --- Stage 5 Input Contract ---
+
+export interface SearchUIAnalysisInputV1 {
+  siteId: string;
+  domSnapshot: {
+    pageUrl: string;
+    fields: RawFormField[];
+  };
+  targetingContext: {
+    targetRoles: string[]; // merged ru/en titles
+    workModeRules: { strictMode: boolean };
+    salaryRules: { minThresholdStrategy: string };
+  };
 }
 
 // --- Output Contract ---
