@@ -38,6 +38,15 @@ export enum AgentStatus {
   
   SEARCH_READY = 'SEARCH_READY', // Filters applied, ready to parse list
 
+  // Phase B1
+  VACANCIES_CAPTURED = 'VACANCIES_CAPTURED', // Batch collected
+
+  // Phase B2
+  VACANCIES_DEDUPED = 'VACANCIES_DEDUPED', // Batch processed for duplicates
+
+  // Phase C1
+  PREFILTER_DONE = 'PREFILTER_DONE', // Script prefilter executed
+
   COMPLETED = 'COMPLETED',
   FAILED = 'FAILED'
 }

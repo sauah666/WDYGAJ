@@ -87,6 +87,13 @@ export default function App() {
   const handleExecuteCycle = () => agentPresenter.executePlanCycle(agentState);
   const handleVerifyFilters = () => agentPresenter.verifySearchFilters(agentState);
 
+  // Phase B Actions
+  const handleCollectBatch = () => agentPresenter.collectVacancyBatch(agentState);
+  const handleDedupBatch = () => agentPresenter.dedupVacancyBatch(agentState);
+
+  // Phase C Actions
+  const handleRunPrefilter = () => agentPresenter.runScriptPrefilter(agentState);
+
   // Router
   let screen;
   switch (route) {
@@ -117,6 +124,9 @@ export default function App() {
           onExecuteStep={handleExecuteStep}
           onExecuteCycle={handleExecuteCycle}
           onVerifyFilters={handleVerifyFilters}
+          onCollectBatch={handleCollectBatch}
+          onDedupBatch={handleDedupBatch}
+          onRunPrefilter={handleRunPrefilter}
         />
       );
       break;

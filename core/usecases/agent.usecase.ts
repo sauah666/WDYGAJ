@@ -1,12 +1,12 @@
 // Layer: USE CASES
 // Purpose: Application specific business rules. Orchestrates flow between Domain and Ports.
 
-import { BrowserPort } from '../ports/browser.port';
+import { BrowserPort, RawVacancyCard } from '../ports/browser.port';
 import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
 import { AgentStatus, AgentConfig } from '../../types';
-import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource } from '../domain/entities';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType } from '../domain/entities';
 import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode } from '../domain/llm_contracts';
 
 export class AgentUseCase {
@@ -898,6 +898,421 @@ export class AgentUseCase {
           logs: [...currentState.logs, finalLog]
       });
   }
+
+  // --- Phase B1: Collect Vacancy Cards ---
+  async collectVacancyCardsBatch(state: AgentState, siteId: string): Promise<AgentState> {
+      const logs = [...state.logs, "Scanning page for vacancy cards (Limit: 15)..."];
+      let currentState = await this.updateState({ ...state, logs });
+
+      try {
+          // 1. Scan via Port
+          const limit = 15;
+          const { cards: rawCards, nextPageCursor } = await this.browser.scanVacancyCards(limit);
+
+          if (rawCards.length === 0) {
+              return this.updateState({
+                  ...currentState,
+                  logs: [...currentState.logs, "WARNING: No vacancy cards found on current page."]
+              });
+          }
+
+          // 2. Normalize and Map to Domain Entity
+          const cards: VacancyCardV1[] = [];
+          
+          for (const raw of rawCards) {
+              const url = raw.url; // already absolute from adapter
+              const title = raw.title.trim();
+              const company = raw.company?.trim() || null;
+              
+              // Generate hash for dedup (Site + URL + Title)
+              const hashInput = `${siteId}|${url}|${title}`;
+              const cardHash = await this.computeHash(hashInput);
+
+              // Parse Work Mode if present in raw text
+              let workMode: 'remote' | 'hybrid' | 'office' | 'unknown' = 'unknown';
+              if (raw.workModeText) {
+                  const wm = raw.workModeText.toLowerCase();
+                  if (wm.includes('удален') || wm.includes('remote')) workMode = 'remote';
+                  else if (wm.includes('гибрид') || wm.includes('hybrid')) workMode = 'hybrid';
+                  else if (wm.includes('офис') || wm.includes('office')) workMode = 'office';
+              }
+
+              // Salary Parsing is handled by Adapter usually, but if Adapter returns text, we parse here or assume Adapter did it.
+              // For B1, we assume Adapter does heavy lifting or we do simple checks.
+              // Let's rely on Adapter to have populated salary if possible, 
+              // but our RawVacancyCard has 'salaryText'.
+              // We need to parse it to VacancySalary structure if we want structured data now.
+              // For simplicity in B1, we'll try to parse the text or leave null.
+              const salary = this.parseSalaryString(raw.salaryText);
+
+              cards.push({
+                  id: crypto.randomUUID(),
+                  siteId,
+                  externalId: raw.externalId || null,
+                  url,
+                  title,
+                  company,
+                  city: raw.city || null,
+                  workMode,
+                  salary,
+                  publishedAt: raw.publishedAtText || null,
+                  cardHash
+              });
+          }
+
+          // 3. Create Batch
+          const currentUrl = await this.browser.getCurrentUrl();
+          const queryFingerprint = await this.computeHash(currentUrl); // Simplified fingerprint
+
+          const batch: VacancyCardBatchV1 = {
+              batchId: crypto.randomUUID(),
+              siteId,
+              capturedAt: Date.now(),
+              queryFingerprint,
+              cards,
+              pageCursor: nextPageCursor || null
+          };
+
+          // 4. Save Batch
+          await this.storage.saveVacancyCardBatch(siteId, batch);
+
+          // 5. Update State
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.VACANCIES_CAPTURED,
+              activeVacancyBatch: batch,
+              logs: [...currentState.logs, `Collected batch of ${cards.length} vacancies.`]
+          });
+
+      } catch (e: any) {
+          console.error(e);
+          return this.failSession(currentState, `Vacancy Collection Failed: ${e.message}`);
+      }
+  }
+
+  // --- Phase B2: Dedup & Select ---
+  async dedupAndSelectVacancyBatch(state: AgentState, siteId: string): Promise<AgentState> {
+      // 1. Context Check
+      if (!state.activeVacancyBatch) {
+          return this.failSession(state, "No vacancy batch found to process.");
+      }
+      
+      const logs = [...state.logs, "Processing vacancies: Deduplication & City Matching..."];
+      let currentState = await this.updateState({ ...state, logs });
+
+      try {
+          const batch = state.activeVacancyBatch;
+          const prefs = await this.storage.getUserSearchPrefs(siteId);
+          const userCity = prefs?.city?.toLowerCase() || null;
+          
+          let seenIndex = await this.storage.getSeenVacancyIndex(siteId);
+          if (!seenIndex) {
+              seenIndex = { siteId, lastUpdatedAt: Date.now(), seenKeys: [] };
+          }
+          const seenSet = new Set(seenIndex.seenKeys);
+
+          // 2. Group Cards
+          const groups = new Map<string, VacancyCardV1[]>();
+
+          for (const card of batch.cards) {
+              // Group Key Logic: Use externalId if available, else Hash(Title+Company+Salary)
+              let groupKey = '';
+              if (card.externalId) {
+                  groupKey = `EXT:${card.externalId}`;
+              } else {
+                  const salarySig = card.salary ? `${card.salary.min}-${card.salary.max}-${card.salary.currency}` : 'NOSALARY';
+                  const rawKey = `${this.normalizeText(card.title)}|${this.normalizeText(card.company || '')}|${salarySig}`;
+                  groupKey = `HASH:${await this.computeHash(rawKey)}`;
+              }
+              
+              if (!groups.has(groupKey)) groups.set(groupKey, []);
+              groups.get(groupKey)!.push(card);
+          }
+
+          // 3. Process Groups
+          const results: DedupedCardResult[] = [];
+          const newSeenKeys: string[] = [];
+          
+          let countSelected = 0;
+          let countDuplicates = 0;
+          let countSeen = 0;
+
+          for (const [key, groupCards] of groups) {
+              // Check if already seen
+              const isSeen = seenSet.has(key); // We check key, not individual card hash, because key represents the "position"
+              
+              if (isSeen) {
+                   // Mark all as SKIP_SEEN
+                   for (const c of groupCards) {
+                       results.push({ cardId: c.id, decision: VacancyDecision.SKIP_SEEN, dedupKey: key });
+                   }
+                   countSeen += groupCards.length;
+                   continue;
+              }
+
+              // Selection Logic within Group
+              // Sort by: 1. City Match, 2. Completeness, 3. Hash Stability
+              groupCards.sort((a, b) => {
+                  if (userCity) {
+                      const aCity = a.city?.toLowerCase() || '';
+                      const bCity = b.city?.toLowerCase() || '';
+                      if (aCity.includes(userCity) && !bCity.includes(userCity)) return -1;
+                      if (!aCity.includes(userCity) && bCity.includes(userCity)) return 1;
+                  }
+                  
+                  // Completeness score
+                  const scoreA = (a.salary ? 2 : 0) + (a.workMode !== 'unknown' ? 1 : 0);
+                  const scoreB = (b.salary ? 2 : 0) + (b.workMode !== 'unknown' ? 1 : 0);
+                  if (scoreA !== scoreB) return scoreB - scoreA;
+
+                  return a.cardHash.localeCompare(b.cardHash);
+              });
+
+              // Winner
+              const winner = groupCards[0];
+              results.push({ cardId: winner.id, decision: VacancyDecision.SELECTED, dedupKey: key });
+              newSeenKeys.push(key);
+              countSelected++;
+
+              // Losers
+              for (let i = 1; i < groupCards.length; i++) {
+                  results.push({ cardId: groupCards[i].id, decision: VacancyDecision.DUPLICATE, dedupKey: key });
+                  countDuplicates++;
+              }
+          }
+
+          // 4. Update Persistence
+          seenIndex.seenKeys = [...seenIndex.seenKeys, ...newSeenKeys];
+          seenIndex.lastUpdatedAt = Date.now();
+          await this.storage.saveSeenVacancyIndex(siteId, seenIndex);
+
+          const dedupedBatch: DedupedVacancyBatchV1 = {
+              id: crypto.randomUUID(),
+              batchId: batch.batchId,
+              siteId,
+              processedAt: Date.now(),
+              userCity,
+              results,
+              summary: {
+                  total: batch.cards.length,
+                  selected: countSelected,
+                  duplicates: countDuplicates,
+                  seen: countSeen
+              }
+          };
+
+          await this.storage.saveDedupedVacancyBatch(siteId, dedupedBatch);
+
+          // 5. Update State
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.VACANCIES_DEDUPED,
+              activeDedupedBatch: dedupedBatch,
+              logs: [...currentState.logs, `Deduped: ${countSelected} selected, ${countDuplicates} duplicates, ${countSeen} seen.`]
+          });
+
+      } catch (e: any) {
+          console.error(e);
+          return this.failSession(currentState, `Dedup Failed: ${e.message}`);
+      }
+  }
+  
+  // --- Phase C1: Script Prefilter ---
+  async runScriptPrefilter(state: AgentState, siteId: string): Promise<AgentState> {
+      // 1. Context Check
+      if (!state.activeDedupedBatch || !state.activeVacancyBatch) {
+          return this.failSession(state, "No deduped batch found to filter.");
+      }
+
+      const targeting = await this.storage.getTargetingSpec(siteId);
+      const userPrefs = await this.storage.getUserSearchPrefs(siteId); // For raw minSalary constraints if needed
+      
+      if (!targeting) {
+           return this.failSession(state, "Missing targeting spec for prefilter.");
+      }
+
+      const logs = [...state.logs, "Running Script Prefilter (Salary, WorkMode, Title Score)..."];
+      let currentState = await this.updateState({ ...state, logs });
+
+      try {
+          const THRESHOLD_READ = 0.7;
+          const THRESHOLD_DEFER = 0.4;
+
+          const batch = state.activeDedupedBatch;
+          const results: PreFilterDecisionV1[] = [];
+          
+          let countRead = 0;
+          let countDefer = 0;
+          let countReject = 0;
+
+          // Only process SELECTED cards
+          const selectedResults = batch.results.filter(r => r.decision === VacancyDecision.SELECTED);
+          
+          for (const res of selectedResults) {
+              const card = state.activeVacancyBatch!.cards.find(c => c.id === res.cardId);
+              if (!card) continue;
+
+              const reasons: string[] = [];
+              let score = 0;
+              let salaryGate: 'PASS' | 'FAIL' | 'UNKNOWN' = 'UNKNOWN';
+              let workModeGate: 'PASS' | 'FAIL' | 'UNKNOWN' = 'UNKNOWN';
+
+              // --- 1. Salary Gate ---
+              // Rule: Reject if card.max < user.min
+              if (card.salary && card.salary.max && userPrefs?.minSalary) {
+                   if (card.salary.max < userPrefs.minSalary) {
+                       salaryGate = 'FAIL';
+                       reasons.push('salary_too_low');
+                   } else {
+                       salaryGate = 'PASS';
+                   }
+              } else if (card.salary) {
+                  salaryGate = 'PASS'; // Salary exists but no strict conflict
+              } else {
+                  salaryGate = 'UNKNOWN';
+              }
+
+              // --- 2. WorkMode Gate ---
+              // Logic: If strictMode is ON, we require exact match (or acceptable mapping)
+              // Simplified: If user said REMOTE, reject OFFICE/HYBRID.
+              // If User said ANY, pass all.
+              const userMode = userPrefs?.workMode || WorkMode.ANY;
+              const strictMode = targeting.workModeRules.strictMode;
+              
+              if (userMode === WorkMode.ANY) {
+                  workModeGate = 'PASS';
+              } else if (card.workMode === 'unknown') {
+                  workModeGate = 'UNKNOWN'; // Give benefit of doubt
+              } else {
+                  // Mismatch logic
+                  let isMatch = false;
+                  if (userMode === WorkMode.REMOTE && card.workMode === 'remote') isMatch = true;
+                  else if (userMode === WorkMode.HYBRID && (card.workMode === 'hybrid' || card.workMode === 'office')) isMatch = true; // Hybrid usually allows office
+                  else if (userMode === WorkMode.OFFICE && card.workMode === 'office') isMatch = true;
+                  
+                  if (!isMatch && strictMode) {
+                      workModeGate = 'FAIL';
+                      reasons.push('work_mode_mismatch');
+                  } else {
+                      workModeGate = 'PASS';
+                  }
+              }
+
+              // --- 3. Title Score ---
+              const normalizedTitle = this.normalizeText(card.title);
+              
+              // Negative Keywords
+              const isNegative = targeting.titleMatchWeights.negativeKeywords.some(kw => normalizedTitle.includes(this.normalizeText(kw)));
+              if (isNegative) {
+                  score = -1.0;
+                  reasons.push('negative_keyword');
+              } else {
+                  // Positive Matching
+                  // Exact match
+                  const allTargets = [...targeting.targetRoles.ruTitles, ...targeting.targetRoles.enTitles];
+                  const exactMatch = allTargets.some(t => normalizedTitle.includes(this.normalizeText(t)));
+                  
+                  if (exactMatch) {
+                      score += 1.0;
+                      reasons.push('title_exact_match');
+                  } else {
+                      // Token overlap (Fuzzy)
+                      // Simple implementation: count overlapping words
+                      const titleTokens = normalizedTitle.split(' ');
+                      let maxOverlap = 0;
+                      for (const target of allTargets) {
+                           const targetTokens = this.normalizeText(target).split(' ');
+                           const intersection = titleTokens.filter(t => targetTokens.includes(t));
+                           const overlap = intersection.length / targetTokens.length;
+                           if (overlap > maxOverlap) maxOverlap = overlap;
+                      }
+                      score += (0.5 * maxOverlap);
+                      if (maxOverlap > 0.5) reasons.push('title_fuzzy_match');
+                  }
+                  
+                  // Seniority Bonus
+                  // (Omitted in minimal impl, can add if needed)
+              }
+
+              // --- 4. Final Decision ---
+              let decision: PrefilterDecisionType = 'REJECT';
+
+              if (salaryGate === 'FAIL' || workModeGate === 'FAIL' || score < 0) {
+                  decision = 'REJECT';
+                  countReject++;
+              } else if (score >= THRESHOLD_READ) {
+                  decision = 'READ_CANDIDATE';
+                  countRead++;
+              } else if (score >= THRESHOLD_DEFER) {
+                  decision = 'DEFER';
+                  countDefer++;
+              } else {
+                  decision = 'REJECT';
+                  reasons.push('low_score');
+                  countReject++;
+              }
+
+              results.push({
+                  cardId: card.id,
+                  decision,
+                  reasons,
+                  score,
+                  gates: { salary: salaryGate, workMode: workModeGate }
+              });
+          }
+
+          // 5. Artifact
+          const prefilterBatch: PreFilterResultBatchV1 = {
+              id: crypto.randomUUID(),
+              siteId,
+              inputBatchId: batch.id,
+              processedAt: Date.now(),
+              thresholds: { read: THRESHOLD_READ, defer: THRESHOLD_DEFER },
+              results,
+              summary: {
+                  read: countRead,
+                  defer: countDefer,
+                  reject: countReject
+              }
+          };
+
+          await this.storage.savePreFilterResultBatch(siteId, prefilterBatch);
+
+          // 6. Update State
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.PREFILTER_DONE,
+              activePrefilterBatch: prefilterBatch,
+              logs: [...currentState.logs, `Prefilter: ${countRead} Candidates, ${countDefer} Deferred, ${countReject} Rejected.`]
+          });
+
+      } catch (e: any) {
+          console.error(e);
+          return this.failSession(currentState, `Prefilter Failed: ${e.message}`);
+      }
+  }
+
+
+  private parseSalaryString(text?: string): VacancySalary | null {
+      if (!text) return null;
+      // Very basic parser for demo: "100 000 - 150 000 руб."
+      const clean = text.replace(/\s/g, '').toLowerCase();
+      // Extract numbers
+      const numbers = clean.match(/\d+/g);
+      if (!numbers) return null;
+
+      const vals = numbers.map(n => parseInt(n, 10));
+      const min = vals.length > 0 ? vals[0] : null;
+      const max = vals.length > 1 ? vals[1] : null;
+
+      let currency = 'RUB';
+      if (clean.includes('usd') || clean.includes('$')) currency = 'USD';
+      if (clean.includes('eur') || clean.includes('€')) currency = 'EUR';
+      if (clean.includes('kzt')) currency = 'KZT';
+
+      return { min, max, currency };
+  }
+
 
   // Helper for Comparison
   private looseEquals(expected: any, actual: any): boolean {

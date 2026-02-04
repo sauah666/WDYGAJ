@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck } from 'lucide-react';
+import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentStatus } from '../../types';
-import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep, ControlVerificationResult } from '../../core/domain/entities';
+import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep, ControlVerificationResult, VacancyCardV1, VacancyDecision } from '../../core/domain/entities';
 
 interface Props {
   state: AgentState;
@@ -21,6 +21,9 @@ interface Props {
   onExecuteStep?: () => void;
   onExecuteCycle?: () => void;
   onVerifyFilters?: () => void;
+  onCollectBatch?: () => void;
+  onDedupBatch?: () => void;
+  onRunPrefilter?: () => void;
 }
 
 export const AgentStatusScreen: React.FC<Props> = ({ 
@@ -38,7 +41,10 @@ export const AgentStatusScreen: React.FC<Props> = ({
   onBuildPlan,
   onExecuteStep,
   onExecuteCycle,
-  onVerifyFilters
+  onVerifyFilters,
+  onCollectBatch,
+  onDedupBatch,
+  onRunPrefilter
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [localPrefs, setLocalPrefs] = useState<UserSearchPrefsV1 | null>(null);
@@ -99,6 +105,9 @@ export const AgentStatusScreen: React.FC<Props> = ({
       case AgentStatus.APPLY_STEP_DONE: return 'text-blue-500';
       case AgentStatus.APPLY_STEP_FAILED: return 'text-red-400';
       case AgentStatus.SEARCH_READY: return 'text-indigo-400';
+      case AgentStatus.VACANCIES_CAPTURED: return 'text-teal-400';
+      case AgentStatus.VACANCIES_DEDUPED: return 'text-cyan-500';
+      case AgentStatus.PREFILTER_DONE: return 'text-orange-400';
       case AgentStatus.COMPLETED: return 'text-green-500';
       case AgentStatus.FAILED: return 'text-red-500';
       default: return 'text-gray-100';
@@ -120,64 +129,17 @@ export const AgentStatusScreen: React.FC<Props> = ({
     if (status === AgentStatus.APPLY_STEP_DONE) return <CheckCircle />;
     if (status === AgentStatus.APPLY_STEP_FAILED) return <AlertCircle />;
     if (status === AgentStatus.SEARCH_READY) return <ShieldCheck />;
+    if (status === AgentStatus.VACANCIES_CAPTURED) return <DownloadCloud />;
+    if (status === AgentStatus.VACANCIES_DEDUPED) return <Layers />;
+    if (status === AgentStatus.PREFILTER_DONE) return <FilterX />;
     if (status === AgentStatus.COMPLETED) return <CheckCircle />;
     return <Terminal />;
   };
 
-  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY;
+  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE;
   const isFinished = state.status === AgentStatus.COMPLETED || state.status === AgentStatus.FAILED;
   // Can reset profile if captured OR targeting ready OR dom ready OR waiting prefs OR plan ready
-  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY;
-
-  // Helper to render form fields
-  const renderFieldInput = (field: SearchFieldDefinition) => {
-    const value = localPrefs?.additionalFilters[field.key] ?? '';
-    return (
-        <div key={field.key} className="flex flex-col space-y-1">
-             <label className="text-xs text-gray-400 uppercase font-bold flex justify-between">
-                <span>{field.label}</span>
-                <span className="text-gray-600 font-normal">{field.semanticType}</span>
-            </label>
-            <div className="p-2 bg-gray-800 rounded text-sm text-gray-300 border border-gray-700">
-                {String(value)}
-            </div>
-        </div>
-    );
-  };
-
-  const renderPlanStep = (step: SearchApplyStep, idx: number) => {
-      const isDone = state.activeAppliedFilters?.results.some(r => r.stepId === step.stepId && r.success);
-      const isFailed = state.activeAppliedFilters?.results.some(r => r.stepId === step.stepId && !r.success);
-
-      let statusColor = "bg-blue-900/20 text-blue-400";
-      let statusIcon = idx + 1;
-      
-      if (isDone) {
-          statusColor = "bg-green-900/50 text-green-400";
-      } else if (isFailed) {
-          statusColor = "bg-red-900/50 text-red-400";
-      }
-
-      return (
-          <div key={step.stepId} className={`flex items-center p-3 bg-gray-800 border-b border-gray-700 last:border-0 ${isDone ? 'opacity-50' : ''}`}>
-             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-mono text-xs mr-4 ${statusColor}`}>
-                 {isDone ? <CheckCircle size={14} /> : statusIcon}
-             </div>
-             <div className="flex-1">
-                 <div className="flex justify-between">
-                     <span className="font-bold text-white text-sm">{step.actionType}</span>
-                     <span className="text-xs text-gray-500">{step.fieldKey}</span>
-                 </div>
-                 <div className="text-gray-400 text-xs mt-1">
-                     Value: <span className="text-blue-300">{String(step.value)}</span>
-                 </div>
-                 <div className="text-gray-600 text-[10px] uppercase mt-1">
-                     {step.rationale}
-                 </div>
-             </div>
-          </div>
-      );
-  };
+  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE;
 
   const renderVerificationRow = (res: ControlVerificationResult) => {
       let color = 'text-gray-400';
@@ -193,6 +155,65 @@ export const AgentStatusScreen: React.FC<Props> = ({
              <td className={`p-2 font-bold ${color}`}>{res.status}</td>
           </tr>
       );
+  };
+
+  const renderVacancyCard = (card: VacancyCardV1, decision?: string, prefilterData?: {score: number, reasons: string[]}) => {
+     let borderClass = 'border-gray-700';
+     let statusBadge = null;
+
+     // DEDUP logic
+     if (decision === VacancyDecision.SELECTED) {
+         borderClass = 'border-l-4 border-l-green-500 border-t border-r border-b border-gray-700';
+         statusBadge = <span className="text-[10px] font-bold text-green-400 uppercase tracking-wide">Selected</span>;
+     } else if (decision === VacancyDecision.DUPLICATE) {
+         borderClass = 'border-l-4 border-l-yellow-600 border-t border-r border-b border-gray-700 opacity-60';
+         statusBadge = <span className="text-[10px] font-bold text-yellow-500 uppercase tracking-wide">Duplicate</span>;
+     } else if (decision === VacancyDecision.SKIP_SEEN) {
+         borderClass = 'border-l-4 border-l-gray-600 border-t border-r border-b border-gray-700 opacity-40';
+         statusBadge = <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Already Seen</span>;
+     }
+     
+     // PREFILTER logic (overrides if present)
+     if (prefilterData && decision === 'READ_CANDIDATE') {
+         borderClass = 'border-l-4 border-l-emerald-500 border-t border-r border-b border-gray-700 bg-emerald-900/10';
+         statusBadge = <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide">CANDIDATE ({(prefilterData.score).toFixed(1)})</span>;
+     } else if (prefilterData && decision === 'DEFER') {
+         borderClass = 'border-l-4 border-l-blue-500 border-t border-r border-b border-gray-700';
+         statusBadge = <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wide">DEFER ({(prefilterData.score).toFixed(1)})</span>;
+     } else if (prefilterData && decision === 'REJECT') {
+         borderClass = 'border-l-4 border-l-red-500 border-t border-r border-b border-gray-700 opacity-50';
+         statusBadge = <span className="text-[10px] font-bold text-red-400 uppercase tracking-wide">REJECT ({(prefilterData.score).toFixed(1)})</span>;
+     }
+
+     return (
+         <div key={card.id} className={`p-3 bg-gray-800 ${borderClass} mb-1 flex justify-between items-start hover:bg-gray-750 transition-colors`}>
+            <div>
+               <div className="flex items-center gap-2">
+                   {statusBadge}
+                   <div className="font-bold text-white text-sm">{card.title}</div>
+               </div>
+               <div className="text-xs text-blue-300">{card.company || 'Unknown'}</div>
+               <div className="text-xs text-gray-500 mt-1">
+                 {card.city || 'Anywhere'} &bull; {card.workMode}
+               </div>
+               {prefilterData && (
+                   <div className="mt-1 flex flex-wrap gap-1">
+                       {prefilterData.reasons.map(r => (
+                           <span key={r} className="text-[9px] bg-gray-700 text-gray-300 px-1 rounded">{r}</span>
+                       ))}
+                   </div>
+               )}
+            </div>
+            <div className="text-right">
+               <div className="text-sm font-mono text-emerald-400">
+                  {card.salary ? `${card.salary.min || ''} - ${card.salary.max || ''} ${card.salary.currency}` : 'No salary'}
+               </div>
+               <div className="text-[10px] text-gray-600 mt-1">
+                 {card.publishedAt || 'recently'}
+               </div>
+            </div>
+         </div>
+     );
   };
 
   return (
@@ -216,26 +237,8 @@ export const AgentStatusScreen: React.FC<Props> = ({
                    <div className="text-center"><Terminal size={48} className="mx-auto text-gray-700 mb-4" /><p className="text-gray-600 font-mono">Waiting for initialization...</p></div>
                 )}
 
-                {/* PLAN VIEW */}
-                {(state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLYING_FILTERS || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.APPLY_STEP_FAILED) && state.activeSearchApplyPlan && (
-                    <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
-                         <div className="mb-6 border-b border-gray-800 pb-4">
-                             <div className="flex items-center text-blue-400 mb-2">
-                                <List size={24} className="mr-3" />
-                                <h3 className="font-bold text-xl text-white">Execution Plan</h3>
-                            </div>
-                            <p className="text-gray-400 text-sm">
-                                Progress: {state.activeAppliedFilters?.results.filter(r=>r.success).length || 0} / {state.activeSearchApplyPlan.steps.length} steps completed.
-                            </p>
-                        </div>
-                        <div className="max-w-2xl mx-auto space-y-2 bg-gray-900 rounded border border-gray-800">
-                             {state.activeSearchApplyPlan.steps.map((step, idx) => renderPlanStep(step, idx))}
-                        </div>
-                    </div>
-                )}
-
-                {/* VERIFICATION REPORT */}
-                {state.status === AgentStatus.SEARCH_READY && state.activeVerification && (
+                {/* VERIFICATION REPORT (Persistent until replaced) */}
+                {state.activeVerification && !state.activeVacancyBatch && (
                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
                          <div className="mb-6 border-b border-gray-800 pb-4">
                              <div className="flex items-center text-green-400 mb-2">
@@ -261,6 +264,115 @@ export const AgentStatusScreen: React.FC<Props> = ({
                                     {state.activeVerification.results.map(renderVerificationRow)}
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* VACANCY BATCH VIEW (RAW) */}
+                {state.activeVacancyBatch && !state.activeDedupedBatch && (
+                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                         <div className="mb-6 border-b border-gray-800 pb-4">
+                             <div className="flex items-center text-teal-400 mb-2">
+                                <DownloadCloud size={24} className="mr-3" />
+                                <h3 className="font-bold text-xl text-white">Collected Batch</h3>
+                            </div>
+                            <p className="text-gray-400 text-sm">
+                                Captured {state.activeVacancyBatch.cards.length} cards. Next cursor: {state.activeVacancyBatch.pageCursor || 'None'}
+                            </p>
+                        </div>
+                        <div className="space-y-1">
+                            {state.activeVacancyBatch.cards.map(c => renderVacancyCard(c))}
+                        </div>
+                     </div>
+                )}
+
+                {/* DEDUPED BATCH VIEW */}
+                {state.activeDedupedBatch && !state.activePrefilterBatch && (
+                    <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                        <div className="mb-6 border-b border-gray-800 pb-4">
+                            <div className="flex items-center text-cyan-400 mb-2">
+                                <Layers size={24} className="mr-3" />
+                                <h3 className="font-bold text-xl text-white">Deduplication Results</h3>
+                            </div>
+                            <div className="grid grid-cols-4 gap-4 text-center mt-2">
+                                <div className="bg-gray-800 p-2 rounded">
+                                    <div className="text-xs text-gray-500">TOTAL</div>
+                                    <div className="text-lg font-bold text-white">{state.activeDedupedBatch.summary.total}</div>
+                                </div>
+                                <div className="bg-green-900/30 p-2 rounded">
+                                    <div className="text-xs text-green-500">SELECTED</div>
+                                    <div className="text-lg font-bold text-green-400">{state.activeDedupedBatch.summary.selected}</div>
+                                </div>
+                                <div className="bg-yellow-900/30 p-2 rounded">
+                                    <div className="text-xs text-yellow-500">DUPLICATES</div>
+                                    <div className="text-lg font-bold text-yellow-400">{state.activeDedupedBatch.summary.duplicates}</div>
+                                </div>
+                                <div className="bg-gray-700/30 p-2 rounded">
+                                    <div className="text-xs text-gray-400">SEEN BEFORE</div>
+                                    <div className="text-lg font-bold text-gray-300">{state.activeDedupedBatch.summary.seen}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            {state.activeDedupedBatch.results.map(r => {
+                                const card = state.activeVacancyBatch!.cards.find(c => c.id === r.cardId);
+                                if (!card) return null;
+                                return renderVacancyCard(card, r.decision);
+                            })}
+                        </div>
+                    </div>
+                )}
+                
+                {/* PREFILTER BATCH VIEW */}
+                {state.activePrefilterBatch && (
+                    <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                        <div className="mb-6 border-b border-gray-800 pb-4">
+                            <div className="flex items-center text-orange-400 mb-2">
+                                <FilterX size={24} className="mr-3" />
+                                <h3 className="font-bold text-xl text-white">Prefilter Results</h3>
+                            </div>
+                            <div className="grid grid-cols-3 gap-4 text-center mt-2">
+                                <div className="bg-emerald-900/30 p-2 rounded">
+                                    <div className="text-xs text-emerald-500">READ</div>
+                                    <div className="text-lg font-bold text-emerald-400">{state.activePrefilterBatch.summary.read}</div>
+                                </div>
+                                <div className="bg-blue-900/30 p-2 rounded">
+                                    <div className="text-xs text-blue-500">DEFER</div>
+                                    <div className="text-lg font-bold text-blue-400">{state.activePrefilterBatch.summary.defer}</div>
+                                </div>
+                                <div className="bg-red-900/30 p-2 rounded">
+                                    <div className="text-xs text-red-500">REJECT</div>
+                                    <div className="text-lg font-bold text-red-400">{state.activePrefilterBatch.summary.reject}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                             {/* Show CANDIDATES First */}
+                            {state.activePrefilterBatch.results
+                              .filter(r => r.decision === 'READ_CANDIDATE')
+                              .map(r => {
+                                const card = state.activeVacancyBatch!.cards.find(c => c.id === r.cardId);
+                                if (!card) return null;
+                                return renderVacancyCard(card, r.decision, {score: r.score, reasons: r.reasons});
+                            })}
+                            
+                            {/* Then DEFER */}
+                             {state.activePrefilterBatch.results
+                              .filter(r => r.decision === 'DEFER')
+                              .map(r => {
+                                const card = state.activeVacancyBatch!.cards.find(c => c.id === r.cardId);
+                                if (!card) return null;
+                                return renderVacancyCard(card, r.decision, {score: r.score, reasons: r.reasons});
+                            })}
+                            
+                            {/* Then REJECT */}
+                            {state.activePrefilterBatch.results
+                              .filter(r => r.decision === 'REJECT')
+                              .map(r => {
+                                const card = state.activeVacancyBatch!.cards.find(c => c.id === r.cardId);
+                                if (!card) return null;
+                                return renderVacancyCard(card, r.decision, {score: r.score, reasons: r.reasons});
+                            })}
                         </div>
                     </div>
                 )}
@@ -333,6 +445,30 @@ export const AgentStatusScreen: React.FC<Props> = ({
                     <button onClick={onVerifyFilters} className="flex items-center space-x-2 bg-teal-600 hover:bg-teal-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-teal-900/20">
                         <ShieldCheck size={18} />
                         <span>VERIFY FILTERS</span>
+                    </button>
+                )}
+
+                {/* SEARCH_READY (Verified) -> COLLECT BATCH */}
+                {(state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED) && state.activeVerification && onCollectBatch && !state.activeVacancyBatch && (
+                     <button onClick={onCollectBatch} className="flex items-center space-x-2 bg-blue-500 hover:bg-blue-400 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-blue-900/20 border border-blue-400">
+                        <DownloadCloud size={18} />
+                        <span>COLLECT BATCH</span>
+                    </button>
+                )}
+
+                {/* VACANCIES_CAPTURED -> DEDUP */}
+                {state.status === AgentStatus.VACANCIES_CAPTURED && onDedupBatch && (
+                    <button onClick={onDedupBatch} className="flex items-center space-x-2 bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-cyan-900/20">
+                        <Layers size={18} />
+                        <span>DEDUP & PROCESS</span>
+                    </button>
+                )}
+                
+                {/* VACANCIES_DEDUPED -> PREFILTER */}
+                {state.status === AgentStatus.VACANCIES_DEDUPED && onRunPrefilter && (
+                    <button onClick={onRunPrefilter} className="flex items-center space-x-2 bg-orange-600 hover:bg-orange-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-orange-900/20">
+                        <FilterX size={18} />
+                        <span>RUN SCRIPT FILTER</span>
                     </button>
                 )}
 

@@ -1,4 +1,4 @@
-# 📘 PROJECT DOCUMENTATION — v1.7
+# 📘 PROJECT DOCUMENTATION — v1.10
 
 **Проект:** Agent-based Job Search Automation  
 **Аудитория:** LLM-агент-разработчик (Gemini / GPT / Claude)  
@@ -65,30 +65,26 @@ MASTER PLAN v1.0 — JobSearch Agent (Mode 1: HH.ru, затем мультиса
 - Автоматический цикл выполнения плана
 - Retry logic
 - Overall Status
-
-2) MASTER PLAN — от “сейчас” до “финиша”
-PHASE A — Execution of Search (применение фильтров)
-A1. ExecuteApplyPlan (клики по плану)
-- Вход: SearchApplyPlanV1 + SearchUISpecV1
-- Действие: агент кликает/выбирает значения в UI поиска
-- Выход: AppliedFiltersSnapshotV1 (что реально применено)
-A2. VerifyFiltersApplied (без LLM)
+✅ Done-A2.1: VerifyFiltersApplied
 - Проверка, что фильтры реально применены (читаем DOM)
 - FiltersAppliedVerificationV1 (match/mismatch)
-- Если не совпало: warning (пока без авто-исправления, просто отчет)
+✅ Done-B1: CollectVacancyCardsBatch
+- Собрать 10–15 карточек: title, company, city, work_mode, salary, url
+- Сохранить батч VacancyCardBatchV1
+✅ Done-B2: Dedup & City Preference
+- Дедупликация (ExternalId, Hash)
+- Выбор карточки в группе по городу (UserPrefs)
+- Seen Index (исключение ранее просмотренных)
+- DedupedVacancyBatchV1
 
-PHASE B — Vacancy Listing (карточки вакансий)
-B1. CollectVacancyCardsBatch
-- Собрать 10–15 карточек: title, company, city, work_mode (если видно), salary (если видно), url/id
-B2. Dedup & City Preference
-- Найти дубли и оставить приоритетно город пользователя
-- Память “seen” вакансий
-
+2) MASTER PLAN — от “сейчас” до “финиша”
 PHASE C — Pre-Screen (LLM батч по карточкам)
-C1. Script PreFilter (без LLM)
+C1. Script PreFilter (без LLM) (DONE)
 - зарплата: если указана и < min → reject
 - work_mode: не совпадает → reject
 - title matching по TargetingSpec: вычислить score
+- PreFilterResultBatchV1
+
 C2. LLM Batch Screening (10–15 карточек → 1 запрос)
 - Выход: read/defer/ignore + причины + пороги
 
@@ -130,26 +126,23 @@ UI: выбор режима/сайта/настроек и reset’ов.
 Документация: позволяет новому агенту продолжить без истории.
 
 4) Текущая точка
-Последний завершённый этап: PHASE A1.2 — APPLY_SEARCH_PLAN (ALL STEPS)
-Текущий этап: PHASE A2.1 — VERIFY FILTERS APPLIED
-Следующий этап: PHASE B1 — COLLECT VACANCY CARDS
+Последний завершённый этап: PHASE C1 — SCRIPT PREFILTER
+Текущий этап: PHASE C2 — LLM BATCH SCREENING
 
 ---
 
-## Progress Update — PHASE A2.1
+## Progress Update — PHASE C1
 
 ### WHAT WAS ADDED
-*   **Entity:** `FiltersAppliedVerificationV1` — отчет о совпадении ожидаемых и реальных значений.
-*   **Port:** `readControlValue` — чтение состояния UI без изменения.
-*   **UseCase:** `verifyAppliedFilters` — логика сравнения (Expected vs Actual).
-*   **UI:** Таблица отчета верификации (MATCH / MISMATCH / UNKNOWN).
+*   **Entity:** `PreFilterResultBatchV1`, `PreFilterDecisionV1`
+*   **UseCase:** `runScriptPrefilter` — deterministic filtering logic.
+*   **UI:** Visualization of prefilter results (Read/Defer/Reject counts and reasons).
 
 ### WHY
-Мы должны быть уверены, что сайт принял наши фильтры, прежде чем начинать парсинг. Иногда сайты сбрасывают фильтры или требуют двойного клика.
+We need to cheaply discard irrelevant vacancies (wrong salary, wrong work mode, irrelevant titles) before invoking expensive LLM operations.
 
-### CONSTRAINTS
-*   Verification does NOT fix mismatches automatically yet (Observation only).
-*   Comparison uses loose equality (handles string vs number differences).
-
-### NOTES / RISKS
-*   Mock-браузер симулирует состояние формы через внутреннюю память (`formState`). В реальном Puppeteer это потребует `page.evaluate`.
+### RULES
+*   **Salary Gate**: Reject if vacancy max < user min. Pass if unknown.
+*   **WorkMode Gate**: Reject if strict mode is ON and mode mismatch.
+*   **Title Score**: -1.0 for negative keywords, +1.0 for exact matches, +0.5 for fuzzy matches.
+*   **Thresholds**: Read >= 0.7, Defer >= 0.4.

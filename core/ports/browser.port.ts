@@ -3,6 +3,18 @@
 
 import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult } from '../domain/entities';
 
+// DTO for raw vacancy data from the browser (before normalization)
+export interface RawVacancyCard {
+  url: string;
+  title: string;
+  company?: string;
+  city?: string;
+  salaryText?: string; // "100 000 - 200 000 руб."
+  workModeText?: string; // "Можно удаленно"
+  publishedAtText?: string;
+  externalId?: string;
+}
+
 export interface BrowserPort {
   /**
    * Initializes the browser environment (or connects to one).
@@ -67,6 +79,13 @@ export interface BrowserPort {
    * @param fieldDef - The semantic definition
    */
   readControlValue(fieldDef: SearchFieldDefinition): Promise<{ value: any; source: 'CONTROL_VALUE' | 'URL_PARAMS' | 'UNKNOWN' }>;
+
+  /**
+   * Scans the current page for vacancy cards (listing items).
+   * Phase B1.
+   * @param limit - Max number of cards to extract (typically 10-15)
+   */
+  scanVacancyCards(limit: number): Promise<{ cards: RawVacancyCard[], nextPageCursor?: string }>;
 
   /**
    * Closes the browser session.

@@ -182,6 +182,42 @@ export class AgentPresenter implements UIPort {
     }
   }
 
+  // Phase B1: Collect Vacancy Batch
+  async collectVacancyBatch(currentState: AgentState) {
+      if (!this.useCase) return;
+      try {
+          const site = this.currentConfig.targetSite || 'hh.ru';
+          await this.useCase.collectVacancyCardsBatch(currentState, site);
+      } catch (e) {
+          console.error(e);
+          await this.useCase.failSession(currentState, "Batch Collection Error");
+      }
+  }
+
+  // Phase B2: Dedup
+  async dedupVacancyBatch(currentState: AgentState) {
+      if (!this.useCase) return;
+      try {
+          const site = this.currentConfig.targetSite || 'hh.ru';
+          await this.useCase.dedupAndSelectVacancyBatch(currentState, site);
+      } catch (e) {
+          console.error(e);
+          await this.useCase.failSession(currentState, "Deduplication Error");
+      }
+  }
+
+  // Phase C1: Script Prefilter
+  async runScriptPrefilter(currentState: AgentState) {
+      if (!this.useCase) return;
+      try {
+          const site = this.currentConfig.targetSite || 'hh.ru';
+          await this.useCase.runScriptPrefilter(currentState, site);
+      } catch (e) {
+          console.error(e);
+          await this.useCase.failSession(currentState, "Prefilter Error");
+      }
+  }
+
   async resetProfile(currentState: AgentState) {
       if (!this.useCase) return;
       try {

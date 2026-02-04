@@ -2,7 +2,7 @@
 // Purpose: Define contracts for persistence.
 
 import { AgentConfig } from '../../types';
-import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1 } from '../domain/entities';
+import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1 } from '../domain/entities';
 import { TargetingSpecV1 } from '../domain/llm_contracts';
 
 export interface StoragePort {
@@ -53,6 +53,21 @@ export interface StoragePort {
   saveFiltersAppliedVerification(siteId: string, verification: FiltersAppliedVerificationV1): Promise<void>;
   getFiltersAppliedVerification(siteId: string): Promise<FiltersAppliedVerificationV1 | null>;
   deleteFiltersAppliedVerification(siteId: string): Promise<void>;
+
+  // Phase B1: Vacancy Batches
+  saveVacancyCardBatch(siteId: string, batch: VacancyCardBatchV1): Promise<void>;
+  getVacancyCardBatch(siteId: string, batchId: string): Promise<VacancyCardBatchV1 | null>;
+  getRecentVacancyCardBatches(siteId: string, limit: number): Promise<VacancyCardBatchV1[]>;
+
+  // Phase B2: Dedup
+  saveSeenVacancyIndex(siteId: string, index: SeenVacancyIndexV1): Promise<void>;
+  getSeenVacancyIndex(siteId: string): Promise<SeenVacancyIndexV1 | null>;
+  saveDedupedVacancyBatch(siteId: string, batch: DedupedVacancyBatchV1): Promise<void>;
+  getDedupedVacancyBatch(siteId: string, batchId: string): Promise<DedupedVacancyBatchV1 | null>;
+
+  // Phase C1: Prefilter
+  savePreFilterResultBatch(siteId: string, batch: PreFilterResultBatchV1): Promise<void>;
+  getPreFilterResultBatch(siteId: string, batchId: string): Promise<PreFilterResultBatchV1 | null>;
 
   // Data (Stub for future vacanies/profiles)
   saveDataStub(key: string, data: unknown): Promise<void>;

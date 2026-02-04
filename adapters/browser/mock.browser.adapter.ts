@@ -1,7 +1,7 @@
 // Layer: ADAPTERS
 // Purpose: Implementation of ports. External world details.
 
-import { BrowserPort } from '../../core/ports/browser.port';
+import { BrowserPort, RawVacancyCard } from '../../core/ports/browser.port';
 import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult } from '../../core/domain/entities';
 
 export class MockBrowserAdapter implements BrowserPort {
@@ -143,6 +143,40 @@ export class MockBrowserAdapter implements BrowserPort {
       }
 
       return { value: null, source: 'UNKNOWN' };
+  }
+
+  async scanVacancyCards(limit: number): Promise<{ cards: RawVacancyCard[], nextPageCursor?: string }> {
+      console.log(`[BrowserAdapter] Scaping ${limit} vacancy cards from list...`);
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Sim scraping time
+
+      // Mock Data Generation
+      const mockCards: RawVacancyCard[] = [];
+      const roles = ['Frontend Developer', 'React Senior', 'JS/TS Tech Lead', 'Junior Frontend', 'Middle React Native'];
+      const companies = ['SberTech', 'Yandex', 'Avito', 'Tinkoff', 'Startup inc.'];
+      const salaries = ['100 000 - 200 000 руб.', 'от 300 000 руб.', null, '2500 - 3500 USD', 'до 150 000 руб.'];
+
+      for (let i = 0; i < limit; i++) {
+          const role = roles[i % roles.length];
+          const company = companies[i % companies.length];
+          const salary = salaries[i % salaries.length];
+          const isRemote = i % 3 === 0;
+
+          mockCards.push({
+              url: `https://hh.ru/vacancy/${100000 + i}`,
+              externalId: String(100000 + i),
+              title: role,
+              company: company,
+              city: 'Москва',
+              salaryText: salary || undefined,
+              workModeText: isRemote ? 'Можно удаленно' : 'В офисе',
+              publishedAtText: '2 часа назад'
+          });
+      }
+
+      return {
+          cards: mockCards,
+          nextPageCursor: 'page=1'
+      };
   }
 
   async close(): Promise<void> {

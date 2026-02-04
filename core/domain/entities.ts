@@ -157,6 +157,102 @@ export interface FiltersAppliedVerificationV1 {
   mismatches: ControlVerificationResult[];
 }
 
+// --- Phase B1: Vacancy Card Collection ---
+
+export interface VacancySalary {
+  min: number | null;
+  max: number | null;
+  currency: string | null;
+  gross?: boolean;
+}
+
+export interface VacancyCardV1 {
+  id: string; // Internal UUID
+  siteId: string;
+  externalId: string | null; // e.g. from data-qa or url
+  url: string;
+  title: string;
+  company: string | null;
+  city: string | null;
+  workMode: 'remote' | 'hybrid' | 'office' | 'unknown';
+  salary: VacancySalary | null;
+  publishedAt: string | null; // human string, e.g. "2 hours ago"
+  cardHash: string; // SHA-256 of url+title+company
+}
+
+export interface VacancyCardBatchV1 {
+  batchId: string;
+  siteId: string;
+  capturedAt: number;
+  queryFingerprint: string; // Hash of current filters/URL
+  cards: VacancyCardV1[];
+  pageCursor: string | null; // Next page URL or offset
+}
+
+// --- Phase B2: Dedup & City Preference ---
+
+export enum VacancyDecision {
+  SELECTED = 'SELECTED',
+  DUPLICATE = 'DUPLICATE',
+  SKIP_SEEN = 'SKIP_SEEN'
+}
+
+export interface DedupedCardResult {
+  cardId: string; // Ref to VacancyCardV1.id
+  decision: VacancyDecision;
+  dedupKey: string; // key used for grouping
+}
+
+export interface DedupedVacancyBatchV1 {
+  id: string;
+  batchId: string; // Parent batch
+  siteId: string;
+  processedAt: number;
+  userCity: string | null; // Context used for filtering
+  results: DedupedCardResult[];
+  summary: {
+    total: number;
+    selected: number;
+    duplicates: number;
+    seen: number;
+  };
+}
+
+export interface SeenVacancyIndexV1 {
+  siteId: string;
+  lastUpdatedAt: number;
+  seenKeys: string[]; // List of dedupKeys that have been SELECTED previously
+}
+
+// --- Phase C1: Script Prefilter ---
+
+export type PrefilterDecisionType = 'READ_CANDIDATE' | 'DEFER' | 'REJECT';
+
+export interface PreFilterDecisionV1 {
+  cardId: string;
+  decision: PrefilterDecisionType;
+  reasons: string[]; // e.g., ["salary_too_low", "exact_title_match"]
+  score: number;
+  gates: {
+    salary: 'PASS' | 'FAIL' | 'UNKNOWN';
+    workMode: 'PASS' | 'FAIL' | 'UNKNOWN';
+  };
+}
+
+export interface PreFilterResultBatchV1 {
+  id: string;
+  siteId: string;
+  inputBatchId: string; // Ref to DedupedBatch
+  processedAt: number;
+  thresholds: { read: number; defer: number };
+  results: PreFilterDecisionV1[];
+  summary: {
+    read: number;
+    defer: number;
+    reject: number;
+  };
+}
+
 // --- Core State ---
 
 export interface AgentState {
@@ -174,6 +270,9 @@ export interface AgentState {
   activeSearchApplyPlan?: SearchApplyPlanV1 | null; // Stage 5.4: Execution Plan
   activeAppliedFilters?: AppliedFiltersSnapshotV1 | null; // Phase A1.1: Execution Progress
   activeVerification?: FiltersAppliedVerificationV1 | null; // Phase A2.1: Verification Report
+  activeVacancyBatch?: VacancyCardBatchV1 | null; // Phase B1: Captured Vacancies
+  activeDedupedBatch?: DedupedVacancyBatchV1 | null; // Phase B2: Deduped Vacancies
+  activePrefilterBatch?: PreFilterResultBatchV1 | null; // Phase C1: Script Filter Results
 }
 
 export interface ProfileSnapshot {
@@ -196,5 +295,8 @@ export const createInitialAgentState = (): AgentState => ({
   activeSearchPrefs: null,
   activeSearchApplyPlan: null,
   activeAppliedFilters: null,
-  activeVerification: null
+  activeVerification: null,
+  activeVacancyBatch: null,
+  activeDedupedBatch: null,
+  activePrefilterBatch: null
 });
