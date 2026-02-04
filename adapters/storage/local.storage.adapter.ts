@@ -2,13 +2,14 @@
 
 import { StoragePort } from '../../core/ports/storage.port';
 import { AgentConfig } from '../../types';
-import { AgentState, ProfileSnapshot, SearchUISpecV1, UserSearchPrefsV1 } from '../../core/domain/entities';
+import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1 } from '../../core/domain/entities';
 import { TargetingSpecV1 } from '../../core/domain/llm_contracts';
 
 const KEY_CONFIG = 'as_config';
 const KEY_STATE = 'as_state';
 const KEY_PROFILE_PREFIX = 'as_profile_';
 const KEY_TARGETING_PREFIX = 'as_targeting_';
+const KEY_SEARCH_DOM_PREFIX = 'as_search_dom_'; // New
 const KEY_SEARCH_UI_PREFIX = 'as_search_ui_';
 const KEY_SEARCH_PREFS_PREFIX = 'as_search_prefs_';
 
@@ -58,6 +59,15 @@ export class LocalStorageAdapter implements StoragePort {
   }
 
   // --- Stage 5 Implementation ---
+
+  async saveSearchDOMSnapshot(siteId: string, snapshot: SearchDOMSnapshotV1): Promise<void> {
+    localStorage.setItem(KEY_SEARCH_DOM_PREFIX + siteId, JSON.stringify(snapshot));
+  }
+
+  async getSearchDOMSnapshot(siteId: string): Promise<SearchDOMSnapshotV1 | null> {
+    const raw = localStorage.getItem(KEY_SEARCH_DOM_PREFIX + siteId);
+    return raw ? JSON.parse(raw) : null;
+  }
 
   async saveSearchUISpec(siteId: string, spec: SearchUISpecV1): Promise<void> {
     localStorage.setItem(KEY_SEARCH_UI_PREFIX + siteId, JSON.stringify(spec));

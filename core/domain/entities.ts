@@ -56,6 +56,27 @@ export interface UserSearchPrefsV1 {
   additionalFilters: Record<string, string | number | boolean | string[]>;
 }
 
+// --- Stage 5.2.3: DOM Snapshot (Raw) ---
+
+export interface RawFormField {
+  id: string; // generated UUID or stable hash
+  tag: 'input' | 'select' | 'textarea' | 'button' | 'unknown';
+  inputType?: string; // for input tag
+  label?: string; // Associated label text
+  placeholder?: string;
+  attributes: Record<string, string>; // name, id, class, data-*
+  options?: { value: string; label: string }[]; // for select
+  isVisible: boolean;
+}
+
+export interface SearchDOMSnapshotV1 {
+  siteId: string;
+  capturedAt: number;
+  pageUrl: string;
+  domVersion: number;
+  fields: RawFormField[];
+}
+
 // --- Core State ---
 
 export interface AgentState {
@@ -67,8 +88,9 @@ export interface AgentState {
   
   // Data Containers
   activeTargetingSpec?: TargetingSpecV1 | null; // Stage 4: Job Requirements
-  activeSearchUISpec?: SearchUISpecV1 | null;   // Stage 5: Available Filters
-  activeSearchPrefs?: UserSearchPrefsV1 | null; // Stage 5: User Choices
+  activeSearchDOMSnapshot?: SearchDOMSnapshotV1 | null; // Stage 5.2.3: Raw DOM
+  activeSearchUISpec?: SearchUISpecV1 | null;   // Stage 5.3: Processed Spec
+  activeSearchPrefs?: UserSearchPrefsV1 | null; // Stage 5.4: User Choices
 }
 
 export interface ProfileSnapshot {
@@ -86,6 +108,7 @@ export const createInitialAgentState = (): AgentState => ({
   lastSnapshotTimestamp: null,
   logs: [],
   activeTargetingSpec: null,
+  activeSearchDOMSnapshot: null,
   activeSearchUISpec: null,
   activeSearchPrefs: null
 });

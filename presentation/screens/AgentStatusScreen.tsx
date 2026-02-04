@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock } from 'lucide-react';
+import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentStatus } from '../../types';
 import { AgentState } from '../../core/domain/entities';
@@ -12,6 +12,9 @@ interface Props {
   onConfirmProfile?: () => void;
   onResetProfile?: () => void;
   onReset: () => void;
+  // New props for Stage 5
+  onContinueToSearch?: () => void;
+  onScanSearchUI?: () => void;
 }
 
 export const AgentStatusScreen: React.FC<Props> = ({ 
@@ -21,7 +24,9 @@ export const AgentStatusScreen: React.FC<Props> = ({
   onConfirmLogin, 
   onConfirmProfile,
   onResetProfile,
-  onReset 
+  onReset,
+  onContinueToSearch,
+  onScanSearchUI
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -37,14 +42,18 @@ export const AgentStatusScreen: React.FC<Props> = ({
       case AgentStatus.IDLE: return 'text-gray-400';
       case AgentStatus.STARTING: return 'text-blue-400';
       case AgentStatus.NAVIGATING: return 'text-yellow-400';
+      case AgentStatus.NAVIGATING_TO_SEARCH: return 'text-yellow-400';
       case AgentStatus.WAITING_FOR_HUMAN: return 'text-orange-500';
       case AgentStatus.LOGGED_IN_CONFIRMED: return 'text-green-400';
       case AgentStatus.WAITING_FOR_PROFILE_PAGE: return 'text-pink-500';
       case AgentStatus.EXTRACTING: return 'text-purple-400';
+      case AgentStatus.EXTRACTING_SEARCH_UI: return 'text-purple-400';
       case AgentStatus.PROFILE_CAPTURED: return 'text-emerald-400';
       case AgentStatus.TARGETING_PENDING: return 'text-cyan-400';
       case AgentStatus.TARGETING_READY: return 'text-cyan-400';
       case AgentStatus.TARGETING_ERROR: return 'text-red-500';
+      case AgentStatus.SEARCH_PAGE_READY: return 'text-indigo-400';
+      case AgentStatus.SEARCH_DOM_READY: return 'text-indigo-500';
       case AgentStatus.COMPLETED: return 'text-green-500';
       case AgentStatus.FAILED: return 'text-red-500';
       default: return 'text-gray-100';
@@ -52,20 +61,22 @@ export const AgentStatusScreen: React.FC<Props> = ({
   };
 
   const getStatusIcon = (status: AgentStatus) => {
-    if (status === AgentStatus.NAVIGATING || status === AgentStatus.EXTRACTING || status === AgentStatus.STARTING || status === AgentStatus.TARGETING_PENDING) return <Loader2 className="animate-spin" />;
+    if (status === AgentStatus.NAVIGATING || status === AgentStatus.EXTRACTING || status === AgentStatus.STARTING || status === AgentStatus.TARGETING_PENDING || status === AgentStatus.NAVIGATING_TO_SEARCH || status === AgentStatus.EXTRACTING_SEARCH_UI) return <Loader2 className="animate-spin" />;
     if (status === AgentStatus.WAITING_FOR_HUMAN) return <AlertCircle />;
     if (status === AgentStatus.WAITING_FOR_PROFILE_PAGE) return <FileText />;
     if (status === AgentStatus.LOGGED_IN_CONFIRMED) return <UserCheck />;
     if (status === AgentStatus.PROFILE_CAPTURED) return <CheckCircle />;
     if (status === AgentStatus.TARGETING_READY) return <Lock />;
+    if (status === AgentStatus.SEARCH_PAGE_READY) return <Compass />;
+    if (status === AgentStatus.SEARCH_DOM_READY) return <Eye />;
     if (status === AgentStatus.COMPLETED) return <CheckCircle />;
     return <Terminal />;
   };
 
-  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY;
+  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY;
   const isFinished = state.status === AgentStatus.COMPLETED || state.status === AgentStatus.FAILED;
   // Can reset profile if captured OR targeting ready
-  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR;
+  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY;
 
   return (
     <Layout title="Live Agent Monitor" currentStep={2}>
@@ -148,7 +159,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                   </div>
                 )}
 
-                {(state.status === AgentStatus.NAVIGATING || state.status === AgentStatus.EXTRACTING || state.status === AgentStatus.TARGETING_PENDING) && (
+                {(state.status === AgentStatus.NAVIGATING || state.status === AgentStatus.EXTRACTING || state.status === AgentStatus.TARGETING_PENDING || state.status === AgentStatus.NAVIGATING_TO_SEARCH || state.status === AgentStatus.EXTRACTING_SEARCH_UI) && (
                   <div className="text-center animate-pulse">
                      <p className="text-gray-500 font-mono text-sm">[ BROWSER VIEWPORT SIMULATION ]</p>
                      <p className="text-gray-700 text-xs mt-2">Remote Browser Active</p>
@@ -163,6 +174,24 @@ export const AgentStatusScreen: React.FC<Props> = ({
                       </div>
                       <div className="bg-gray-900 rounded-lg p-4 font-mono text-xs text-gray-300 border border-gray-800 shadow-inner">
                         <pre>{JSON.stringify(state.activeTargetingSpec, null, 2)}</pre>
+                      </div>
+                   </div>
+                )}
+
+                {/* DOM Snapshot Visualization (Simple) */}
+                {state.status === AgentStatus.SEARCH_DOM_READY && state.activeSearchDOMSnapshot && (
+                    <div className="w-full h-full p-8 text-left overflow-auto">
+                      <div className="flex items-center mb-4 text-indigo-400">
+                        <Eye size={20} className="mr-2" />
+                        <h3 className="font-bold text-lg">Raw Search DOM Snapshot (v{state.activeSearchDOMSnapshot.domVersion})</h3>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2">
+                        {state.activeSearchDOMSnapshot.fields.map(f => (
+                           <div key={f.id} className="bg-gray-900 p-2 rounded border border-gray-800 text-xs font-mono flex justify-between">
+                              <span className="text-gray-300">{f.label || f.attributes.name || 'Unnamed'}</span>
+                              <span className="text-gray-600">{f.tag}{f.inputType ? `:${f.inputType}` : ''}</span>
+                           </div>
+                        ))}
                       </div>
                    </div>
                 )}
@@ -189,6 +218,22 @@ export const AgentStatusScreen: React.FC<Props> = ({
                    <button onClick={onRun} className="flex items-center space-x-2 bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold transition-all">
                     <Play size={18} fill="currentColor" />
                     <span>INITIATE LOGIN</span>
+                  </button>
+                )}
+
+                {/* TARGETING_READY -> NAVIGATE TO SEARCH */}
+                {state.status === AgentStatus.TARGETING_READY && onContinueToSearch && (
+                  <button onClick={onContinueToSearch} className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-indigo-900/20">
+                    <Compass size={18} />
+                    <span>OPEN SEARCH PAGE</span>
+                  </button>
+                )}
+
+                {/* SEARCH_PAGE_READY -> SCAN DOM */}
+                {state.status === AgentStatus.SEARCH_PAGE_READY && onScanSearchUI && (
+                  <button onClick={onScanSearchUI} className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-indigo-900/20">
+                    <Eye size={18} />
+                    <span>SCAN FORM UI</span>
                   </button>
                 )}
 

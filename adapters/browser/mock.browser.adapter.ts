@@ -2,6 +2,7 @@
 // Purpose: Implementation of ports. External world details.
 
 import { BrowserPort } from '../../core/ports/browser.port';
+import { RawFormField } from '../../core/domain/entities';
 
 export class MockBrowserAdapter implements BrowserPort {
   private currentUrlVal: string = 'about:blank';
@@ -57,6 +58,54 @@ export class MockBrowserAdapter implements BrowserPort {
     // Simulate navigation via click
     this.currentUrlVal = href.startsWith('/') ? `https://hh.ru${href}` : href;
     await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  async scanPageInteractionElements(): Promise<RawFormField[]> {
+    console.log('[BrowserAdapter] Scanning DOM for form controls...');
+    await new Promise(resolve => setTimeout(resolve, 1200));
+
+    // Mock: Return Advanced Search Fields (mimicking HH.ru)
+    return [
+        {
+            id: 'f1',
+            tag: 'input',
+            inputType: 'text',
+            label: 'Ключевые слова',
+            attributes: { name: 'text', 'data-qa': 'vacancy-search-keyword' },
+            isVisible: true
+        },
+        {
+            id: 'f2',
+            tag: 'input',
+            inputType: 'number',
+            label: 'Уровень дохода',
+            attributes: { name: 'salary', 'data-qa': 'vacancy-search-salary' },
+            isVisible: true
+        },
+        {
+            id: 'f3',
+            tag: 'select',
+            label: 'Регион',
+            attributes: { name: 'area' },
+            options: [{ value: '1', label: 'Москва' }, { value: '2', label: 'Spb' }],
+            isVisible: true
+        },
+        {
+            id: 'f4',
+            tag: 'input',
+            inputType: 'checkbox',
+            label: 'Только удаленная работа',
+            attributes: { name: 'schedule', value: 'remote' },
+            isVisible: true
+        },
+        {
+            id: 'f5',
+            tag: 'button',
+            label: 'Найти',
+            attributes: { type: 'submit', 'data-qa': 'advanced-search-submit' },
+            isVisible: true
+        }
+    ];
   }
 
   async close(): Promise<void> {

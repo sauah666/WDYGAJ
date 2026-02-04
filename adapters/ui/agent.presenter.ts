@@ -86,6 +86,31 @@ export class AgentPresenter implements UIPort {
       }
   }
 
+  // Step 4 (NEW): Continue to Search Page
+  async continueToSearch(currentState: AgentState) {
+      if (!this.useCase) return;
+      try {
+         const site = this.currentConfig.targetSite || 'hh.ru';
+         await this.useCase.navigateToSearchPage(currentState, site);
+         // NOTE: We stop here and let the UI reflect "SEARCH_PAGE_READY"
+      } catch (e) {
+         console.error(e);
+         await this.useCase.failSession(currentState, "Navigation Error");
+      }
+  }
+
+  // Step 5 (NEW): Scan Search UI (DOM Snapshot)
+  async scanSearchUI(currentState: AgentState) {
+      if (!this.useCase) return;
+      try {
+         const site = this.currentConfig.targetSite || 'hh.ru';
+         await this.useCase.scanSearchPageDOM(currentState, site);
+      } catch (e) {
+         console.error(e);
+         await this.useCase.failSession(currentState, "DOM Scan Error");
+      }
+  }
+
   async resetProfile(currentState: AgentState) {
       if (!this.useCase) return;
       try {

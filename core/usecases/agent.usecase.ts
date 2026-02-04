@@ -6,7 +6,7 @@ import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
 import { AgentStatus } from '../../types';
-import { AgentState, createInitialAgentState, ProfileSnapshot, SiteDefinition } from '../domain/entities';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition } from '../domain/entities';
 import { ProfileSummaryV1, TargetingSpecV1, WorkMode } from '../domain/llm_contracts';
 
 export class AgentUseCase {
@@ -298,7 +298,7 @@ export class AgentUseCase {
         return this.updateState({
           ...currentState,
           status: AgentStatus.SEARCH_PAGE_READY,
-          logs: [...currentState.logs, `Navigation completed (Direct URL).`]
+          logs: [...currentState.logs, `Navigation completed (Direct URL). Ready to scan.`]
         });
       }
 
@@ -324,7 +324,7 @@ export class AgentUseCase {
              return this.updateState({
                 ...currentState,
                 status: AgentStatus.SEARCH_PAGE_READY,
-                logs: [...currentState.logs, `Navigation completed (Link Click).`]
+                logs: [...currentState.logs, `Navigation completed (Link Click). Ready to scan.`]
              });
          }
          
@@ -349,6 +349,60 @@ export class AgentUseCase {
         status: AgentStatus.WAITING_FOR_HUMAN_ASSISTANCE,
         logs: [...currentState.logs, `Navigation Error: ${e.message}. Please navigate manually.`]
       });
+    }
+  }
+
+  // --- Stage 5.2.3: Scan Search Page DOM ---
+  async scanSearchPageDOM(state: AgentState, siteId: string): Promise<AgentState> {
+    let currentState = await this.updateState({
+       ...state,
+       status: AgentStatus.EXTRACTING_SEARCH_UI,
+       logs: [...state.logs, `Starting DOM Scan for ${siteId}...`]
+    });
+
+    try {
+        // 1. Check if snapshot already exists
+        const existing = await this.storage.getSearchDOMSnapshot(siteId);
+        if (existing) {
+             return this.updateState({
+                ...currentState,
+                status: AgentStatus.SEARCH_DOM_READY,
+                activeSearchDOMSnapshot: existing,
+                logs: [...currentState.logs, `Found existing DOM snapshot (v${existing.domVersion}). Skipping scan.`]
+             });
+        }
+
+        // 2. Scan
+        const fields = await this.browser.scanPageInteractionElements();
+        const currentUrl = await this.browser.getCurrentUrl();
+
+        // 3. Serialize
+        const snapshot: SearchDOMSnapshotV1 = {
+            siteId,
+            capturedAt: Date.now(),
+            pageUrl: currentUrl,
+            domVersion: 1,
+            fields: fields
+        };
+
+        // 4. Save
+        await this.storage.saveSearchDOMSnapshot(siteId, snapshot);
+
+        // 5. Update State
+        return this.updateState({
+            ...currentState,
+            status: AgentStatus.SEARCH_DOM_READY,
+            activeSearchDOMSnapshot: snapshot,
+            logs: [...currentState.logs, `DOM Scan complete. Captured ${fields.length} interaction elements.`]
+        });
+
+    } catch (e: any) {
+        console.error(e);
+        return this.updateState({
+            ...currentState,
+            status: AgentStatus.FAILED, // Or recover
+            logs: [...currentState.logs, `DOM Scan Failed: ${e.message}`]
+        });
     }
   }
 

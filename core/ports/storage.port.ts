@@ -2,7 +2,7 @@
 // Purpose: Define contracts for persistence.
 
 import { AgentConfig } from '../../types';
-import { AgentState, ProfileSnapshot, SearchUISpecV1, UserSearchPrefsV1 } from '../domain/entities';
+import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1 } from '../domain/entities';
 import { TargetingSpecV1 } from '../domain/llm_contracts';
 
 export interface StoragePort {
@@ -25,10 +25,16 @@ export interface StoragePort {
   deleteTargetingSpec(siteId: string): Promise<void>; // Cascade delete
 
   // Search Configuration (Stage 5)
+  // 5.2.3 Raw Snapshot
+  saveSearchDOMSnapshot(siteId: string, snapshot: SearchDOMSnapshotV1): Promise<void>;
+  getSearchDOMSnapshot(siteId: string): Promise<SearchDOMSnapshotV1 | null>;
+
+  // 5.3 Processed Spec
   saveSearchUISpec(siteId: string, spec: SearchUISpecV1): Promise<void>;
   getSearchUISpec(siteId: string): Promise<SearchUISpecV1 | null>;
   deleteSearchUISpec(siteId: string): Promise<void>;
 
+  // 5.4 User Prefs
   saveUserSearchPrefs(siteId: string, prefs: UserSearchPrefsV1): Promise<void>;
   getUserSearchPrefs(siteId: string): Promise<UserSearchPrefsV1 | null>;
   deleteUserSearchPrefs(siteId: string): Promise<void>;

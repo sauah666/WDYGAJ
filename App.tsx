@@ -16,31 +16,40 @@ import { AgentStatusScreen } from './presentation/screens/AgentStatusScreen';
 // Composition Root
 const browserAdapter = new MockBrowserAdapter();
 const storageAdapter = new LocalStorageAdapter();
-const llmAdapter = new MockLLMAdapter(); // Inject LLM
-const agentPresenter = new AgentPresenter(); // Acts as UIPort
+const llmAdapter = new MockLLMAdapter();
+const agentPresenter = new AgentPresenter();
 const agentUseCase = new AgentUseCase(browserAdapter, storageAdapter, agentPresenter, llmAdapter);
-agentPresenter.setUseCase(agentUseCase); // Circular wiring
 
-function App() {
+// Circular dependency wiring
+agentPresenter.setUseCase(agentUseCase);
+
+export default function App() {
   const [route, setRoute] = useState<AppRoute>(AppRoute.MODE_SELECTION);
-  const [config, setConfig] = useState<Partial<AgentConfig>>({});
+  const [config, setConfig] = useState<Partial<AgentConfig>>({
+    mode: 'JOB_SEARCH',
+    targetSite: 'hh.ru'
+  });
   const [agentState, setAgentState] = useState<AgentState>(createInitialAgentState());
 
-  // Bind Presenter to React State
+  // Bind View to Presenter
   useEffect(() => {
-    agentPresenter.bind(setAgentState);
+    // Check for saved config/state on mount
+    storageAdapter.getConfig().then(c => {
+      if (c) setConfig(c);
+    });
+    
+    storageAdapter.getAgentState().then(s => {
+      if (s) setAgentState(s);
+    });
+
+    agentPresenter.bind((newState) => {
+      setAgentState(newState);
+    });
+
     return () => agentPresenter.unbind();
   }, []);
 
-  // Restore state on load
-  useEffect(() => {
-    const restore = async () => {
-       const saved = await storageAdapter.getAgentState();
-       if (saved) setAgentState(saved);
-    };
-    restore();
-  }, []);
-
+  // Navigation Handlers
   const handleModeSelect = (mode: string) => {
     setConfig(prev => ({ ...prev, mode }));
     setRoute(AppRoute.SITE_SELECTION);
@@ -51,63 +60,55 @@ function App() {
     setRoute(AppRoute.SETTINGS);
   };
 
-  const handleSettingsSave = async () => {
-    await storageAdapter.saveConfig(config as AgentConfig);
-    setRoute(AppRoute.AGENT_RUNNER);
-  };
-
-  const runAgent = () => {
-    agentPresenter.startLoginSequence(agentState, config);
-  };
-
-  const confirmLogin = () => {
-    agentPresenter.confirmLogin(agentState);
-  }
-
-  const confirmProfile = () => {
-    agentPresenter.confirmProfilePage(agentState);
-  }
-
-  const resetProfile = () => {
-    agentPresenter.resetProfile(agentState);
-  }
-
-  const stopAgent = () => {
-    agentPresenter.cancelSequence(agentState);
-  };
-
-  const resetAgent = () => {
-    agentPresenter.resetSession(agentState);
-  };
-
-  const renderScreen = () => {
-    switch (route) {
-      case AppRoute.MODE_SELECTION:
-        return <ModeSelectionScreen onSelect={handleModeSelect} />;
-      case AppRoute.SITE_SELECTION:
-        return <SiteSelectionScreen onSelect={handleSiteSelect} onBack={() => setRoute(AppRoute.MODE_SELECTION)} />;
-      case AppRoute.SETTINGS:
-        return <SettingsScreen onSave={handleSettingsSave} />;
-      case AppRoute.AGENT_RUNNER:
-        return <AgentStatusScreen 
-          state={agentState} 
-          onRun={runAgent} 
-          onStop={stopAgent} 
-          onConfirmLogin={confirmLogin}
-          onConfirmProfile={confirmProfile}
-          onResetProfile={resetProfile}
-          onReset={resetAgent}
-        />;
-      default:
-        return <div className="p-10 text-white">404 Screen</div>;
+  const handleConfigSave = async () => {
+    if (config.mode && config.targetSite) {
+        await storageAdapter.saveConfig(config as AgentConfig);
+        setRoute(AppRoute.AGENT_RUNNER);
     }
   };
 
-  return (
-    <div className="h-full w-full">
-      {renderScreen()}
-    </div>
-  );
-}
+  // Agent Actions
+  const handleRun = () => agentPresenter.startLoginSequence(agentState, config);
+  const handleStop = () => agentPresenter.cancelSequence(agentState);
+  const handleConfirmLogin = () => agentPresenter.confirmLogin(agentState);
+  const handleConfirmProfile = () => agentPresenter.confirmProfilePage(agentState);
+  const handleResetProfile = () => agentPresenter.resetProfile(agentState);
+  const handleReset = () => agentPresenter.resetSession(agentState);
+  
+  // Stage 5 Actions (Search Config)
+  const handleContinueToSearch = () => agentPresenter.continueToSearch(agentState);
+  const handleScanSearchUI = () => agentPresenter.scanSearchUI(agentState);
 
-export default App;
+  // Router
+  let screen;
+  switch (route) {
+    case AppRoute.MODE_SELECTION:
+      screen = <ModeSelectionScreen onSelect={handleModeSelect} />;
+      break;
+    case AppRoute.SITE_SELECTION:
+      screen = <SiteSelectionScreen onSelect={handleSiteSelect} onBack={() => setRoute(AppRoute.MODE_SELECTION)} />;
+      break;
+    case AppRoute.SETTINGS:
+      screen = <SettingsScreen onSave={handleConfigSave} />;
+      break;
+    case AppRoute.AGENT_RUNNER:
+      screen = (
+        <AgentStatusScreen 
+          state={agentState} 
+          onRun={handleRun}
+          onStop={handleStop}
+          onConfirmLogin={handleConfirmLogin}
+          onConfirmProfile={handleConfirmProfile}
+          onResetProfile={handleResetProfile}
+          onReset={handleReset}
+          onContinueToSearch={handleContinueToSearch}
+          onScanSearchUI={handleScanSearchUI}
+        />
+      );
+      break;
+    default:
+      screen = <ModeSelectionScreen onSelect={handleModeSelect} />;
+  }
+
+  return screen;
+}

@@ -1,6 +1,8 @@
 // Layer: PORTS
 // Purpose: Define contracts for external services (secondary adapters).
 
+import { RawFormField } from '../domain/entities';
+
 export interface BrowserPort {
   /**
    * Initializes the browser environment (or connects to one).
@@ -43,6 +45,12 @@ export interface BrowserPort {
    * Clicks a link identified by its href.
    */
   clickLink(href: string): Promise<void>;
+
+  /**
+   * Scans the current page for interactive form elements.
+   * Does NOT analyze logic, just returns raw structure.
+   */
+  scanPageInteractionElements(): Promise<RawFormField[]>;
 
   /**
    * Closes the browser session.
