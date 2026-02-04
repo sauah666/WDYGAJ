@@ -50,6 +50,10 @@ export enum AgentStatus {
   // Phase C2
   LLM_SCREENING_DONE = 'LLM_SCREENING_DONE', // LLM Batch screening executed
 
+  // Phase D1
+  EXTRACTING_VACANCIES = 'EXTRACTING_VACANCIES', // In progress
+  VACANCIES_EXTRACTED = 'VACANCIES_EXTRACTED', // Done
+
   COMPLETED = 'COMPLETED',
   FAILED = 'FAILED'
 }

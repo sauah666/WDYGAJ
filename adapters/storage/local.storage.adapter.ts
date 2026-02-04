@@ -2,7 +2,7 @@
 
 import { StoragePort } from '../../core/ports/storage.port';
 import { AgentConfig } from '../../types';
-import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1 } from '../../core/domain/entities';
+import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1 } from '../../core/domain/entities';
 import { TargetingSpecV1 } from '../../core/domain/llm_contracts';
 
 const KEY_CONFIG = 'as_config';
@@ -20,6 +20,7 @@ const KEY_SEEN_INDEX_PREFIX = 'as_seen_index_';
 const KEY_DEDUPED_BATCH_PREFIX = 'as_deduped_batch_';
 const KEY_PREFILTER_BATCH_PREFIX = 'as_prefilter_batch_';
 const KEY_LLM_BATCH_PREFIX = 'as_llm_batch_';
+const KEY_EXTRACTION_BATCH_PREFIX = 'as_extraction_batch_';
 
 export class LocalStorageAdapter implements StoragePort {
   async saveConfig(config: AgentConfig): Promise<void> {
@@ -229,6 +230,19 @@ export class LocalStorageAdapter implements StoragePort {
 
   async getLLMDecisionBatch(siteId: string, batchId: string): Promise<LLMDecisionBatchV1 | null> {
       const key = `${KEY_LLM_BATCH_PREFIX}${siteId}_${batchId}`;
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+  }
+
+  // --- Phase D1 Implementation ---
+  
+  async saveVacancyExtractionBatch(siteId: string, batch: VacancyExtractionBatchV1): Promise<void> {
+      const key = `${KEY_EXTRACTION_BATCH_PREFIX}${siteId}_${batch.id}`;
+      localStorage.setItem(key, JSON.stringify(batch));
+  }
+  
+  async getVacancyExtractionBatch(siteId: string, batchId: string): Promise<VacancyExtractionBatchV1 | null> {
+      const key = `${KEY_EXTRACTION_BATCH_PREFIX}${siteId}_${batchId}`;
       const raw = localStorage.getItem(key);
       return raw ? JSON.parse(raw) : null;
   }

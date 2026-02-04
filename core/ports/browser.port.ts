@@ -1,7 +1,7 @@
 // Layer: PORTS
 // Purpose: Define contracts for external services (secondary adapters).
 
-import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult } from '../domain/entities';
+import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult, VacancySalary } from '../domain/entities';
 
 // DTO for raw vacancy data from the browser (before normalization)
 export interface RawVacancyCard {
@@ -13,6 +13,15 @@ export interface RawVacancyCard {
   workModeText?: string; // "Можно удаленно"
   publishedAtText?: string;
   externalId?: string;
+}
+
+// DTO for parsed vacancy page
+export interface ParsedVacancyPage {
+    requirements: string[];
+    responsibilities: string[];
+    conditions: string[];
+    salary?: VacancySalary;
+    workMode?: 'remote' | 'hybrid' | 'office' | 'unknown';
 }
 
 export interface BrowserPort {
@@ -86,6 +95,12 @@ export interface BrowserPort {
    * @param limit - Max number of cards to extract (typically 10-15)
    */
   scanVacancyCards(limit: number): Promise<{ cards: RawVacancyCard[], nextPageCursor?: string }>;
+
+  /**
+   * Extracts relevant details from the currently open vacancy page.
+   * Phase D1.
+   */
+  extractVacancyPage(): Promise<ParsedVacancyPage>;
 
   /**
    * Closes the browser session.

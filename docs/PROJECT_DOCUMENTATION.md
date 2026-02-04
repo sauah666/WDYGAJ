@@ -1,4 +1,4 @@
-# 📘 PROJECT DOCUMENTATION — v1.11
+# 📘 PROJECT DOCUMENTATION — v1.12
 
 **Проект:** Agent-based Job Search Automation  
 **Аудитория:** LLM-агент-разработчик (Gemini / GPT / Claude)  
@@ -80,18 +80,17 @@ MASTER PLAN v1.0 — JobSearch Agent (Mode 1: HH.ru, затем мультиса
 - Salary & WorkMode Gates
 - Title Scoring (fuzzy/exact)
 - PreFilterResultBatchV1
-
-2) MASTER PLAN — от “сейчас” до “финиша”
-PHASE C — Pre-Screen (LLM батч по карточкам)
-C2. LLM Batch Screening (10–15 карточек → 1 запрос) (DONE)
+✅ Done-C2: LLM Batch Screening (10–15 карточек → 1 запрос)
 - Выбор лучших кандидатов из C1
 - LLM screening на основе листинга (Title, Salary, Company)
 - LLMDecisionBatchV1 (READ/DEFER/IGNORE)
 - Token Telemetry
 
+2) MASTER PLAN — от “сейчас” до “финиша”
 PHASE D — Deep Read (извлечь только важные куски текста)
-D1. OpenVacancy & ExtractRelevantSections (script)
+D1. OpenVacancy & ExtractRelevantSections (script) (DONE)
 - Только условия/требования/обязанности/ограничения
+- Игнорирование "воды" (О компании)
 D2. LLM Batch Evaluation (10–15 извлечений → 1 запрос)
 - apply_yes/apply_no + red flags
 
@@ -127,23 +126,23 @@ UI: выбор режима/сайта/настроек и reset’ов.
 Документация: позволяет новому агенту продолжить без истории.
 
 4) Текущая точка
-Последний завершённый этап: PHASE C2 — LLM BATCH SCREENING
-Текущий этап: PHASE D1 — OPEN & EXTRACT
+Последний завершённый этап: PHASE D1 — OPEN & EXTRACT
+Текущий этап: PHASE D2 — LLM BATCH EVALUATION
 
 ---
 
-## Progress Update — PHASE C2
+## Progress Update — PHASE D1
 
 ### WHAT WAS ADDED
-*   **Entity:** `LLMDecisionBatchV1`, `LLMDecisionV1`.
-*   **UseCase:** `runLLMBatchScreening` — batches 15 candidates from C1 and asks LLM.
-*   **Port:** `screenVacancyCardsBatch` in LLMProviderPort.
-*   **UI:** Visualization of LLM decisions and Token Usage.
+*   **Entity:** `VacancyExtractV1`, `VacancyExtractionBatchV1`.
+*   **UseCase:** `runVacancyExtraction` — opens pages from `read_queue` via browser port.
+*   **Port:** `extractVacancyPage` in BrowserPort.
+*   **UI:** Visualization of extracted details (Requirements, Responsibilities, Conditions counts).
 
 ### WHY
-Pre-filtering (C1) is crude. C2 uses LLM intelligence on the "listing view" data to discard vacancies with bad titles/companies/salaries before we spend resources opening the full page.
+We need detailed information (tech stack specifics, exact conditions) to make a final decision, but we cannot feed the entire HTML of 15 pages to an LLM (too expensive/slow). We use a script-based extractor to distill the page down to just the "meat" before the D2 LLM pass.
 
 ### RULES
-*   **Batching**: Strict 15 items max per LLM call.
-*   **Input**: Only Listing Data (Title, Company, Salary, WorkMode). No full text.
-*   **Telemetry**: Track tokens for cost control.
+*   **No LLM**: Extraction is pure DOM parsing/regex.
+*   **Strict Sectioning**: Discard "About Company" or generic marketing text.
+*   **Iterative**: Process the read queue sequentially with delays to be polite to the site.

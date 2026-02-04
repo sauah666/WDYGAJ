@@ -1,39 +1,37 @@
 # Developer Context (Save Game)
 
-**Last Updated**: Phase C2 Execution
+**Last Updated**: Phase D1 Execution
 **Role**: Senior Agent Architect
 **Manifesto**: See `docs/PROJECT_DOCUMENTATION.md` (Rule D-01)
 
 ## Где мы сейчас?
-Мы находимся в **PHASE C2: LLM Batch Screening**.
+Мы находимся в **PHASE D1: OPEN & EXTRACT**.
 
 ### Что сделано:
 1.  **Deduplication** (Phase B2): Вакансии дедуплицированы.
 2.  **Script Filtering** (Phase C1): Отсеяны явные несовпадения.
-3.  **LLM Screening** (Phase C2):
-    *   Берем лучших из C1 (READ > DEFER).
-    *   Отправляем батч (макс 15) в LLM.
-    *   LLM возвращает READ/DEFER/IGNORE + confidence + reasons.
-    *   Сохраняем `LLMDecisionBatchV1`.
+3.  **LLM Screening** (Phase C2): Отобраны кандидаты по заголовкам.
+4.  **Extraction** (Phase D1): 
+    *   Агент открыл страницы из очереди `read_queue`.
+    *   Извлек структурированные данные (Requirements, Responsibilities, Conditions).
+    *   Сохранил `VacancyExtractionBatchV1`.
 
 ### Текущее техническое состояние:
-*   `AgentStatus` переходит в `LLM_SCREENING_DONE`.
-*   В стейте доступен `activeLLMBatch`.
-*   UI показывает результаты LLM с уверенностью (Purple/Indigo/Gray) и статистикой токенов.
+*   `AgentStatus` переходит в `VACANCIES_EXTRACTED`.
+*   В стейте доступен `activeExtractionBatch`.
+*   UI показывает карточки с количеством извлеченных пунктов.
 
 ### Следующий шаг (IMMEDIATE NEXT):
-**PHASE D1 — OPEN & EXTRACT**:
-1.  Взять очередь `READ` из `activeLLMBatch`.
-2.  Для каждой вакансии:
-    *   Открыть страницу.
-    *   **Скриптом** (без LLM) извлечь только релевантный текст (Описание, Требования, Ключевые слова).
-    *   Обрезать "воду" (О компании, плюшки).
-3.  Сохранить "Pure Content" для D2.
+**PHASE D2 — LLM BATCH EVALUATION**:
+1.  Взять `activeExtractionBatch`.
+2.  Сформировать промпт для LLM, содержащий ТОЛЬКО извлеченные секции (без воды).
+3.  LLM должен принять финальное решение: `APPLY` или `REJECT`.
+4.  Если `APPLY`, сгенерировать короткую причину для Cover Letter.
 
 ## Правила разработки (Strict)
 См. `docs/PROJECT_DOCUMENTATION.md`
 
-## Token Policy (C2)
-*   **Input**: ~150-200 токенов на карточку (Title + Context).
-*   **Output**: JSON Structure, ~20 токенов на решение.
-*   **Batch**: 15 карточек = ~3000 input tokens / ~300 output tokens.
+## Token Policy (D2)
+*   **Input**: ~300-500 токенов на вакансию (Clean Text).
+*   **Batch**: 15 вакансий.
+*   **Constraint**: Не скармливать полный HTML. Только JSON из D1.

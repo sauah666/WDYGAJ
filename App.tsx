@@ -95,6 +95,9 @@ export default function App() {
   const handleRunPrefilter = () => agentPresenter.runScriptPrefilter(agentState);
   const handleRunLLMScreening = () => agentPresenter.runLLMBatchScreening(agentState);
 
+  // Phase D Actions
+  const handleRunExtraction = () => agentPresenter.runVacancyExtraction(agentState);
+
   // Router
   let screen;
   switch (route) {
@@ -129,6 +132,7 @@ export default function App() {
           onDedupBatch={handleDedupBatch}
           onRunPrefilter={handleRunPrefilter}
           onRunLLMScreening={handleRunLLMScreening}
+          onRunExtraction={handleRunExtraction}
         />
       );
       break;

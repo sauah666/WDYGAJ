@@ -6,7 +6,7 @@ import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
 import { AgentStatus, AgentConfig } from '../../types';
-import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1 } from '../domain/entities';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus } from '../domain/entities';
 import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode, LLMScreeningInputV1, ScreeningCard } from '../domain/llm_contracts';
 
 export class AgentUseCase {
@@ -1362,35 +1362,40 @@ export class AgentUseCase {
           // 4. Call LLM
           const llmOutput = await this.llm.screenVacancyCardsBatch(llmInput);
 
-          // 5. Validate output (Basic check that all IDs are present or at least processed)
-          // Ideally we check length matches or handle missing keys
-
-          // 6. Artifact
+          // 5. Artifact
           const decisions: LLMDecisionV1[] = llmOutput.results.map(r => ({
               cardId: r.cardId,
               decision: r.decision,
               confidence: r.confidence,
               reasons: r.reasons
           }));
+          
+          // Populate Queues
+          const read_queue = decisions.filter(d => d.decision === 'READ').map(d => d.cardId);
+          const defer_queue = decisions.filter(d => d.decision === 'DEFER').map(d => d.cardId);
+          const ignore_queue = decisions.filter(d => d.decision === 'IGNORE').map(d => d.cardId);
 
           const llmBatch: LLMDecisionBatchV1 = {
               id: crypto.randomUUID(),
               siteId,
               inputPrefilterBatchId: prefilterBatch.id,
               decidedAt: Date.now(),
-              modelId: 'mock-llm', // Dynamic in future
+              modelId: 'mock-llm', 
               decisions,
               summary: {
-                  read: decisions.filter(d => d.decision === 'READ').length,
-                  defer: decisions.filter(d => d.decision === 'DEFER').length,
-                  ignore: decisions.filter(d => d.decision === 'IGNORE').length
+                  read: read_queue.length,
+                  defer: defer_queue.length,
+                  ignore: ignore_queue.length
               },
-              tokenUsage: llmOutput.tokenUsage
+              tokenUsage: llmOutput.tokenUsage,
+              read_queue,
+              defer_queue,
+              ignore_queue
           };
 
           await this.storage.saveLLMDecisionBatch(siteId, llmBatch);
 
-          // 7. Update State
+          // 6. Update State
           const finalLog = `LLM Screened ${decisions.length} cards. READ: ${llmBatch.summary.read}, DEFER: ${llmBatch.summary.defer}, IGNORE: ${llmBatch.summary.ignore}.`;
           
           return this.updateState({
@@ -1404,6 +1409,117 @@ export class AgentUseCase {
           console.error(e);
           return this.failSession(currentState, `LLM Screening Failed: ${e.message}`);
       }
+  }
+
+  // --- Phase D1: Vacancy Extraction ---
+  async runVacancyExtraction(state: AgentState, siteId: string): Promise<AgentState> {
+      // 1. Context Check
+      if (!state.activeLLMBatch) {
+          return this.failSession(state, "No LLM decision batch found to extract from.");
+      }
+
+      const readQueue = state.activeLLMBatch.read_queue || [];
+      if (readQueue.length === 0) {
+          return this.updateState({
+              ...state,
+              status: AgentStatus.VACANCIES_EXTRACTED,
+              logs: [...state.logs, "Extraction Skipped: No vacancies in READ queue."]
+          });
+      }
+
+      let currentState = await this.updateState({ 
+          ...state, 
+          status: AgentStatus.EXTRACTING_VACANCIES,
+          logs: [...state.logs, `Starting Extraction for ${readQueue.length} vacancies...`] 
+      });
+
+      const extractedResults: VacancyExtractV1[] = [];
+      let successCount = 0;
+      let failedCount = 0;
+
+      for (const cardId of readQueue) {
+           const card = state.activeVacancyBatch?.cards.find(c => c.id === cardId);
+           if (!card) {
+               console.warn(`Card ${cardId} not found in active batch.`);
+               continue;
+           }
+
+           // Log step
+           currentState = await this.updateState({
+               ...currentState,
+               logs: [...currentState.logs, `Extracting details for: ${card.title} ...`]
+           });
+
+           // 2. Open Page & Extract
+           try {
+               await this.browser.navigateTo(card.url);
+               const parsedPage = await this.browser.extractVacancyPage();
+
+               // 3. Map to Entity
+               const extract: VacancyExtractV1 = {
+                   vacancyId: card.id,
+                   siteId,
+                   url: card.url,
+                   extractedAt: Date.now(),
+                   sections: {
+                       requirements: parsedPage.requirements,
+                       responsibilities: parsedPage.responsibilities,
+                       conditions: parsedPage.conditions,
+                       salary: parsedPage.salary,
+                       workMode: parsedPage.workMode
+                   },
+                   extractionStatus: 'COMPLETE'
+               };
+
+               extractedResults.push(extract);
+               successCount++;
+               
+               // Small delay to simulate human-like reading/loading
+               await new Promise(r => setTimeout(r, 500));
+
+           } catch (e: any) {
+               console.error(`Failed to extract ${card.url}`, e);
+               // Push failed record
+               extractedResults.push({
+                   vacancyId: card.id,
+                   siteId,
+                   url: card.url,
+                   extractedAt: Date.now(),
+                   sections: { requirements: [], responsibilities: [], conditions: [] },
+                   extractionStatus: 'FAILED'
+               });
+               failedCount++;
+               
+               currentState = await this.updateState({
+                   ...currentState,
+                   logs: [...currentState.logs, `Failed to extract ${card.title}: ${e.message}`]
+               });
+           }
+      }
+
+      // 4. Save Batch
+      const extractionBatch: VacancyExtractionBatchV1 = {
+          id: crypto.randomUUID(),
+          siteId,
+          inputLLMBatchId: state.activeLLMBatch.id,
+          processedAt: Date.now(),
+          results: extractedResults,
+          summary: {
+              total: extractedResults.length,
+              success: successCount,
+              failed: failedCount
+          }
+      };
+
+      await this.storage.saveVacancyExtractionBatch(siteId, extractionBatch);
+
+      // 5. Update State
+      return this.updateState({
+          ...currentState,
+          status: AgentStatus.VACANCIES_EXTRACTED,
+          activeExtractionBatch: extractionBatch,
+          logs: [...currentState.logs, `Extraction Complete. Success: ${successCount}, Failed: ${failedCount}.`]
+      });
   }
 
 

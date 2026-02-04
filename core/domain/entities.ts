@@ -280,6 +280,42 @@ export interface LLMDecisionBatchV1 {
     input: number;
     output: number;
   };
+  // Phase D1 queues
+  read_queue?: string[]; // cardIds
+  defer_queue?: string[];
+  ignore_queue?: string[];
+}
+
+// --- Phase D1: Extraction ---
+
+export type VacancyExtractionStatus = 'COMPLETE' | 'PARTIAL' | 'FAILED';
+
+export interface VacancyExtractV1 {
+  vacancyId: string; // ref to VacancyCardV1
+  siteId: string;
+  url: string;
+  extractedAt: number;
+  sections: {
+    requirements: string[]; // extracted bullets/paragraphs
+    responsibilities: string[]; // extracted bullets
+    conditions: string[]; // extracted bullets
+    salary?: VacancySalary; // refined salary from page
+    workMode?: 'remote' | 'hybrid' | 'office' | 'unknown'; // confirmed from page
+  };
+  extractionStatus: VacancyExtractionStatus;
+}
+
+export interface VacancyExtractionBatchV1 {
+  id: string;
+  siteId: string;
+  inputLLMBatchId: string;
+  processedAt: number;
+  results: VacancyExtractV1[];
+  summary: {
+    total: number;
+    success: number;
+    failed: number;
+  };
 }
 
 // --- Core State ---
@@ -303,6 +339,7 @@ export interface AgentState {
   activeDedupedBatch?: DedupedVacancyBatchV1 | null; // Phase B2: Deduped Vacancies
   activePrefilterBatch?: PreFilterResultBatchV1 | null; // Phase C1: Script Filter Results
   activeLLMBatch?: LLMDecisionBatchV1 | null; // Phase C2: LLM Screening Results
+  activeExtractionBatch?: VacancyExtractionBatchV1 | null; // Phase D1: Extracted Details
 }
 
 export interface ProfileSnapshot {
@@ -329,5 +366,6 @@ export const createInitialAgentState = (): AgentState => ({
   activeVacancyBatch: null,
   activeDedupedBatch: null,
   activePrefilterBatch: null,
-  activeLLMBatch: null
+  activeLLMBatch: null,
+  activeExtractionBatch: null
 });

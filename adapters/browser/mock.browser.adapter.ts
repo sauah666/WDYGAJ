@@ -1,7 +1,7 @@
 // Layer: ADAPTERS
 // Purpose: Implementation of ports. External world details.
 
-import { BrowserPort, RawVacancyCard } from '../../core/ports/browser.port';
+import { BrowserPort, RawVacancyCard, ParsedVacancyPage } from '../../core/ports/browser.port';
 import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult } from '../../core/domain/entities';
 
 export class MockBrowserAdapter implements BrowserPort {
@@ -176,6 +176,54 @@ export class MockBrowserAdapter implements BrowserPort {
       return {
           cards: mockCards,
           nextPageCursor: 'page=1'
+      };
+  }
+
+  async extractVacancyPage(): Promise<ParsedVacancyPage> {
+      console.log('[BrowserAdapter] EXTRACTING details from vacancy page...');
+      await new Promise(resolve => setTimeout(resolve, 800)); // Sim DOM read
+
+      // SCENARIO LOGIC: Handle Edge Case (ID 100002 has salary: null in scanVacancyCards)
+      if (this.currentUrlVal.includes('100002')) {
+           return {
+               // Merged block scenario: Requirements & Responsibilities in one blob
+               requirements: [
+                   "Requirements and Responsibilities (Merged Section):",
+                   "- 3+ years experience with high-load systems",
+                   "- Knowledge of distributed architecture",
+                   "- Design and implement scalable services",
+                   "- Conduct code reviews and mentor juniors"
+               ],
+               responsibilities: [], // Empty because found in requirements block
+               conditions: [
+                   "Health insurance",
+                   "Flexible hours",
+                   "Cookies in office"
+               ],
+               workMode: 'office', // Extracted from text "В офисе" (ID 100002 is not remote)
+               salary: undefined // Explicitly undefined/unknown
+           };
+      }
+
+      // Default Happy Path (e.g. for ID 100000)
+      return {
+          requirements: [
+              "3+ years of experience with React/TypeScript",
+              "Solid understanding of SOLID principles",
+              "Experience with CI/CD"
+          ],
+          responsibilities: [
+              "Develop new features for our core platform",
+              "Collaborate with designers and backend engineers",
+              "Participate in code reviews"
+          ],
+          conditions: [
+              "Remote work possible",
+              "Health insurance",
+              "Yearly bonus"
+          ],
+          workMode: 'remote', // Confirmed from page
+          salary: { min: 250000, max: 350000, currency: 'RUB', gross: true }
       };
   }
 

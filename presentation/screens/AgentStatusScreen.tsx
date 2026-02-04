@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit } from 'lucide-react';
+import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit, FileSearch, CheckSquare } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentStatus } from '../../types';
-import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep, ControlVerificationResult, VacancyCardV1, VacancyDecision } from '../../core/domain/entities';
+import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep, ControlVerificationResult, VacancyCardV1, VacancyDecision, VacancyExtractV1 } from '../../core/domain/entities';
 
 interface Props {
   state: AgentState;
@@ -25,6 +25,7 @@ interface Props {
   onDedupBatch?: () => void;
   onRunPrefilter?: () => void;
   onRunLLMScreening?: () => void;
+  onRunExtraction?: () => void; // Phase D1
 }
 
 export const AgentStatusScreen: React.FC<Props> = ({ 
@@ -46,7 +47,8 @@ export const AgentStatusScreen: React.FC<Props> = ({
   onCollectBatch,
   onDedupBatch,
   onRunPrefilter,
-  onRunLLMScreening
+  onRunLLMScreening,
+  onRunExtraction
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [localPrefs, setLocalPrefs] = useState<UserSearchPrefsV1 | null>(null);
@@ -111,6 +113,8 @@ export const AgentStatusScreen: React.FC<Props> = ({
       case AgentStatus.VACANCIES_DEDUPED: return 'text-cyan-500';
       case AgentStatus.PREFILTER_DONE: return 'text-orange-400';
       case AgentStatus.LLM_SCREENING_DONE: return 'text-purple-400';
+      case AgentStatus.EXTRACTING_VACANCIES: return 'text-pink-400';
+      case AgentStatus.VACANCIES_EXTRACTED: return 'text-pink-500';
       case AgentStatus.COMPLETED: return 'text-green-500';
       case AgentStatus.FAILED: return 'text-red-500';
       default: return 'text-gray-100';
@@ -118,7 +122,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
   };
 
   const getStatusIcon = (status: AgentStatus) => {
-    if (status === AgentStatus.NAVIGATING || status === AgentStatus.EXTRACTING || status === AgentStatus.STARTING || status === AgentStatus.TARGETING_PENDING || status === AgentStatus.NAVIGATING_TO_SEARCH || status === AgentStatus.EXTRACTING_SEARCH_UI || status === AgentStatus.ANALYZING_SEARCH_UI || status === AgentStatus.APPLYING_FILTERS) return <Loader2 className="animate-spin" />;
+    if (status === AgentStatus.NAVIGATING || status === AgentStatus.EXTRACTING || status === AgentStatus.STARTING || status === AgentStatus.TARGETING_PENDING || status === AgentStatus.NAVIGATING_TO_SEARCH || status === AgentStatus.EXTRACTING_SEARCH_UI || status === AgentStatus.ANALYZING_SEARCH_UI || status === AgentStatus.APPLYING_FILTERS || status === AgentStatus.EXTRACTING_VACANCIES) return <Loader2 className="animate-spin" />;
     if (status === AgentStatus.WAITING_FOR_HUMAN) return <AlertCircle />;
     if (status === AgentStatus.WAITING_FOR_PROFILE_PAGE) return <FileText />;
     if (status === AgentStatus.LOGGED_IN_CONFIRMED) return <UserCheck />;
@@ -136,14 +140,15 @@ export const AgentStatusScreen: React.FC<Props> = ({
     if (status === AgentStatus.VACANCIES_DEDUPED) return <Layers />;
     if (status === AgentStatus.PREFILTER_DONE) return <FilterX />;
     if (status === AgentStatus.LLM_SCREENING_DONE) return <BrainCircuit />;
+    if (status === AgentStatus.VACANCIES_EXTRACTED) return <FileSearch />;
     if (status === AgentStatus.COMPLETED) return <CheckCircle />;
     return <Terminal />;
   };
 
-  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE;
+  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED;
   const isFinished = state.status === AgentStatus.COMPLETED || state.status === AgentStatus.FAILED;
   // Can reset profile if captured OR targeting ready OR dom ready OR waiting prefs OR plan ready
-  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE;
+  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED;
 
   const renderVerificationRow = (res: ControlVerificationResult) => {
       let color = 'text-gray-400';
@@ -234,6 +239,39 @@ export const AgentStatusScreen: React.FC<Props> = ({
             </div>
          </div>
      );
+  };
+
+  const renderExtractedCard = (extract: VacancyExtractV1) => {
+      const card = state.activeVacancyBatch?.cards.find(c => c.id === extract.vacancyId);
+      const isFailed = extract.extractionStatus === 'FAILED';
+      
+      return (
+          <div key={extract.vacancyId} className={`p-3 mb-2 rounded border ${isFailed ? 'border-red-800 bg-red-900/10' : 'border-gray-700 bg-gray-800'}`}>
+              <div className="flex justify-between items-start mb-2">
+                  <div className="font-bold text-sm text-white">{card?.title || 'Unknown Vacancy'}</div>
+                  <div className={`text-[10px] px-2 py-0.5 rounded font-bold ${isFailed ? 'bg-red-900 text-red-400' : 'bg-green-900 text-green-400'}`}>
+                      {extract.extractionStatus}
+                  </div>
+              </div>
+              
+              {!isFailed && (
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div className="bg-gray-900/50 p-2 rounded">
+                          <div className="text-gray-500 uppercase text-[9px]">Requirements</div>
+                          <div className="text-gray-300 font-mono">{extract.sections.requirements.length} items</div>
+                      </div>
+                      <div className="bg-gray-900/50 p-2 rounded">
+                          <div className="text-gray-500 uppercase text-[9px]">Responsibilities</div>
+                          <div className="text-gray-300 font-mono">{extract.sections.responsibilities.length} items</div>
+                      </div>
+                      <div className="bg-gray-900/50 p-2 rounded">
+                           <div className="text-gray-500 uppercase text-[9px]">Conditions</div>
+                           <div className="text-gray-300 font-mono">{extract.sections.conditions.length} items</div>
+                      </div>
+                  </div>
+              )}
+          </div>
+      );
   };
 
   return (
@@ -398,7 +436,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 )}
 
                 {/* LLM BATCH VIEW */}
-                {state.activeLLMBatch && (
+                {state.activeLLMBatch && !state.activeExtractionBatch && (
                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
                         <div className="mb-6 border-b border-gray-800 pb-4">
                             <div className="flex items-center text-purple-400 mb-2">
@@ -455,6 +493,32 @@ export const AgentStatusScreen: React.FC<Props> = ({
                                 return renderVacancyCard(card, d.decision, {confidence: d.confidence, reasons: d.reasons});
                             })}
                         </div>
+                    </div>
+                )}
+
+                {/* EXTRACTION BATCH VIEW */}
+                {state.activeExtractionBatch && (
+                    <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                         <div className="mb-6 border-b border-gray-800 pb-4">
+                            <div className="flex items-center text-pink-500 mb-2">
+                                <FileSearch size={24} className="mr-3" />
+                                <h3 className="font-bold text-xl text-white">Extracted Details</h3>
+                            </div>
+                            <div className="flex gap-4 mt-2">
+                                <div className="text-sm text-gray-400">
+                                    Processed: <span className="text-white font-bold">{state.activeExtractionBatch.summary.total}</span>
+                                </div>
+                                <div className="text-sm text-green-400">
+                                    Success: <span className="font-bold">{state.activeExtractionBatch.summary.success}</span>
+                                </div>
+                                <div className="text-sm text-red-400">
+                                    Failed: <span className="font-bold">{state.activeExtractionBatch.summary.failed}</span>
+                                </div>
+                            </div>
+                         </div>
+                         <div className="space-y-1">
+                             {state.activeExtractionBatch.results.map(renderExtractedCard)}
+                         </div>
                     </div>
                 )}
              </div>
@@ -558,6 +622,14 @@ export const AgentStatusScreen: React.FC<Props> = ({
                     <button onClick={onRunLLMScreening} className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-purple-900/20">
                         <BrainCircuit size={18} />
                         <span>RUN LLM SCREENING</span>
+                    </button>
+                )}
+                
+                {/* LLM_SCREENING_DONE -> EXTRACT VACANCIES (D1) */}
+                {state.status === AgentStatus.LLM_SCREENING_DONE && onRunExtraction && (
+                    <button onClick={onRunExtraction} className="flex items-center space-x-2 bg-pink-600 hover:bg-pink-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-pink-900/20">
+                        <FileSearch size={18} />
+                        <span>EXTRACT DETAILS</span>
                     </button>
                 )}
 
