@@ -2,7 +2,7 @@
 // Purpose: Connects React View to Use Cases. Implements UIPort (Output) and acts as Controller (Input).
 
 import { UIPort } from '../../core/ports/ui.port';
-import { AgentState } from '../../core/domain/entities';
+import { AgentState, UserSearchPrefsV1 } from '../../core/domain/entities';
 import { AgentUseCase } from '../../core/usecases/agent.usecase';
 import { AgentConfig, AgentStatus } from '../../types';
 
@@ -121,6 +121,17 @@ export class AgentPresenter implements UIPort {
          console.error(e);
          await this.useCase.failSession(currentState, "UI Analysis Error");
       }
+  }
+
+  // Step 5.4: Submit Preferences
+  async submitSearchPrefs(currentState: AgentState, prefs: UserSearchPrefsV1) {
+    if (!this.useCase) return;
+    try {
+        await this.useCase.submitSearchPrefs(currentState, prefs);
+    } catch (e) {
+        console.error(e);
+        await this.useCase.failSession(currentState, "Preferences Save Error");
+    }
   }
 
   async resetProfile(currentState: AgentState) {

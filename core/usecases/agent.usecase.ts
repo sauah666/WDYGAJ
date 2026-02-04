@@ -5,8 +5,8 @@ import { BrowserPort } from '../ports/browser.port';
 import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
-import { AgentStatus } from '../../types';
-import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition } from '../domain/entities';
+import { AgentStatus, AgentConfig } from '../../types';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1 } from '../domain/entities';
 import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode } from '../domain/llm_contracts';
 
 export class AgentUseCase {
@@ -411,6 +411,7 @@ export class AgentUseCase {
       // 1. Preconditions
       const snapshot = await this.storage.getSearchDOMSnapshot(siteId);
       const targeting = await this.storage.getTargetingSpec(siteId);
+      const config = await this.storage.getConfig(); // Need config for auto-fill
 
       if (!snapshot || !targeting) {
           return this.failSession(state, "Missing DOM Snapshot or Targeting Spec for analysis.");
@@ -419,11 +420,28 @@ export class AgentUseCase {
       // 2. Check Existance
       const existingSpec = await this.storage.getSearchUISpec(siteId);
       if (existingSpec) {
+          // If spec exists, we also try to recover draft prefs or create new ones
+          const existingPrefs = await this.storage.getUserSearchPrefs(siteId);
+          
+          if (existingPrefs) {
+              return this.updateState({
+                  ...state,
+                  status: AgentStatus.SEARCH_PREFS_SAVED, // Already done!
+                  activeSearchUISpec: existingSpec,
+                  activeSearchPrefs: existingPrefs,
+                  logs: [...state.logs, `Loaded existing UI Spec and User Prefs. Ready to filter.`]
+              });
+          }
+
+          // If Spec exists but Prefs do not -> Generate Draft
+          const draftPrefs = this.createDraftPrefs(siteId, existingSpec, targeting, config || {});
+
           return this.updateState({
               ...state,
               status: AgentStatus.WAITING_FOR_SEARCH_PREFS,
               activeSearchUISpec: existingSpec,
-              logs: [...state.logs, `Loaded existing UI Spec (v${existingSpec.version}). Skipping analysis.`]
+              activeSearchPrefs: draftPrefs,
+              logs: [...state.logs, `Loaded existing UI Spec (v${existingSpec.version}). Prepared draft preferences.`]
           });
       }
 
@@ -456,15 +474,19 @@ export class AgentUseCase {
              throw new Error("LLM failed to identify any semantic fields.");
           }
 
-          // 6. Save
+          // 6. Save Spec
           await this.storage.saveSearchUISpec(siteId, spec);
 
-          // 7. Finalize
+          // 7. Generate Draft Prefs (Stage 5.4 Logic)
+          const draftPrefs = this.createDraftPrefs(siteId, spec, targeting, config || {});
+
+          // 8. Finalize
           return this.updateState({
               ...currentState,
               status: AgentStatus.WAITING_FOR_SEARCH_PREFS,
               activeSearchUISpec: spec,
-              logs: [...currentState.logs, `Analysis complete. Identified ${spec.fields.length} fields. Waiting for confirmation.`]
+              activeSearchPrefs: draftPrefs, // Inject draft
+              logs: [...currentState.logs, `Analysis complete. Identified ${spec.fields.length} fields. Draft preferences generated.`]
           });
 
       } catch (e: any) {
@@ -477,14 +499,94 @@ export class AgentUseCase {
       }
   }
 
+  // --- Stage 5.4: Create Draft Prefs ---
+  private createDraftPrefs(siteId: string, spec: SearchUISpecV1, targeting: TargetingSpecV1, config: Partial<AgentConfig>): UserSearchPrefsV1 {
+    const additionalFilters: Record<string, any> = {};
+
+    // Auto-fill logic based on semantic types
+    for (const field of spec.fields) {
+        if (field.defaultBehavior === 'IGNORE' || field.defaultBehavior === 'EXCLUDE') continue;
+
+        switch (field.semanticType) {
+            case 'KEYWORD':
+                // Combine roles. Just taking the first RU role for simplicity, or all joined
+                // Real implementation might differ based on UI type (single input vs tag list)
+                if (targeting.targetRoles.ruTitles.length > 0) {
+                   additionalFilters[field.key] = targeting.targetRoles.ruTitles.join(' OR ');
+                }
+                break;
+            case 'SALARY':
+                if (config.minSalary) {
+                   additionalFilters[field.key] = config.minSalary;
+                }
+                break;
+            case 'LOCATION':
+                if (config.city) {
+                   // If it's a SELECT, we'd need to match options. 
+                   // For now, we assume simple text or value match. 
+                   // Complex fuzzy matching omitted for skeleton.
+                   // If options exist, try to find one that includes the city name
+                   if (field.options) {
+                      const match = field.options.find(opt => opt.label.toLowerCase().includes(config.city!.toLowerCase()));
+                      if (match) additionalFilters[field.key] = match.value;
+                   } else {
+                      additionalFilters[field.key] = config.city;
+                   }
+                }
+                break;
+            case 'WORK_MODE':
+                if (config.workMode && config.workMode !== WorkMode.ANY) {
+                    // For Checkbox: 'true' if we want it.
+                    // But usually "Remote" is a specific checkbox.
+                    // We assume the LLM identified the specific "Remote" checkbox.
+                    // If the label contains "remote" or "удален", check it.
+                    const isRemoteField = field.label.toLowerCase().includes('удален') || field.label.toLowerCase().includes('remote');
+                    if (isRemoteField && config.workMode === WorkMode.REMOTE) {
+                         additionalFilters[field.key] = true;
+                    }
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    return {
+        siteId,
+        updatedAt: Date.now(),
+        city: config.city,
+        minSalary: config.minSalary,
+        workMode: config.workMode,
+        additionalFilters
+    };
+  }
+
+  // --- Stage 5.4: Submit Prefs ---
+  async submitSearchPrefs(state: AgentState, prefs: UserSearchPrefsV1): Promise<AgentState> {
+      // 1. Save to storage
+      await this.storage.saveUserSearchPrefs(prefs.siteId, prefs);
+
+      // 2. Update State
+      return this.updateState({
+          ...state,
+          status: AgentStatus.SEARCH_PREFS_SAVED,
+          activeSearchPrefs: prefs,
+          logs: [...state.logs, `User Search Preferences saved. Ready to apply filters.`]
+      });
+  }
+
   async resetProfileData(state: AgentState, siteId: string): Promise<AgentState> {
       await this.storage.resetProfile(siteId);
-      await this.storage.deleteTargetingSpec(siteId); // Stage 4.3: Cascade delete
+      await this.storage.deleteTargetingSpec(siteId); 
+      await this.storage.deleteSearchUISpec(siteId); // Cascade 
+      await this.storage.deleteUserSearchPrefs(siteId); // Cascade
       
-      const logs = [...state.logs, `Profile data and targeting rules for ${siteId} cleared.`];
+      const logs = [...state.logs, `Profile data, targeting rules, and search prefs for ${siteId} cleared.`];
       return this.updateState({ 
         ...state, 
-        activeTargetingSpec: null, // Clear from state
+        activeTargetingSpec: null, 
+        activeSearchUISpec: null,
+        activeSearchPrefs: null,
         logs 
       });
   }

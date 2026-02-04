@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AppRoute, AgentConfig } from './types';
-import { AgentState, createInitialAgentState } from './core/domain/entities';
+import { AgentState, createInitialAgentState, UserSearchPrefsV1 } from './core/domain/entities';
 import { MockBrowserAdapter } from './adapters/browser/mock.browser.adapter';
 import { LocalStorageAdapter } from './adapters/storage/local.storage.adapter';
 import { MockLLMAdapter } from './adapters/llm/mock.llm.adapter';
@@ -79,6 +79,7 @@ export default function App() {
   const handleContinueToSearch = () => agentPresenter.continueToSearch(agentState);
   const handleScanSearchUI = () => agentPresenter.scanSearchUI(agentState);
   const handleAnalyzeSearchUI = () => agentPresenter.analyzeSearchUI(agentState);
+  const handleSubmitSearchPrefs = (prefs: UserSearchPrefsV1) => agentPresenter.submitSearchPrefs(agentState, prefs);
 
   // Router
   let screen;
@@ -105,6 +106,7 @@ export default function App() {
           onContinueToSearch={handleContinueToSearch}
           onScanSearchUI={handleScanSearchUI}
           onAnalyzeSearchUI={handleAnalyzeSearchUI}
+          onSubmitSearchPrefs={handleSubmitSearchPrefs}
         />
       );
       break;
