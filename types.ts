@@ -1,3 +1,4 @@
+
 // Shared types that may traverse layers (e.g. DTOs or Enums)
 
 import { WorkMode } from './core/domain/llm_contracts';
@@ -69,6 +70,11 @@ export enum AgentStatus {
 
   // Phase E1.3
   APPLY_DRAFT_FILLED = 'APPLY_DRAFT_FILLED',
+
+  // Phase E1.4
+  SUBMITTING_APPLICATION = 'SUBMITTING_APPLICATION',
+  APPLICATION_SUBMITTED = 'APPLICATION_SUBMITTED',
+  APPLICATION_FAILED = 'APPLICATION_FAILED',
 
   COMPLETED = 'COMPLETED',
   FAILED = 'FAILED'

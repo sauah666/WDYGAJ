@@ -1,3 +1,4 @@
+
 // Layer: USE CASES
 // Purpose: Application specific business rules. Orchestrates flow between Domain and Ports.
 
@@ -6,7 +7,7 @@ import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
 import { AgentStatus, AgentConfig } from '../../types';
-import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem, ApplyEntrypointProbeV1, ApplyFormProbeV1, ApplyDraftSnapshotV1, ApplyBlockedReason, CoverLetterSource } from '../domain/entities';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem, ApplyEntrypointProbeV1, ApplyFormProbeV1, ApplyDraftSnapshotV1, ApplyBlockedReason, CoverLetterSource, ApplySubmitReceiptV1 } from '../domain/entities';
 import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode, LLMScreeningInputV1, ScreeningCard, EvaluateExtractsInputV1, EvalCandidate } from '../domain/llm_contracts';
 
 export class AgentUseCase {
@@ -1847,6 +1848,109 @@ export class AgentUseCase {
       } catch (e: any) {
            console.error(e);
            return this.failSession(currentState, `Draft Fill Failed: ${e.message}`);
+      }
+  }
+
+  // --- Phase E1.4: Submit Application & Verify ---
+  async submitApplication(state: AgentState, siteId: string): Promise<AgentState> {
+      if (!state.activeApplyFormProbe || !state.activeApplyDraft) {
+          return this.failSession(state, "Missing Apply Probe or Draft data to submit.");
+      }
+
+      const vacancyId = state.activeApplyDraft.vacancyId;
+      const submitSelector = state.activeApplyFormProbe.safeLocators.submitHint;
+      const successHints = state.activeApplyFormProbe.successTextHints || ['Success'];
+
+      if (!submitSelector) {
+          return this.failSession(state, "Cannot submit: Submit button selector missing.");
+      }
+
+      let currentState = await this.updateState({
+          ...state,
+          status: AgentStatus.SUBMITTING_APPLICATION,
+          logs: [...state.logs, `Executing SUBMIT for vacancy ${vacancyId} (One-shot)...`]
+      });
+
+      try {
+          // 1. Click Submit
+          const clicked = await this.browser.clickElement(submitSelector);
+          if (!clicked) {
+              throw new Error("Failed to click submit button.");
+          }
+
+          currentState = await this.updateState({
+              ...currentState,
+              logs: [...currentState.logs, "Submit button clicked. Verifying success state..."]
+          });
+
+          // 2. Poll for Success Markers
+          let confirmed = false;
+          let evidence = '';
+          const maxRetries = 5;
+
+          for (let i = 0; i < maxRetries; i++) {
+              await new Promise(r => setTimeout(r, 1000)); // Wait 1s
+              
+              const pageText = await this.browser.getPageTextMinimal();
+              const foundHint = successHints.find(hint => pageText.includes(hint));
+              
+              if (foundHint) {
+                  confirmed = true;
+                  evidence = `Found text: '${foundHint}'`;
+                  break;
+              }
+          }
+
+          // 3. Determine Outcome
+          const status = confirmed ? 'APPLIED' : 'FAILED';
+          const failureReason = confirmed ? null : 'NO_CONFIRMATION';
+
+          // 4. Create Receipt
+          const receipt: ApplySubmitReceiptV1 = {
+              receiptId: crypto.randomUUID(),
+              vacancyId,
+              siteId,
+              submittedAt: Date.now(),
+              successConfirmed: confirmed,
+              confirmationSource: confirmed ? 'TEXT_HINT' : 'UNKNOWN',
+              confirmationEvidence: evidence,
+              failureReason
+          };
+
+          await this.storage.saveApplySubmitReceipt(siteId, receipt);
+
+          // 5. Update Queue
+          const queue = state.activeApplyQueue;
+          if (queue) {
+              const item = queue.items.find(i => i.vacancyId === vacancyId);
+              if (item) {
+                  item.status = status; // APPLIED or FAILED
+                  item.applicationResult = receipt.receiptId;
+                  
+                  // Update summary
+                  queue.summary.pending = queue.items.filter(i => i.status === 'PENDING').length;
+                  if (status === 'APPLIED') queue.summary.applied++;
+                  if (status === 'FAILED') queue.summary.failed++;
+                  
+                  await this.storage.saveApplyQueue(siteId, queue);
+              }
+          }
+
+          const logMsg = confirmed 
+              ? `SUCCESS: Application submitted and confirmed (${evidence}).` 
+              : `FAILURE: Submitted but confirmation missing.`;
+
+          return this.updateState({
+              ...currentState,
+              status: confirmed ? AgentStatus.APPLICATION_SUBMITTED : AgentStatus.APPLICATION_FAILED,
+              activeSubmitReceipt: receipt,
+              activeApplyQueue: queue, // Force refresh of queue UI
+              logs: [...currentState.logs, logMsg]
+          });
+
+      } catch (e: any) {
+          console.error(e);
+          return this.failSession(currentState, `Submit Failed: ${e.message}`);
       }
   }
 

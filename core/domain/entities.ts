@@ -1,3 +1,4 @@
+
 // Layer: DOMAIN
 // Purpose: Enterprise business rules and core entities.
 // Allowed: Pure TS classes/interfaces. No external dependencies.
@@ -441,6 +442,19 @@ export interface ApplyDraftSnapshotV1 {
   blockedReason: ApplyBlockedReason;
 }
 
+// --- Phase E1.4: Apply Submit Receipt ---
+
+export interface ApplySubmitReceiptV1 {
+    receiptId: string;
+    vacancyId: string;
+    siteId: string;
+    submittedAt: number;
+    successConfirmed: boolean;
+    confirmationSource: 'TEXT_HINT' | 'URL_CHANGE' | 'UNKNOWN';
+    confirmationEvidence: string; // e.g. "Found text: 'Отклик отправлен'"
+    failureReason: 'SUBMIT_BUTTON_NOT_FOUND' | 'NO_CONFIRMATION' | 'NAV_CHANGED' | 'TIMEOUT' | null;
+}
+
 // --- Core State ---
 
 export interface AgentState {
@@ -468,6 +482,7 @@ export interface AgentState {
   activeApplyProbe?: ApplyEntrypointProbeV1 | null; // Phase E1.1: Transient Probe Result
   activeApplyFormProbe?: ApplyFormProbeV1 | null; // Phase E1.2: Transient Form Probe
   activeApplyDraft?: ApplyDraftSnapshotV1 | null; // Phase E1.3: Transient Draft Result
+  activeSubmitReceipt?: ApplySubmitReceiptV1 | null; // Phase E1.4: Final Result
 }
 
 export interface ProfileSnapshot {
@@ -500,5 +515,6 @@ export const createInitialAgentState = (): AgentState => ({
   activeApplyQueue: null,
   activeApplyProbe: null,
   activeApplyFormProbe: null,
-  activeApplyDraft: null
+  activeApplyDraft: null,
+  activeSubmitReceipt: null
 });

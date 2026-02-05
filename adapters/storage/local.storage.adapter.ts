@@ -1,8 +1,9 @@
+
 // Layer: ADAPTERS
 
 import { StoragePort } from '../../core/ports/storage.port';
 import { AgentConfig } from '../../types';
-import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1, LLMVacancyEvalBatchV1, ApplyQueueV1, ApplyDraftSnapshotV1 } from '../../core/domain/entities';
+import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1, LLMVacancyEvalBatchV1, ApplyQueueV1, ApplyDraftSnapshotV1, ApplySubmitReceiptV1 } from '../../core/domain/entities';
 import { TargetingSpecV1 } from '../../core/domain/llm_contracts';
 
 const KEY_CONFIG = 'as_config';
@@ -24,6 +25,7 @@ const KEY_EXTRACTION_BATCH_PREFIX = 'as_extraction_batch_';
 const KEY_EVAL_BATCH_PREFIX = 'as_eval_batch_';
 const KEY_APPLY_QUEUE_PREFIX = 'as_apply_queue_';
 const KEY_APPLY_DRAFT_PREFIX = 'as_apply_draft_';
+const KEY_APPLY_RECEIPT_PREFIX = 'as_apply_receipt_';
 
 export class LocalStorageAdapter implements StoragePort {
   async saveConfig(config: AgentConfig): Promise<void> {
@@ -288,6 +290,13 @@ export class LocalStorageAdapter implements StoragePort {
       const key = `${KEY_APPLY_DRAFT_PREFIX}${siteId}_${vacancyId}`;
       const raw = localStorage.getItem(key);
       return raw ? JSON.parse(raw) : null;
+  }
+
+  // --- Phase E1.4 Implementation ---
+
+  async saveApplySubmitReceipt(siteId: string, receipt: ApplySubmitReceiptV1): Promise<void> {
+      const key = `${KEY_APPLY_RECEIPT_PREFIX}${siteId}_${receipt.receiptId}`;
+      localStorage.setItem(key, JSON.stringify(receipt));
   }
 
   // -----------------------------

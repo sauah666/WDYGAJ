@@ -1,4 +1,5 @@
-# 📘 PROJECT DOCUMENTATION — v1.22
+
+# 📘 PROJECT DOCUMENTATION — v1.23
 
 **Проект:** Agent-based Job Search Automation  
 **Аудитория:** LLM-агент-разработчик (Gemini / GPT / Claude)  
@@ -137,11 +138,17 @@ MASTER PLAN v1.0 — JobSearch Agent (Mode 1: HH.ru, затем мультиса
 - MockBrowserAdapter симулирует состояние успеха после Submit.
 - ApplyQueueItem получает статус IN_PROGRESS при обработке.
 - ApplyFormProbeV1 содержит текстовые маркеры успеха (Success Hints) вместо селекторов.
+✅ Done-E1.4: Submit Application & Verify
+- Клик по кнопке Submit (через селектор из Probe).
+- Ожидание подтверждения успеха (Success Hints polling).
+- Формирование `ApplySubmitReceiptV1`.
+- Обновление статуса в очереди (PENDING -> IN_PROGRESS -> APPLIED/FAILED).
+- Graceful error handling (receipt с причиной отказа).
 
 2) MASTER PLAN — от “сейчас” до “финиша”
 PHASE E — Auto Apply (отклики)
 E1. Apply With Cover Letter (script)
-- E1.4: Submit & Verify (Click Submit -> Check Confirmation UI)
+- E1.5: Apply Queue Automation (Loop) — автоматический цикл по очереди
 E2. Questionnaire Handling (DOM → LLM → Fill)
 - Ответы строго по ProfileSnapshot, без выдумок
 E3. Retry & Failover
@@ -171,5 +178,5 @@ UI: выбор режима/сайта/настроек и reset’ов.
 Документация: позволяет новому агенту продолжить без истории.
 
 4) Текущая точка
-Последний завершённый этап: PHASE E1.3 — DRAFT APPLICATION FILL (NO SUBMIT)
-Текущий этап: PHASE E1.4 — SUBMIT APPLICATION & VERIFY
+Последний завершённый этап: PHASE E1.4 — SUBMIT APPLICATION & VERIFY
+Текущий этап: PHASE E1.5 — APPLY QUEUE AUTOMATION (LOOP)

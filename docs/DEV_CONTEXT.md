@@ -1,46 +1,32 @@
+
 # Developer Context (Save Game)
 
-**Last Updated**: Phase E1.3 Verified (with UI/Logic Patches for P1.1 - P1.11)
+**Last Updated**: Phase E1.4 Verified
 **Role**: Senior Agent Architect
 **Manifesto**: See `docs/PROJECT_DOCUMENTATION.md` (Rule D-01)
 
 ## Где мы сейчас?
-Мы находимся в **PHASE E1.3: DRAFT APPLICATION FILL (NO SUBMIT)**.
-Параллельно закрыты критические пробелы в UI и логике (Patches E1.2-P1.x).
+Мы завершили **PHASE E1.4: SUBMIT APPLICATION & VERIFY**.
+Агент умеет проходить полный цикл отклика для **одной** вакансии в ручном режиме: открытие, драфт, отправка, подтверждение.
 
 ### Что сделано:
-1.  **Drafting**: Агент научился открывать форму отклика, находить поле сопроводительного письма и заполнять его текстом.
-2.  **Configuration**: В UI (Settings) добавлено поле для редактирования шаблона сопроводительного письма.
-3.  **Safety**: Реализован механизм "Read-Back" — проверка, что текст реально попал в поле ввода.
-4.  **UI Fixes (Patches)**:
-    *   Все "тупиковые" состояния (`WAITING_FOR_...`) теперь имеют кнопки управления в `AgentStatusScreen`.
-    *   В `WAITING_FOR_SEARCH_PREFS` реализована полноценная форма настройки фильтров.
-5.  **Logic Fixes (Patch P1.6)**:
-    *   `AgentUseCase.fillApplyFormDraft` теперь подключен к конфигу. Если пользователь задал шаблон сопроводительного письма в Settings, агент использует его вместо заглушки.
-6.  **Reliability (Patch P1.7)**:
-    *   `AgentPresenter` восстанавливает конфиг (`rehydration`) при старте приложения. Это позволяет продолжать работу после F5 без потери контекста (targetSite, template).
-7.  **Priority Logic (Patch P1.8)**:
-    *   `AgentUseCase.fillApplyFormDraft` теперь проверяет наличие `generatedCoverLetter` в очереди. Если оно есть, оно имеет приоритет над глобальным шаблоном.
-8.  **Mock Fidelity (Patch P1.9)**:
-    *   `MockBrowserAdapter` отвязан от реальных селекторов hh.ru. Теперь он использует сценарное состояние (`isApplyModalOpen`) и абстрактные идентификаторы (`mock://apply-form/submit`).
-9.  **E1.4 Readiness (Patch P1.11)**:
-    *   **Mock Submit**: `MockBrowserAdapter` при клике на submit теперь закрывает модалку и переводит состояние страницы в "Success", инжектируя текст успеха в `getPageTextMinimal`.
-    *   **Queue Status**: При обработке элемента очереди (`probeNextApplyEntrypoint`) его статус меняется с `PENDING` на `IN_PROGRESS` (визуализируется в UI).
-    *   **Success Hints**: В `ApplyFormProbeV1` добавлены текстовые маркеры (например, "Отклик отправлен") для будущей проверки успеха без привязки к селекторам.
+1.  **Submission**: Реализован метод `submitApplication` с однократным кликом по кнопке.
+2.  **Verification**: Внедрен поллинг (polling) текстовых маркеров успеха (`successTextHints`) для подтверждения отправки.
+3.  **Receipts**: Создается артефакт `ApplySubmitReceiptV1` с доказательствами успеха или причиной провала.
+4.  **Queue Management**: Статус элемента очереди корректно переходит `PENDING` -> `IN_PROGRESS` -> `APPLIED` (или `FAILED`).
+5.  **Error Handling**: Обработаны сценарии отсутствия кнопки Submit или таймаута подтверждения — сессия не падает, элемент помечается как failed.
 
 ### Текущее техническое состояние:
-*   State Machine теперь полностью проходима в ручном режиме от старта до драфта отклика.
-*   Данные конфига (Settings) корректно влияют на поведение агента (Drafting).
-*   В стейте доступен `activeApplyDraft`.
-*   Активный элемент очереди имеет статус `IN_PROGRESS`.
+*   State Machine поддерживает статусы `SUBMITTING_APPLICATION`, `APPLICATION_SUBMITTED`, `APPLICATION_FAILED`.
+*   В `AgentStatusScreen` отображается чек (Receipt) с результатом последнего отклика.
+*   Кнопка "PROBE APPLY ENTRYPOINT" доступна после завершения (успешного или нет) предыдущего цикла, что позволяет вручную запустить следующий элемент.
 
 ### Следующий шаг (IMMEDIATE NEXT):
-**PHASE E1.4 — SUBMIT APPLICATION & VERIFY**:
-1.  Выполнить клик по кнопке Submit (используя `submitHint` из `ApplyFormProbeV1`).
-2.  Ожидать (wait loop) появления подтверждения успеха (используя `successTextHints`).
-3.  Обновить статус элемента в `ApplyQueueV1` (`APPLIED` или `FAILED`).
-4.  Зафиксировать результат отклика.
-5.  Вернуться к очереди (цикл).
+**PHASE E1.5 — APPLY QUEUE AUTOMATION (LOOP)**:
+1.  Реализовать автоматический цикл обработки всей очереди (`ApplyQueueV1`).
+2.  Агент должен сам переходить к следующему элементу после завершения текущего (`APPLIED`/`FAILED`).
+3.  Добавить задержки (throttling) между откликами.
+4.  Остановка при пустой очереди или критических ошибках.
 
 ## Правила разработки (Strict)
 См. `docs/PROJECT_DOCUMENTATION.md`
