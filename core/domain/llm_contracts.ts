@@ -1,7 +1,7 @@
 // Layer: DOMAIN
 // Purpose: Data Transfer Objects (DTOs) and Contracts for LLM interactions.
 
-import { RawFormField, VacancySalary } from './entities';
+import { RawFormField, VacancySalary, QuestionnaireField } from './entities';
 
 // --- Enums for Validation ---
 
@@ -135,6 +135,30 @@ export interface EvaluateExtractsOutputV1 {
     input: number;
     output: number;
   };
+}
+
+// --- Phase E2: Questionnaire Answer Generation ---
+
+export interface QuestionnaireAnswerInputV1 {
+  profileSummary: string;
+  userConstraints: UserConstraints;
+  fields: {
+    id: string;
+    label: string;
+    type: string;
+    options?: string[];
+  }[];
+}
+
+export interface QuestionnaireAnswerOutputV1 {
+  answers: {
+    fieldId: string;
+    value: string | boolean | number | string[] | null;
+    confidence: number;
+    factsUsed: string[];
+    risks: string[];
+  }[];
+  globalRisks: string[];
 }
 
 // --- Output Contract ---

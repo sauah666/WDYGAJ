@@ -2,7 +2,7 @@
 // Purpose: Mock implementation of LLM Port for development.
 
 import { LLMProviderPort } from '../../core/ports/llm.port';
-import { ProfileSummaryV1, TargetingSpecV1, WorkMode, SeniorityLevel, RoleCategory, SearchUIAnalysisInputV1, LLMScreeningInputV1, LLMScreeningOutputV1, EvaluateExtractsInputV1, EvaluateExtractsOutputV1 } from '../../core/domain/llm_contracts';
+import { ProfileSummaryV1, TargetingSpecV1, WorkMode, SeniorityLevel, RoleCategory, SearchUIAnalysisInputV1, LLMScreeningInputV1, LLMScreeningOutputV1, EvaluateExtractsInputV1, EvaluateExtractsOutputV1, QuestionnaireAnswerInputV1, QuestionnaireAnswerOutputV1 } from '../../core/domain/llm_contracts';
 import { SearchUISpecV1 } from '../../core/domain/entities';
 
 export class MockLLMAdapter implements LLMProviderPort {
@@ -248,6 +248,50 @@ export class MockLLMAdapter implements LLMProviderPort {
               input: input.candidates.length * 500,
               output: input.candidates.length * 50
           }
+      };
+  }
+
+  async generateQuestionnaireAnswers(input: QuestionnaireAnswerInputV1): Promise<QuestionnaireAnswerOutputV1> {
+      console.log(`[MockLLMAdapter] Generating answers for ${input.fields.length} questions...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const answers = input.fields.map(field => {
+          let value: any = null;
+          let confidence = 0.0;
+          let factsUsed: string[] = [];
+          let risks: string[] = [];
+          
+          if (field.label.includes("Years")) {
+              value = "10";
+              confidence = 1.0;
+              factsUsed = ["10 years experience in text"];
+          } else if (field.label.includes("Visa")) {
+              value = "No"; // Radio
+              confidence = 0.2; // Low confidence assumption
+              factsUsed = ["UNKNOWN"];
+              risks = ["missing_fact"];
+          } else if (field.label.includes("Portfolio")) {
+              value = "https://github.com/mock-user";
+              confidence = 1.0;
+              factsUsed = ["GitHub link found"];
+          } else {
+              value = "Unknown";
+              confidence = 0.0;
+              risks = ["missing_fact"];
+          }
+
+          return {
+              fieldId: field.id,
+              value,
+              confidence,
+              factsUsed,
+              risks
+          };
+      });
+
+      return {
+          answers,
+          globalRisks: []
       };
   }
 }

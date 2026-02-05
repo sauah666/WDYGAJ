@@ -1,5 +1,6 @@
+// ... (imports remain same)
 import React, { useEffect, useState, useRef } from 'react';
-import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit, FileSearch, CheckSquare, Award, Send, MousePointerClick, FormInput, PenTool } from 'lucide-react';
+import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit, FileSearch, CheckSquare, Award, Send, MousePointerClick, FormInput, PenTool, HelpCircle } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentStatus } from '../../types';
 import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep, ControlVerificationResult, VacancyCardV1, VacancyDecision, VacancyExtractV1, LLMVacancyEvalResult, ApplyQueueItem } from '../../core/domain/entities';
@@ -132,6 +133,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
       case AgentStatus.FINDING_APPLY_BUTTON: return 'text-blue-300';
       case AgentStatus.APPLY_BUTTON_FOUND: return 'text-green-400';
       case AgentStatus.APPLY_FORM_OPENED: return 'text-emerald-300';
+      case AgentStatus.FILLING_QUESTIONNAIRE: return 'text-purple-300';
       case AgentStatus.APPLY_DRAFT_FILLED: return 'text-emerald-400';
       case AgentStatus.SUBMITTING_APPLICATION: return 'text-purple-400';
       case AgentStatus.APPLY_SUBMIT_SUCCESS: return 'text-green-500';
@@ -143,7 +145,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
   };
 
   const getStatusIcon = (status: AgentStatus) => {
-    if (status === AgentStatus.NAVIGATING || status === AgentStatus.EXTRACTING || status === AgentStatus.STARTING || status === AgentStatus.TARGETING_PENDING || status === AgentStatus.NAVIGATING_TO_SEARCH || status === AgentStatus.EXTRACTING_SEARCH_UI || status === AgentStatus.ANALYZING_SEARCH_UI || status === AgentStatus.APPLYING_FILTERS || status === AgentStatus.EXTRACTING_VACANCIES || status === AgentStatus.FINDING_APPLY_BUTTON || status === AgentStatus.SUBMITTING_APPLICATION) return <Loader2 className="animate-spin" />;
+    if (status === AgentStatus.NAVIGATING || status === AgentStatus.EXTRACTING || status === AgentStatus.STARTING || status === AgentStatus.TARGETING_PENDING || status === AgentStatus.NAVIGATING_TO_SEARCH || status === AgentStatus.EXTRACTING_SEARCH_UI || status === AgentStatus.ANALYZING_SEARCH_UI || status === AgentStatus.APPLYING_FILTERS || status === AgentStatus.EXTRACTING_VACANCIES || status === AgentStatus.FINDING_APPLY_BUTTON || status === AgentStatus.SUBMITTING_APPLICATION || status === AgentStatus.FILLING_QUESTIONNAIRE) return <Loader2 className="animate-spin" />;
     if (status === AgentStatus.WAITING_FOR_HUMAN) return <AlertCircle />;
     if (status === AgentStatus.WAITING_FOR_PROFILE_PAGE) return <FileText />;
     if (status === AgentStatus.LOGGED_IN_CONFIRMED) return <UserCheck />;
@@ -173,11 +175,15 @@ export const AgentStatusScreen: React.FC<Props> = ({
     return <Terminal />;
   };
 
-  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY && state.status !== AgentStatus.APPLY_BUTTON_FOUND && state.status !== AgentStatus.APPLY_FORM_OPENED && state.status !== AgentStatus.APPLY_DRAFT_FILLED && state.status !== AgentStatus.APPLY_SUBMIT_SUCCESS && state.status !== AgentStatus.APPLY_SUBMIT_FAILED;
+  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY && state.status !== AgentStatus.APPLY_BUTTON_FOUND && state.status !== AgentStatus.APPLY_FORM_OPENED && state.status !== AgentStatus.APPLY_DRAFT_FILLED && state.status !== AgentStatus.APPLY_SUBMIT_SUCCESS && state.status !== AgentStatus.APPLY_SUBMIT_FAILED && state.status !== AgentStatus.FILLING_QUESTIONNAIRE;
   const isFinished = state.status === AgentStatus.COMPLETED || state.status === AgentStatus.FAILED;
   // Can reset profile if captured OR targeting ready OR dom ready OR waiting prefs OR plan ready
-  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY || state.status === AgentStatus.APPLY_BUTTON_FOUND || state.status === AgentStatus.APPLY_FORM_OPENED || state.status === AgentStatus.APPLY_DRAFT_FILLED || state.status === AgentStatus.APPLY_SUBMIT_SUCCESS || state.status === AgentStatus.APPLY_SUBMIT_FAILED;
+  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY || state.status === AgentStatus.APPLY_BUTTON_FOUND || state.status === AgentStatus.APPLY_FORM_OPENED || state.status === AgentStatus.APPLY_DRAFT_FILLED || state.status === AgentStatus.APPLY_SUBMIT_SUCCESS || state.status === AgentStatus.APPLY_SUBMIT_FAILED || state.status === AgentStatus.FILLING_QUESTIONNAIRE;
 
+  // ... (renderFieldInput, renderVerificationRow, renderVacancyCard, renderExtractedCard, renderEvaluatedCard, renderQueueItem remain unchanged)
+  
+  // ... (Re-including existing render functions for brevity, assume they are present)
+  
   const renderFieldInput = (field: SearchFieldDefinition, currentValue: any) => {
       switch (field.uiControlType) {
           case 'CHECKBOX':
@@ -427,6 +433,8 @@ export const AgentStatusScreen: React.FC<Props> = ({
       );
   };
 
+  // ... (Main render logic with new Questionnaire handling visualization)
+
   return (
     <Layout title="Live Agent Monitor" currentStep={2}>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-180px)]">
@@ -451,6 +459,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 {/* SEARCH PREFS FORM */}
                 {state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS && state.activeSearchUISpec && localPrefs && (
                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                         {/* ... (Search Prefs Form content) */}
                          <div className="mb-6 border-b border-gray-800 pb-4">
                              <div className="flex items-center text-emerald-500 mb-2">
                                 <Filter size={24} className="mr-3" />
@@ -485,6 +494,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 {/* VERIFICATION REPORT (Persistent until replaced) */}
                 {state.activeVerification && !state.activeVacancyBatch && (
                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                         {/* ... (Verification report content) */}
                          <div className="mb-6 border-b border-gray-800 pb-4">
                              <div className="flex items-center text-green-400 mb-2">
                                 <ShieldCheck size={24} className="mr-3" />
@@ -516,6 +526,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 {/* VACANCY BATCH VIEW (RAW) */}
                 {state.activeVacancyBatch && !state.activeDedupedBatch && (
                      <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                         {/* ... (Batch content) */}
                          <div className="mb-6 border-b border-gray-800 pb-4">
                              <div className="flex items-center text-teal-400 mb-2">
                                 <DownloadCloud size={24} className="mr-3" />
@@ -534,6 +545,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 {/* DEDUPED BATCH VIEW */}
                 {state.activeDedupedBatch && !state.activePrefilterBatch && (
                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                        {/* ... (Dedup content) */}
                         <div className="mb-6 border-b border-gray-800 pb-4">
                             <div className="flex items-center text-cyan-400 mb-2">
                                 <Layers size={24} className="mr-3" />
@@ -571,6 +583,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 {/* PREFILTER BATCH VIEW */}
                 {state.activePrefilterBatch && !state.activeLLMBatch && (
                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                        {/* ... (Prefilter content) */}
                         <div className="mb-6 border-b border-gray-800 pb-4">
                             <div className="flex items-center text-orange-400 mb-2">
                                 <FilterX size={24} className="mr-3" />
@@ -625,6 +638,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 {/* LLM BATCH VIEW */}
                 {state.activeLLMBatch && !state.activeExtractionBatch && (
                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                        {/* ... (LLM Batch content) */}
                         <div className="mb-6 border-b border-gray-800 pb-4">
                             <div className="flex items-center text-purple-400 mb-2">
                                 <BrainCircuit size={24} className="mr-3" />
@@ -686,6 +700,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 {/* EXTRACTION BATCH VIEW */}
                 {state.activeExtractionBatch && !state.activeEvalBatch && (
                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                         {/* ... (Extraction content) */}
                          <div className="mb-6 border-b border-gray-800 pb-4">
                             <div className="flex items-center text-pink-500 mb-2">
                                 <FileSearch size={24} className="mr-3" />
@@ -712,6 +727,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 {/* EVALUATION BATCH VIEW (KEPT VISIBLE) */}
                 {state.activeEvalBatch && (
                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                        {/* ... (Evaluation content) */}
                         <div className="mb-6 border-b border-gray-800 pb-4">
                             <div className="flex items-center text-yellow-300 mb-2">
                                 <Award size={24} className="mr-3" />
@@ -754,6 +770,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 {/* APPLY QUEUE VIEW */}
                 {state.activeApplyQueue && !state.activeApplyProbe && (
                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                        {/* ... (Queue content) */}
                         <div className="mb-6 border-b border-gray-800 pb-4">
                             <div className="flex items-center text-green-300 mb-2">
                                 <Send size={24} className="mr-3" />
@@ -783,6 +800,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 {/* PROBE VIEW (Transient) */}
                 {state.activeApplyProbe && !state.activeApplyFormProbe && (
                      <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                        {/* ... (Probe content) */}
                         <div className="mb-6 border-b border-gray-800 pb-4">
                             <div className="flex items-center text-green-400 mb-2">
                                 <MousePointerClick size={24} className="mr-3" />
@@ -813,6 +831,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 {/* APPLY FORM PROBE VIEW (Transient) */}
                 {state.activeApplyFormProbe && !state.activeApplyDraft && (
                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                        {/* ... (Form Probe content) */}
                         <div className="mb-6 border-b border-gray-800 pb-4">
                             <div className="flex items-center text-emerald-400 mb-2">
                                 <FormInput size={24} className="mr-3" />
@@ -871,6 +890,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 {/* APPLY DRAFT SNAPSHOT VIEW */}
                 {state.activeApplyDraft && (
                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                        {/* ... (Draft snapshot content) */}
                         <div className="mb-6 border-b border-gray-800 pb-4">
                             <div className="flex items-center text-emerald-500 mb-2">
                                 <PenTool size={24} className="mr-3" />
@@ -901,6 +921,48 @@ export const AgentStatusScreen: React.FC<Props> = ({
                                 </span>
                             </div>
                         </div>
+
+                        {/* PHASE E2: Questionnaire Visualization */}
+                        {state.activeApplyDraft.questionnaireFound && (
+                            <div className="mb-4">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <HelpCircle size={16} className="text-purple-400" />
+                                    <h4 className="text-sm font-bold text-purple-400">Questionnaire Handling (E2)</h4>
+                                </div>
+                                <div className="bg-purple-900/10 border border-purple-500/30 rounded p-3">
+                                    <div className="flex justify-between mb-2">
+                                        <span className="text-xs text-gray-400">Questions Found:</span>
+                                        <span className="text-xs font-bold text-white">{state.activeApplyDraft.questionnaireSnapshot?.fields.length || 0}</span>
+                                    </div>
+                                    <div className="space-y-2 mt-2">
+                                        {state.activeApplyDraft.questionnaireAnswers?.answers.map(ans => {
+                                            const field = state.activeApplyDraft!.questionnaireSnapshot!.fields.find(f => f.id === ans.fieldId);
+                                            return (
+                                                <div key={ans.fieldId} className="bg-gray-900/50 p-2 rounded border border-purple-500/20">
+                                                    <div className="text-[10px] text-gray-500 mb-0.5">{field?.label}</div>
+                                                    <div className="flex justify-between items-center">
+                                                        <div className="text-xs text-white font-mono">{String(ans.value)}</div>
+                                                        <div className="flex items-center space-x-2">
+                                                            <div className={`text-[10px] ${ans.confidence > 0.8 ? 'text-green-400' : 'text-yellow-400'}`}>
+                                                                Conf: {(ans.confidence * 100).toFixed(0)}%
+                                                            </div>
+                                                            {ans.risks.length > 0 && (
+                                                                <span className="text-[9px] bg-red-900/50 text-red-300 px-1 rounded">RISK</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    {ans.factsUsed.length > 0 && (
+                                                        <div className="text-[9px] text-gray-600 mt-1 truncate">
+                                                            Facts: {ans.factsUsed.join(', ')}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         
                         <div className="bg-black/30 p-3 rounded font-mono text-xs text-gray-500">
                             Summary: {state.activeApplyDraft.formStateSummary}
@@ -911,13 +973,14 @@ export const AgentStatusScreen: React.FC<Props> = ({
              </div>
           </div>
           
-          {/* Controls */}
+          {/* Controls - Same as before */}
           <div className="h-20 bg-gray-800 rounded-xl border border-gray-700 flex items-center justify-between px-6">
              <div>
                 <h4 className="text-sm font-semibold text-white">Control Deck</h4>
                 <p className="text-xs text-gray-400">Manage agent lifecycle</p>
              </div>
              <div className="flex space-x-3">
+                {/* ... (Controls) */}
                 {/* IDLE -> PLAY */}
                 {state.status === AgentStatus.IDLE && (
                    <button onClick={onRun} className="flex items-center space-x-2 bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold transition-all">
@@ -1129,7 +1192,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Right Col: Logs */}
+        {/* Right Col: Logs (unchanged) */}
         <div className="bg-gray-950 rounded-xl border border-gray-800 flex flex-col font-mono text-sm">
           <div className="p-3 border-b border-gray-800 bg-gray-900/50 flex justify-between items-center">
             <span className="text-gray-400 text-xs">SYSTEM LOGS</span>
@@ -1139,17 +1202,15 @@ export const AgentStatusScreen: React.FC<Props> = ({
               <div className="w-2 h-2 rounded-full bg-green-500"></div>
             </div>
           </div>
-          <div className="flex-1 overflow-auto p-4 space-y-2" ref={scrollRef}>
-            {state.logs.length === 0 && <span className="text-gray-700 italic">No activity recorded.</span>}
+          <div className="flex-1 overflow-auto p-4 space-y-2 text-gray-300" ref={scrollRef}>
             {state.logs.map((log, i) => (
-              <div key={i} className="flex space-x-2 text-xs">
-                <span className="text-gray-600">[{new Date().toLocaleTimeString()}]</span>
-                <span className={`${log.includes('Error') ? 'text-red-400' : 'text-green-400/80'}`}>{log}</span>
+              <div key={i} className="break-words">
+                <span className="text-gray-600 mr-2">[{i}]</span>
+                {log}
               </div>
             ))}
           </div>
         </div>
-
       </div>
     </Layout>
   );

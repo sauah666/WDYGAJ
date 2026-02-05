@@ -424,6 +424,43 @@ export interface ApplyFormProbeV1 {
     scannedAt: number;
 }
 
+// --- Phase E2: Questionnaire Handling ---
+
+export interface QuestionnaireField {
+    id: string;
+    type: 'TEXT' | 'TEXTAREA' | 'RADIO' | 'CHECKBOX' | 'SELECT' | 'FILE' | 'UNKNOWN';
+    label: string;
+    options?: string[]; // For SELECT/RADIO
+    required: boolean;
+    selector: string; // Abstract handle
+}
+
+export interface QuestionnaireSnapshotV1 {
+    vacancyId: string;
+    siteId: string;
+    pageUrl: string;
+    capturedAt: number;
+    fields: QuestionnaireField[];
+    questionnaireHash: string; // to detect duplicates/idempotency
+}
+
+export interface QuestionnaireAnswer {
+    fieldId: string;
+    value: string | boolean | number | string[] | null;
+    confidence: number; // 0..1
+    factsUsed: string[];
+    risks: string[];
+}
+
+export interface QuestionnaireAnswerSetV1 {
+    id: string;
+    questionnaireHash: string;
+    vacancyId: string;
+    generatedAt: number;
+    answers: QuestionnaireAnswer[];
+    globalRisks: string[];
+}
+
 // --- Phase E1.3: Apply Draft Snapshot ---
 
 export type ApplyBlockedReason = 'VACANCY_NOT_OPENED' | 'APPLY_ENTRYPOINT_NOT_FOUND' | 'FORM_NOT_REACHED' | 'FIELD_NOT_FOUND' | 'READBACK_FAILED' | null;
@@ -437,6 +474,13 @@ export interface ApplyDraftSnapshotV1 {
   coverLetterFilled: boolean;
   coverLetterReadbackHash: string | null;
   coverLetterSource?: CoverLetterSource; // Track where the text came from
+  
+  // Phase E2: Questionnaire State
+  questionnaireFound: boolean;
+  questionnaireFilled: boolean;
+  questionnaireSnapshot?: QuestionnaireSnapshotV1;
+  questionnaireAnswers?: QuestionnaireAnswerSetV1;
+
   formStateSummary: string; // Short desc e.g. "Visible: textarea, submit"
   blockedReason: ApplyBlockedReason;
 }
@@ -485,7 +529,10 @@ export interface AgentState {
   activeApplyProbe?: ApplyEntrypointProbeV1 | null; // Phase E1.1: Transient Probe Result
   activeApplyFormProbe?: ApplyFormProbeV1 | null; // Phase E1.2: Transient Form Probe
   activeApplyDraft?: ApplyDraftSnapshotV1 | null; // Phase E1.3: Transient Draft Result
-  // Note: Receipt is ephemeral in state log or part of logs/queue updates
+  
+  // Phase E2
+  activeQuestionnaireSnapshot?: QuestionnaireSnapshotV1 | null;
+  activeQuestionnaireAnswers?: QuestionnaireAnswerSetV1 | null;
 }
 
 export interface ProfileSnapshot {
@@ -518,5 +565,7 @@ export const createInitialAgentState = (): AgentState => ({
   activeApplyQueue: null,
   activeApplyProbe: null,
   activeApplyFormProbe: null,
-  activeApplyDraft: null
+  activeApplyDraft: null,
+  activeQuestionnaireSnapshot: null,
+  activeQuestionnaireAnswers: null
 });

@@ -2,7 +2,7 @@
 
 import { StoragePort } from '../../core/ports/storage.port';
 import { AgentConfig } from '../../types';
-import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1, LLMVacancyEvalBatchV1, ApplyQueueV1, ApplyDraftSnapshotV1, ApplySubmitReceiptV1 } from '../../core/domain/entities';
+import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1, LLMVacancyEvalBatchV1, ApplyQueueV1, ApplyDraftSnapshotV1, ApplySubmitReceiptV1, QuestionnaireSnapshotV1, QuestionnaireAnswerSetV1 } from '../../core/domain/entities';
 import { TargetingSpecV1 } from '../../core/domain/llm_contracts';
 
 const KEY_CONFIG = 'as_config';
@@ -25,6 +25,8 @@ const KEY_EVAL_BATCH_PREFIX = 'as_eval_batch_';
 const KEY_APPLY_QUEUE_PREFIX = 'as_apply_queue_';
 const KEY_APPLY_DRAFT_PREFIX = 'as_apply_draft_';
 const KEY_APPLY_RECEIPT_PREFIX = 'as_apply_receipt_';
+const KEY_QUESTIONNAIRE_SNAP_PREFIX = 'as_quest_snap_';
+const KEY_QUESTIONNAIRE_ANS_PREFIX = 'as_quest_ans_';
 
 export class LocalStorageAdapter implements StoragePort {
   async saveConfig(config: AgentConfig): Promise<void> {
@@ -287,6 +289,30 @@ export class LocalStorageAdapter implements StoragePort {
 
   async getApplyDraftSnapshot(siteId: string, vacancyId: string): Promise<ApplyDraftSnapshotV1 | null> {
       const key = `${KEY_APPLY_DRAFT_PREFIX}${siteId}_${vacancyId}`;
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+  }
+  
+  // --- Phase E2: Questionnaire ---
+  
+  async saveQuestionnaireSnapshot(siteId: string, snapshot: QuestionnaireSnapshotV1): Promise<void> {
+      const key = `${KEY_QUESTIONNAIRE_SNAP_PREFIX}${siteId}_${snapshot.vacancyId}`;
+      localStorage.setItem(key, JSON.stringify(snapshot));
+  }
+  
+  async getQuestionnaireSnapshot(siteId: string, vacancyId: string): Promise<QuestionnaireSnapshotV1 | null> {
+      const key = `${KEY_QUESTIONNAIRE_SNAP_PREFIX}${siteId}_${vacancyId}`;
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+  }
+  
+  async saveQuestionnaireAnswerSet(siteId: string, set: QuestionnaireAnswerSetV1): Promise<void> {
+      const key = `${KEY_QUESTIONNAIRE_ANS_PREFIX}${siteId}_${set.questionnaireHash}`;
+      localStorage.setItem(key, JSON.stringify(set));
+  }
+  
+  async getQuestionnaireAnswerSet(siteId: string, questionnaireHash: string): Promise<QuestionnaireAnswerSetV1 | null> {
+      const key = `${KEY_QUESTIONNAIRE_ANS_PREFIX}${siteId}_${questionnaireHash}`;
       const raw = localStorage.getItem(key);
       return raw ? JSON.parse(raw) : null;
   }

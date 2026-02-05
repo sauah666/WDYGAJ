@@ -6,8 +6,8 @@ import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
 import { AgentStatus, AgentConfig } from '../../types';
-import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem, ApplyEntrypointProbeV1, ApplyFormProbeV1, ApplyDraftSnapshotV1, ApplyBlockedReason, CoverLetterSource, ApplySubmitReceiptV1, ApplyFailureReason } from '../domain/entities';
-import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode, LLMScreeningInputV1, ScreeningCard, EvaluateExtractsInputV1, EvalCandidate } from '../domain/llm_contracts';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem, ApplyEntrypointProbeV1, ApplyFormProbeV1, ApplyDraftSnapshotV1, ApplyBlockedReason, CoverLetterSource, ApplySubmitReceiptV1, ApplyFailureReason, QuestionnaireSnapshotV1, QuestionnaireAnswerSetV1, QuestionnaireAnswer } from '../domain/entities';
+import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode, LLMScreeningInputV1, ScreeningCard, EvaluateExtractsInputV1, EvalCandidate, QuestionnaireAnswerInputV1 } from '../domain/llm_contracts';
 
 export class AgentUseCase {
   constructor(
@@ -134,7 +134,7 @@ export class AgentUseCase {
           // Standard Path: Profile exists, Spec missing -> trigger generation
           currentState = { 
             ...currentState, 
-            status: AgentStatus.PROFILE_CAPTURED,
+            status: AgentStatus.PROFILE_CAPTURED, 
             activeTargetingSpec: null, 
             logs: [...currentState.logs, `Profile found! Hash: ${existing.contentHash.substring(0, 8)}...`] 
           };
@@ -1142,9 +1142,14 @@ export class AgentUseCase {
                   workModeGate = 'UNKNOWN';
               } else {
                   let isMatch = false;
-                  if (userMode === WorkMode.REMOTE && card.workMode === 'remote') isMatch = true;
-                  else if (userMode === WorkMode.HYBRID && (card.workMode === 'hybrid' || card.workMode === 'hybrid' || card.workMode === 'office')) isMatch = true;
-                  else if (userMode === WorkMode.OFFICE && card.workMode === 'office') isMatch = true;
+                  if (userMode === WorkMode.REMOTE && card.workMode === 'remote') {
+                      isMatch = true;
+                  } else if (userMode === WorkMode.HYBRID && (card.workMode === 'hybrid' || card.workMode === 'office')) {
+                      // Allow hybrid or office for hybrid roles
+                      isMatch = true;
+                  } else if (userMode === WorkMode.OFFICE && card.workMode === 'office') {
+                      isMatch = true;
+                  }
                   
                   if (!isMatch && strictMode) {
                       workModeGate = 'FAIL';
@@ -1753,7 +1758,7 @@ export class AgentUseCase {
       }
   }
 
-  // --- Phase E1.3: Fill Application Draft (No Submit) ---
+  // --- Phase E1.3: Fill Application Draft (With E2: Questionnaire Support) ---
   async fillApplyFormDraft(state: AgentState, siteId: string): Promise<AgentState> {
       if (!state.activeApplyProbe || !state.activeApplyFormProbe) {
           return this.failSession(state, "Missing Apply Probe or Form Probe data.");
@@ -1780,6 +1785,11 @@ export class AgentUseCase {
           let readbackHash: string | null = null;
           let summary = "";
           let coverLetterSource: CoverLetterSource = 'NONE';
+          
+          let questionnaireSnapshot: QuestionnaireSnapshotV1 | undefined;
+          let questionnaireAnswers: QuestionnaireAnswerSetV1 | undefined;
+          let questionnaireFound = false;
+          let questionnaireFilled = false;
 
           // 2. Logic: Fill Cover Letter if Field Exists
           if (formProbe.detectedFields.coverLetterTextarea && formProbe.safeLocators.coverLetterHint) {
@@ -1825,7 +1835,88 @@ export class AgentUseCase {
                summary = "No cover letter field detected, skipping fill.";
           }
 
-          // 4. Create Artifact
+          // 4. Phase E2: Handle Questionnaire if Detected
+          if (formProbe.detectedFields.extraQuestionnaireDetected) {
+              questionnaireFound = true;
+              currentState = await this.updateState({
+                 ...currentState,
+                 status: AgentStatus.FILLING_QUESTIONNAIRE,
+                 logs: [...currentState.logs, "Questionnaire detected. Initiating handling..."]
+              });
+              
+              // 4.1 Scan
+              const fields = await this.browser.scanApplyFormArbitrary();
+              const snap: QuestionnaireSnapshotV1 = {
+                  vacancyId,
+                  siteId,
+                  pageUrl: url,
+                  capturedAt: Date.now(),
+                  fields,
+                  questionnaireHash: await this.computeHash(JSON.stringify(fields.map(f => f.id)))
+              };
+              await this.storage.saveQuestionnaireSnapshot(siteId, snap);
+              questionnaireSnapshot = snap;
+
+              // 4.2 Check Existing Answers (Idempotency)
+              let answers = await this.storage.getQuestionnaireAnswerSet(siteId, snap.questionnaireHash);
+              if (answers) {
+                   currentState = await this.updateState({
+                     ...currentState,
+                     logs: [...currentState.logs, "Found existing answers for this questionnaire hash. Reusing."]
+                   });
+              } else {
+                   // 4.3 Generate Answers (LLM)
+                   const profile = await this.storage.getProfile(siteId);
+                   const config = await this.storage.getConfig();
+                   if (!profile) throw new Error("Profile missing for questionnaire generation");
+
+                   const input: QuestionnaireAnswerInputV1 = {
+                       profileSummary: profile.rawContent,
+                       userConstraints: {
+                           preferredWorkMode: config?.workMode || WorkMode.ANY,
+                           minSalary: config?.minSalary || null,
+                           currency: config?.currency || 'RUB',
+                           city: config?.city || null,
+                           targetLanguages: config?.targetLanguages || ['ru']
+                       },
+                       fields: fields.map(f => ({ id: f.id, label: f.label, type: f.type, options: f.options }))
+                   };
+                   
+                   const output = await this.lllm.generateQuestionnaireAnswers(input);
+                   
+                   answers = {
+                       id: crypto.randomUUID(),
+                       questionnaireHash: snap.questionnaireHash,
+                       vacancyId,
+                       generatedAt: Date.now(),
+                       answers: output.answers.map(a => ({ 
+                           fieldId: a.fieldId, 
+                           value: a.value, 
+                           confidence: a.confidence,
+                           factsUsed: a.factsUsed,
+                           risks: a.risks 
+                       })),
+                       globalRisks: output.globalRisks
+                   };
+                   await this.storage.saveQuestionnaireAnswerSet(siteId, answers);
+              }
+              questionnaireAnswers = answers;
+              
+              // 4.4 Fill Form
+              currentState = await this.updateState({
+                 ...currentState,
+                 logs: [...currentState.logs, `Filling ${answers.answers.length} answers into questionnaire...`]
+              });
+              const qFilled = await this.browser.fillApplyForm(answers.answers);
+              if (qFilled) {
+                  questionnaireFilled = true;
+                  summary += " Questionnaire filled.";
+              } else {
+                  summary += " Failed to fill questionnaire.";
+              }
+          }
+
+          // 5. Create Artifact
           const draftSnapshot: ApplyDraftSnapshotV1 = {
               vacancyId,
               siteId,
@@ -1834,6 +1925,10 @@ export class AgentUseCase {
               coverLetterFilled: filled,
               coverLetterReadbackHash: readbackHash,
               coverLetterSource,
+              questionnaireFound,
+              questionnaireFilled,
+              questionnaireSnapshot,
+              questionnaireAnswers,
               formStateSummary: summary,
               blockedReason
           };
@@ -1846,6 +1941,8 @@ export class AgentUseCase {
               ...currentState,
               status: AgentStatus.APPLY_DRAFT_FILLED,
               activeApplyDraft: draftSnapshot,
+              activeQuestionnaireSnapshot: questionnaireSnapshot,
+              activeQuestionnaireAnswers: questionnaireAnswers,
               logs: [...currentState.logs, statusLog, "Safety Stop: Submit NOT clicked."]
           });
 
@@ -1873,9 +1970,8 @@ export class AgentUseCase {
           return this.failSession(state, `Queue item for vacancy ${vacancyId} not found.`);
       }
 
-      if (!formProbe.safeLocators.submitHint) {
-           return this.failSession(state, "No submit button locator found.");
-      }
+      // We still need the hint for legacy reasons or fallback, but E2 introduced submitApplyForm() on port.
+      // But re-opening logic is still valid.
 
       let currentState = await this.updateState({
           ...state,
@@ -1916,36 +2012,61 @@ export class AgentUseCase {
               await this.browser.inputText(formProbe.safeLocators.coverLetterHint, text);
           }
 
-          // 3. CLICK SUBMIT
-          currentState = await this.updateState({
-              ...currentState,
-              logs: [...currentState.logs, `CLICKING SUBMIT BUTTON: ${formProbe.safeLocators.submitHint}`]
-          });
-          
-          const submitClicked = await this.browser.clickElement(formProbe.safeLocators.submitHint);
-          if (!submitClicked) {
-              failureReason = 'SUBMIT_BUTTON_NOT_FOUND';
-              throw new Error("Submit button click failed.");
+          // 2.1 Refill Questionnaire (Phase E2)
+          if (formProbe.detectedFields.extraQuestionnaireDetected) {
+              // Ensure we have answers generated in Draft phase
+              const answers = await this.storage.getQuestionnaireAnswerSet(siteId, state.activeApplyDraft?.questionnaireSnapshot?.questionnaireHash || '');
+              
+              if (answers) {
+                  currentState = await this.updateState({
+                      ...currentState,
+                      logs: [...currentState.logs, `Re-filling questionnaire (${answers.answers.length} fields)...`]
+                  });
+                  await this.browser.fillApplyForm(answers.answers);
+              } else {
+                  // Should have been generated in Draft phase
+                  currentState = await this.updateState({
+                      ...currentState,
+                      logs: [...currentState.logs, `WARNING: Questionnaire detected but no answers found. Submitting might fail.`]
+                  });
+              }
           }
 
-          // 4. VERIFY SUCCESS
+          // 3. SUBMIT (Phase E2 Update: Use Port Method)
           currentState = await this.updateState({
               ...currentState,
-              logs: [...currentState.logs, "Submit clicked. Waiting for confirmation..."]
+              logs: [...currentState.logs, `Submitting form via BrowserPort...`]
+          });
+          
+          await this.browser.submitApplyForm();
+
+          // 4. VERIFY SUCCESS (Phase E2 Update: Use Port Method)
+          currentState = await this.updateState({
+              ...currentState,
+              logs: [...currentState.logs, "Submit action done. Detecting outcome..."]
           });
 
           // Wait loop (Mock is instant, but logic handles delays)
           let attempts = 0;
           while (attempts < 5 && !successConfirmed) {
               await new Promise(r => setTimeout(r, 1000));
-              const pageText = await this.browser.getPageTextMinimal();
+              const outcome = await this.browser.detectApplyOutcome();
               
-              for (const hint of successHints) {
-                  if (pageText.includes(hint)) {
-                      successConfirmed = true;
-                      confirmationEvidence = hint;
-                      break;
-                  }
+              if (outcome === 'SUCCESS') {
+                  successConfirmed = true;
+                  confirmationEvidence = 'Detected by BrowserPort';
+                  break;
+              }
+              // Fallback to text check if needed (legacy compatibility or extra robustness)
+              if (outcome === 'UNKNOWN') {
+                   const pageText = await this.browser.getPageTextMinimal();
+                   for (const hint of successHints) {
+                      if (pageText.includes(hint)) {
+                          successConfirmed = true;
+                          confirmationEvidence = hint;
+                          break;
+                      }
+                   }
               }
               attempts++;
           }
@@ -1994,7 +2115,7 @@ export class AgentUseCase {
 
       const finalStatus = successConfirmed ? AgentStatus.APPLY_SUBMIT_SUCCESS : AgentStatus.APPLY_SUBMIT_FAILED;
       const logMsg = successConfirmed 
-          ? `SUCCESS: Application submitted and verified via hint "${confirmationEvidence}".`
+          ? `SUCCESS: Application submitted and verified via "${confirmationEvidence}".`
           : `FAILURE: Application submitted but verification failed. Reason: ${failureReason}`;
 
       return this.updateState({

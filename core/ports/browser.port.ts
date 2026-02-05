@@ -1,7 +1,7 @@
 // Layer: PORTS
 // Purpose: Define contracts for external services (secondary adapters).
 
-import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult, VacancySalary, ApplyControl, ApplyFormProbeV1 } from '../domain/entities';
+import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult, VacancySalary, ApplyControl, ApplyFormProbeV1, QuestionnaireField, QuestionnaireAnswer } from '../domain/entities';
 
 // DTO for raw vacancy data from the browser (before normalization)
 export interface RawVacancyCard {
@@ -127,6 +127,26 @@ export interface BrowserPort {
    * Phase E1.2: Scans the currently open apply form/modal.
    */
   scanApplyForm(): Promise<RawApplyFormSnapshot>;
+
+  /**
+   * Phase E2: Scans the form for detailed fields (Questionnaire).
+   */
+  scanApplyFormArbitrary(): Promise<QuestionnaireField[]>;
+
+  /**
+   * Phase E2: Fills arbitrary fields with provided answers.
+   */
+  fillApplyForm(answers: QuestionnaireAnswer[]): Promise<boolean>;
+
+  /**
+   * Phase E2: Submits the apply form.
+   */
+  submitApplyForm(): Promise<void>;
+
+  /**
+   * Phase E2: Detects the result of a submission.
+   */
+  detectApplyOutcome(): Promise<'SUCCESS' | 'QUESTIONNAIRE' | 'UNKNOWN' | 'ERROR'>;
 
   /**
    * Phase E1.3: Enters text into a specific element.

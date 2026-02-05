@@ -1,4 +1,4 @@
-# 📘 PROJECT DOCUMENTATION — v1.22
+# 📘 PROJECT DOCUMENTATION — v1.23
 
 **Проект:** Agent-based Job Search Automation  
 **Аудитория:** LLM-агент-разработчик (Gemini / GPT / Claude)  
@@ -137,13 +137,19 @@ MASTER PLAN v1.0 — JobSearch Agent (Mode 1: HH.ru, затем мультиса
 - MockBrowserAdapter симулирует состояние успеха после Submit.
 - ApplyQueueItem получает статус IN_PROGRESS при обработке.
 - ApplyFormProbeV1 содержит текстовые маркеры успеха (Success Hints) вместо селекторов.
+✅ Done-E2: Questionnaire Handling
+- WHAT ADDED: `QuestionnaireSnapshotV1`, `QuestionnaireAnswerSetV1`, `BrowserPort` methods (`submitApplyForm`, `detectApplyOutcome`).
+- WHY: Обработка динамических анкет (опыт, виза, вопросы работодателя) между Apply и Submit.
+- CONSTRAINTS:
+  - No hallucination: если факта нет в профиле -> "UNKNOWN" + Risk.
+  - 1 LLM call на всю анкету.
+  - Reuse answers при повторной попытке.
+- KNOWN RISKS: Unsupported controls (file uploads).
 
 2) MASTER PLAN — от “сейчас” до “финиша”
 PHASE E — Auto Apply (отклики)
 E1. Apply With Cover Letter (script)
 - E1.4: Submit & Verify (Click Submit -> Check Confirmation UI)
-E2. Questionnaire Handling (DOM → LLM → Fill)
-- Ответы строго по ProfileSnapshot, без выдумок
 E3. Retry & Failover
 - 3 ретрая, иначе hide vacancy
 
@@ -171,5 +177,5 @@ UI: выбор режима/сайта/настроек и reset’ов.
 Документация: позволяет новому агенту продолжить без истории.
 
 4) Текущая точка
-Последний завершённый этап: PHASE E1.3 — DRAFT APPLICATION FILL (NO SUBMIT)
-Текущий этап: PHASE E1.4 — SUBMIT APPLICATION & VERIFY
+Последний завершённый этап: PHASE E2 — QUESTIONNAIRE HANDLING
+Текущий этап: PHASE E1.4 — SUBMIT APPLICATION & VERIFY (Re-verify required due to overlaps) + E3

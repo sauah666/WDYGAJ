@@ -2,7 +2,7 @@
 // Purpose: Implementation of ports. External world details.
 
 import { BrowserPort, RawVacancyCard, ParsedVacancyPage, RawApplyFormSnapshot } from '../../core/ports/browser.port';
-import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult, ApplyControl } from '../../core/domain/entities';
+import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult, ApplyControl, QuestionnaireField, QuestionnaireAnswer } from '../../core/domain/entities';
 
 export class MockBrowserAdapter implements BrowserPort {
   private currentUrlVal: string = 'about:blank';
@@ -288,12 +288,13 @@ export class MockBrowserAdapter implements BrowserPort {
       await new Promise(resolve => setTimeout(resolve, 800));
 
       if (this.isApplyModalOpen) {
+          // Simulate presence of Questionnaire for Phase E2 Testing
           return {
               isModal: true,
               hasCoverLetter: true,
               hasResumeSelect: true,
               hasSubmit: true,
-              hasQuestionnaire: false,
+              hasQuestionnaire: true, // TRIGGER E2
               coverLetterSelector: 'mock://apply-form/cover-letter',
               submitSelector: 'mock://apply-form/submit'
           };
@@ -308,6 +309,78 @@ export class MockBrowserAdapter implements BrowserPort {
           hasQuestionnaire: false
       };
   }
+
+  // --- Phase E2: Questionnaire Methods ---
+
+  async scanApplyFormArbitrary(): Promise<QuestionnaireField[]> {
+      console.log('[BrowserAdapter] Scanning for arbitrary questionnaire fields...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      if (!this.isApplyModalOpen) return [];
+
+      // Mock complex fields
+      return [
+          {
+              id: 'q1',
+              label: 'Years of Experience with React',
+              type: 'TEXT',
+              required: true,
+              selector: 'mock://questionnaire/years-exp'
+          },
+          {
+              id: 'q2',
+              label: 'Do you require visa sponsorship?',
+              type: 'RADIO',
+              required: true,
+              options: ['Yes', 'No'],
+              selector: 'mock://questionnaire/visa-sponsorship'
+          },
+          {
+              id: 'q3',
+              label: 'Portfolio Link',
+              type: 'TEXT',
+              required: false,
+              selector: 'mock://questionnaire/portfolio'
+          }
+      ];
+  }
+
+  async fillApplyForm(answers: QuestionnaireAnswer[]): Promise<boolean> {
+      console.log(`[BrowserAdapter] Filling questionnaire with ${answers.length} answers...`);
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      if (!this.isApplyModalOpen) return false;
+
+      for (const ans of answers) {
+          console.log(`  -> Field ${ans.fieldId}: ${ans.value}`);
+          // Mock input logic
+          this.applyFormInputs[`field-${ans.fieldId}`] = String(ans.value);
+      }
+      return true;
+  }
+
+  async submitApplyForm(): Promise<void> {
+      console.log('[BrowserAdapter] SUBMITTING form via dedicated method...');
+      await this.clickElement('mock://apply-form/submit');
+  }
+
+  async detectApplyOutcome(): Promise<'SUCCESS' | 'QUESTIONNAIRE' | 'UNKNOWN' | 'ERROR'> {
+      console.log('[BrowserAdapter] Detecting outcome...');
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      if (this.isSuccessState) {
+          return 'SUCCESS';
+      }
+      
+      if (this.isApplyModalOpen) {
+          // If modal is still open, maybe there are errors or more steps?
+          return 'UNKNOWN';
+      }
+
+      return 'UNKNOWN';
+  }
+
+  // -------------------------------------
 
   async inputText(selector: string, text: string): Promise<boolean> {
     console.log(`[BrowserAdapter] INPUT into ${selector}: "${text.substring(0, 20)}..."`);

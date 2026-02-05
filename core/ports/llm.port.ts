@@ -2,7 +2,7 @@
 // Purpose: Define contracts for AI/LLM interaction.
 
 import { SearchUISpecV1 } from '../domain/entities';
-import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, LLMScreeningInputV1, LLMScreeningOutputV1, EvaluateExtractsInputV1, EvaluateExtractsOutputV1 } from '../domain/llm_contracts';
+import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, LLMScreeningInputV1, LLMScreeningOutputV1, EvaluateExtractsInputV1, EvaluateExtractsOutputV1, QuestionnaireAnswerInputV1, QuestionnaireAnswerOutputV1 } from '../domain/llm_contracts';
 
 export interface LLMProviderPort {
   /**
@@ -38,4 +38,12 @@ export interface LLMProviderPort {
    * @returns Final Decisions (APPLY/SKIP/NEEDS_HUMAN) with reasoning
    */
   evaluateVacancyExtractsBatch(input: EvaluateExtractsInputV1): Promise<EvaluateExtractsOutputV1>;
+
+  /**
+   * Phase E2: Generates answers for a questionnaire based on the profile.
+   * 
+   * @param input - Profile + Questionnaire Fields
+   * @returns Answers + Risks (if missing info)
+   */
+  generateQuestionnaireAnswers(input: QuestionnaireAnswerInputV1): Promise<QuestionnaireAnswerOutputV1>;
 }
