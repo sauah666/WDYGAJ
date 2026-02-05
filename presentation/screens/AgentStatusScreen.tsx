@@ -31,7 +31,6 @@ interface Props {
   onProbeApplyEntrypoint?: () => void; // Phase E1.1
   onOpenApplyForm?: () => void; // Phase E1.2
   onFillApplyDraft?: () => void; // Phase E1.3
-  onSubmitApply?: () => void; // Phase E1.4
 }
 
 export const AgentStatusScreen: React.FC<Props> = ({ 
@@ -59,8 +58,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
   onBuildApplyQueue,
   onProbeApplyEntrypoint,
   onOpenApplyForm,
-  onFillApplyDraft,
-  onSubmitApply
+  onFillApplyDraft
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [localPrefs, setLocalPrefs] = useState<UserSearchPrefsV1 | null>(null);
@@ -133,9 +131,6 @@ export const AgentStatusScreen: React.FC<Props> = ({
       case AgentStatus.APPLY_BUTTON_FOUND: return 'text-green-400';
       case AgentStatus.APPLY_FORM_OPENED: return 'text-emerald-300';
       case AgentStatus.APPLY_DRAFT_FILLED: return 'text-emerald-400';
-      case AgentStatus.SUBMITTING_APPLICATION: return 'text-purple-400';
-      case AgentStatus.APPLY_SUBMIT_SUCCESS: return 'text-green-500';
-      case AgentStatus.APPLY_SUBMIT_FAILED: return 'text-red-500';
       case AgentStatus.COMPLETED: return 'text-green-500';
       case AgentStatus.FAILED: return 'text-red-500';
       default: return 'text-gray-100';
@@ -143,7 +138,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
   };
 
   const getStatusIcon = (status: AgentStatus) => {
-    if (status === AgentStatus.NAVIGATING || status === AgentStatus.EXTRACTING || status === AgentStatus.STARTING || status === AgentStatus.TARGETING_PENDING || status === AgentStatus.NAVIGATING_TO_SEARCH || status === AgentStatus.EXTRACTING_SEARCH_UI || status === AgentStatus.ANALYZING_SEARCH_UI || status === AgentStatus.APPLYING_FILTERS || status === AgentStatus.EXTRACTING_VACANCIES || status === AgentStatus.FINDING_APPLY_BUTTON || status === AgentStatus.SUBMITTING_APPLICATION) return <Loader2 className="animate-spin" />;
+    if (status === AgentStatus.NAVIGATING || status === AgentStatus.EXTRACTING || status === AgentStatus.STARTING || status === AgentStatus.TARGETING_PENDING || status === AgentStatus.NAVIGATING_TO_SEARCH || status === AgentStatus.EXTRACTING_SEARCH_UI || status === AgentStatus.ANALYZING_SEARCH_UI || status === AgentStatus.APPLYING_FILTERS || status === AgentStatus.EXTRACTING_VACANCIES || status === AgentStatus.FINDING_APPLY_BUTTON) return <Loader2 className="animate-spin" />;
     if (status === AgentStatus.WAITING_FOR_HUMAN) return <AlertCircle />;
     if (status === AgentStatus.WAITING_FOR_PROFILE_PAGE) return <FileText />;
     if (status === AgentStatus.LOGGED_IN_CONFIRMED) return <UserCheck />;
@@ -167,16 +162,14 @@ export const AgentStatusScreen: React.FC<Props> = ({
     if (status === AgentStatus.APPLY_BUTTON_FOUND) return <MousePointerClick />;
     if (status === AgentStatus.APPLY_FORM_OPENED) return <FormInput />;
     if (status === AgentStatus.APPLY_DRAFT_FILLED) return <PenTool />;
-    if (status === AgentStatus.APPLY_SUBMIT_SUCCESS) return <CheckCircle />;
-    if (status === AgentStatus.APPLY_SUBMIT_FAILED) return <XCircle />;
     if (status === AgentStatus.COMPLETED) return <CheckCircle />;
     return <Terminal />;
   };
 
-  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY && state.status !== AgentStatus.APPLY_BUTTON_FOUND && state.status !== AgentStatus.APPLY_FORM_OPENED && state.status !== AgentStatus.APPLY_DRAFT_FILLED && state.status !== AgentStatus.APPLY_SUBMIT_SUCCESS && state.status !== AgentStatus.APPLY_SUBMIT_FAILED;
+  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY && state.status !== AgentStatus.APPLY_BUTTON_FOUND && state.status !== AgentStatus.APPLY_FORM_OPENED && state.status !== AgentStatus.APPLY_DRAFT_FILLED;
   const isFinished = state.status === AgentStatus.COMPLETED || state.status === AgentStatus.FAILED;
   // Can reset profile if captured OR targeting ready OR dom ready OR waiting prefs OR plan ready
-  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY || state.status === AgentStatus.APPLY_BUTTON_FOUND || state.status === AgentStatus.APPLY_FORM_OPENED || state.status === AgentStatus.APPLY_DRAFT_FILLED || state.status === AgentStatus.APPLY_SUBMIT_SUCCESS || state.status === AgentStatus.APPLY_SUBMIT_FAILED;
+  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY || state.status === AgentStatus.APPLY_BUTTON_FOUND || state.status === AgentStatus.APPLY_FORM_OPENED || state.status === AgentStatus.APPLY_DRAFT_FILLED;
 
   const renderFieldInput = (field: SearchFieldDefinition, currentValue: any) => {
       switch (field.uiControlType) {
@@ -413,14 +406,11 @@ export const AgentStatusScreen: React.FC<Props> = ({
                   <div className="text-xs text-gray-400">{card?.company}</div>
               </div>
               <div className="flex items-center gap-3">
-                  <div className={`text-xs px-2 py-1 rounded uppercase font-mono ${item.status === 'APPLIED' ? 'bg-green-900 text-green-400' : 'bg-gray-700 text-gray-300'}`}>
+                  <div className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 uppercase font-mono">
                       {item.status}
                   </div>
                   {item.status === 'PENDING' && (
                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
-                  )}
-                  {item.status === 'IN_PROGRESS' && (
-                       <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></div>
                   )}
               </div>
           </div>
@@ -1094,11 +1084,11 @@ export const AgentStatusScreen: React.FC<Props> = ({
                     </button>
                 )}
 
-                {/* APPLY_DRAFT_FILLED -> SUBMIT (E1.4) */}
-                {state.status === AgentStatus.APPLY_DRAFT_FILLED && onSubmitApply && (
-                    <button onClick={onSubmitApply} className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-purple-900/20">
+                {/* APPLY_DRAFT_FILLED -> SUBMIT (Placeholder) */}
+                {state.status === AgentStatus.APPLY_DRAFT_FILLED && (
+                    <button disabled className="flex items-center space-x-2 bg-gray-700 text-gray-400 px-6 py-2 rounded-lg font-bold border border-gray-600 cursor-not-allowed opacity-75">
                         <Send size={18} />
-                        <span>SUBMIT APPLICATION (E1.4)</span>
+                        <span>SUBMIT APPLICATION (PHASE E1.4)</span>
                     </button>
                 )}
 

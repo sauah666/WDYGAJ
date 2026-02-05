@@ -307,18 +307,6 @@ export class AgentPresenter implements UIPort {
       }
   }
 
-  // Phase E1.4: Submit Apply
-  async submitApply(currentState: AgentState) {
-      if (!this.useCase) return;
-      try {
-          const site = this.currentConfig.targetSite || 'hh.ru';
-          await this.useCase.submitApplyForm(currentState, site);
-      } catch (e) {
-          console.error(e);
-          await this.useCase.failSession(currentState, "Submit Application Error");
-      }
-  }
-
   async resetProfile(currentState: AgentState) {
       if (!this.useCase) return;
       try {

@@ -441,23 +441,6 @@ export interface ApplyDraftSnapshotV1 {
   blockedReason: ApplyBlockedReason;
 }
 
-// --- Phase E1.4: Apply Submit Receipt ---
-
-export type ApplyFailureReason = 'NO_CONFIRMATION' | 'SUBMIT_BUTTON_NOT_FOUND' | 'FORM_NOT_REACHED' | 'NAV_CHANGED' | 'TIMEOUT' | 'UNKNOWN';
-
-export interface ApplySubmitReceiptV1 {
-  receiptId: string;
-  vacancyId: string;
-  siteId: string;
-  submittedAt: number;
-  submitAttempts: number;
-  successConfirmed: boolean;
-  confirmationSource: "text_hint" | "url_change" | "dom_marker" | "unknown";
-  confirmationEvidence: string | null;
-  finalQueueStatus: "APPLIED" | "FAILED";
-  failureReason: ApplyFailureReason | null;
-}
-
 // --- Core State ---
 
 export interface AgentState {
@@ -485,7 +468,6 @@ export interface AgentState {
   activeApplyProbe?: ApplyEntrypointProbeV1 | null; // Phase E1.1: Transient Probe Result
   activeApplyFormProbe?: ApplyFormProbeV1 | null; // Phase E1.2: Transient Form Probe
   activeApplyDraft?: ApplyDraftSnapshotV1 | null; // Phase E1.3: Transient Draft Result
-  // Note: Receipt is ephemeral in state log or part of logs/queue updates
 }
 
 export interface ProfileSnapshot {

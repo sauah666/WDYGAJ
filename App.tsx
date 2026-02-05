@@ -108,7 +108,6 @@ export default function App() {
   const handleProbeApplyEntrypoint = () => agentPresenter.probeApplyEntrypoint(agentState);
   const handleOpenApplyForm = () => agentPresenter.openApplyForm(agentState);
   const handleFillApplyDraft = () => agentPresenter.fillApplyDraft(agentState);
-  const handleSubmitApply = () => agentPresenter.submitApply(agentState);
 
   // Router
   let screen;
@@ -154,7 +153,6 @@ export default function App() {
           onProbeApplyEntrypoint={handleProbeApplyEntrypoint}
           onOpenApplyForm={handleOpenApplyForm}
           onFillApplyDraft={handleFillApplyDraft}
-          onSubmitApply={handleSubmitApply}
         />
       );
       break;
