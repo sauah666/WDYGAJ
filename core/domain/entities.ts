@@ -352,7 +352,7 @@ export interface LLMVacancyEvalBatchV1 {
 
 // --- Phase D2.2: Apply Queue ---
 
-export type ApplyQueueStatus = 'PENDING' | 'APPLIED' | 'FAILED' | 'SKIPPED';
+export type ApplyQueueStatus = 'PENDING' | 'IN_PROGRESS' | 'APPLIED' | 'FAILED' | 'SKIPPED';
 
 export interface ApplyQueueItem {
   vacancyId: string;
@@ -414,6 +414,7 @@ export interface ApplyFormProbeV1 {
         coverLetterHint: string | null;
         submitHint: string | null;
     };
+    successTextHints?: string[]; // Markers to check for after submit
     blockers: {
         requiresLogin: boolean;
         captchaOrAntibot: boolean;
@@ -426,6 +427,7 @@ export interface ApplyFormProbeV1 {
 // --- Phase E1.3: Apply Draft Snapshot ---
 
 export type ApplyBlockedReason = 'VACANCY_NOT_OPENED' | 'APPLY_ENTRYPOINT_NOT_FOUND' | 'FORM_NOT_REACHED' | 'FIELD_NOT_FOUND' | 'READBACK_FAILED' | null;
+export type CoverLetterSource = 'GENERATED' | 'TEMPLATE' | 'DEFAULT' | 'NONE';
 
 export interface ApplyDraftSnapshotV1 {
   vacancyId: string;
@@ -434,8 +436,26 @@ export interface ApplyDraftSnapshotV1 {
   coverLetterFieldFound: boolean;
   coverLetterFilled: boolean;
   coverLetterReadbackHash: string | null;
+  coverLetterSource?: CoverLetterSource; // Track where the text came from
   formStateSummary: string; // Short desc e.g. "Visible: textarea, submit"
   blockedReason: ApplyBlockedReason;
+}
+
+// --- Phase E1.4: Apply Submit Receipt ---
+
+export type ApplyFailureReason = 'NO_CONFIRMATION' | 'SUBMIT_BUTTON_NOT_FOUND' | 'FORM_NOT_REACHED' | 'NAV_CHANGED' | 'TIMEOUT' | 'UNKNOWN';
+
+export interface ApplySubmitReceiptV1 {
+  receiptId: string;
+  vacancyId: string;
+  siteId: string;
+  submittedAt: number;
+  submitAttempts: number;
+  successConfirmed: boolean;
+  confirmationSource: "text_hint" | "url_change" | "dom_marker" | "unknown";
+  confirmationEvidence: string | null;
+  finalQueueStatus: "APPLIED" | "FAILED";
+  failureReason: ApplyFailureReason | null;
 }
 
 // --- Core State ---
@@ -465,6 +485,7 @@ export interface AgentState {
   activeApplyProbe?: ApplyEntrypointProbeV1 | null; // Phase E1.1: Transient Probe Result
   activeApplyFormProbe?: ApplyFormProbeV1 | null; // Phase E1.2: Transient Form Probe
   activeApplyDraft?: ApplyDraftSnapshotV1 | null; // Phase E1.3: Transient Draft Result
+  // Note: Receipt is ephemeral in state log or part of logs/queue updates
 }
 
 export interface ProfileSnapshot {

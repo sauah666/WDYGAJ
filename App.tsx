@@ -35,7 +35,11 @@ export default function App() {
   useEffect(() => {
     // Check for saved config/state on mount
     storageAdapter.getConfig().then(c => {
-      if (c) setConfig(c);
+      if (c) {
+        setConfig(c);
+        // Rehydrate presenter with saved config to prevent context loss on reload
+        agentPresenter.setConfig(c);
+      }
     });
     
     storageAdapter.getAgentState().then(s => {
@@ -104,6 +108,7 @@ export default function App() {
   const handleProbeApplyEntrypoint = () => agentPresenter.probeApplyEntrypoint(agentState);
   const handleOpenApplyForm = () => agentPresenter.openApplyForm(agentState);
   const handleFillApplyDraft = () => agentPresenter.fillApplyDraft(agentState);
+  const handleSubmitApply = () => agentPresenter.submitApply(agentState);
 
   // Router
   let screen;
@@ -115,7 +120,11 @@ export default function App() {
       screen = <SiteSelectionScreen onSelect={handleSiteSelect} onBack={() => setRoute(AppRoute.MODE_SELECTION)} />;
       break;
     case AppRoute.SETTINGS:
-      screen = <SettingsScreen onSave={handleConfigSave} />;
+      screen = <SettingsScreen 
+        config={config} 
+        onChange={(k, v) => setConfig(prev => ({ ...prev, [k]: v }))}
+        onSave={handleConfigSave} 
+      />;
       break;
     case AppRoute.AGENT_RUNNER:
       screen = (
@@ -145,6 +154,7 @@ export default function App() {
           onProbeApplyEntrypoint={handleProbeApplyEntrypoint}
           onOpenApplyForm={handleOpenApplyForm}
           onFillApplyDraft={handleFillApplyDraft}
+          onSubmitApply={handleSubmitApply}
         />
       );
       break;

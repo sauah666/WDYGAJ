@@ -6,7 +6,7 @@ import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
 import { AgentStatus, AgentConfig } from '../../types';
-import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem, ApplyEntrypointProbeV1, ApplyFormProbeV1, ApplyDraftSnapshotV1, ApplyBlockedReason } from '../domain/entities';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem, ApplyEntrypointProbeV1, ApplyFormProbeV1, ApplyDraftSnapshotV1, ApplyBlockedReason, CoverLetterSource, ApplySubmitReceiptV1, ApplyFailureReason } from '../domain/entities';
 import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode, LLMScreeningInputV1, ScreeningCard, EvaluateExtractsInputV1, EvalCandidate } from '../domain/llm_contracts';
 
 export class AgentUseCase {
@@ -14,7 +14,7 @@ export class AgentUseCase {
     private browser: BrowserPort,
     private storage: StoragePort,
     private ui: UIPort,
-    private llm: LLMProviderPort
+    private lllm: LLMProviderPort
   ) {}
 
   private async updateState(state: AgentState): Promise<AgentState> {
@@ -237,7 +237,7 @@ export class AgentUseCase {
         logs: [...currentState.logs, 'Sending profile to LLM for targeting generation...']
       });
       
-      const spec = await this.llm.analyzeProfile(input);
+      const spec = await this.lllm.analyzeProfile(input);
 
       // 5. Validate Output (Strict)
       this.validateTargetingSpec(spec);
@@ -467,7 +467,7 @@ export class AgentUseCase {
 
       try {
           // 4. LLM Call
-          const spec = await this.llm.analyzeSearchDOM(input);
+          const spec = await this.lllm.analyzeSearchDOM(input);
 
           // 5. Validate (Basic)
           if (!spec.fields.some(f => f.semanticType !== 'OTHER')) {
@@ -935,7 +935,7 @@ export class AgentUseCase {
                   workMode,
                   salary,
                   publishedAt: raw.publishedAtText || null,
-                  cardHash
+                  cardHash: cardHash
               });
           }
 
@@ -1143,7 +1143,7 @@ export class AgentUseCase {
               } else {
                   let isMatch = false;
                   if (userMode === WorkMode.REMOTE && card.workMode === 'remote') isMatch = true;
-                  else if (userMode === WorkMode.HYBRID && (card.workMode === 'hybrid' || card.workMode === 'office')) isMatch = true;
+                  else if (userMode === WorkMode.HYBRID && (card.workMode === 'hybrid' || card.workMode === 'hybrid' || card.workMode === 'office')) isMatch = true;
                   else if (userMode === WorkMode.OFFICE && card.workMode === 'office') isMatch = true;
                   
                   if (!isMatch && strictMode) {
@@ -1299,7 +1299,7 @@ export class AgentUseCase {
               cards: inputCards
           };
 
-          const llmOutput = await this.llm.screenVacancyCardsBatch(llmInput);
+          const llmOutput = await this.lllm.screenVacancyCardsBatch(llmInput);
 
           const decisions: LLMDecisionV1[] = llmOutput.results.map(r => ({
               cardId: r.cardId,
@@ -1513,7 +1513,7 @@ export class AgentUseCase {
               logs: [...currentState.logs, `Calling LLM (Batch Size: ${evalCandidates.length})...`]
           });
 
-          const output = await this.llm.evaluateVacancyExtractsBatch(input);
+          const output = await this.lllm.evaluateVacancyExtractsBatch(input);
 
           const results: LLMVacancyEvalResult[] = output.results.map(r => ({
               vacancyId: r.id,
@@ -1624,7 +1624,14 @@ export class AgentUseCase {
           return this.failSession(state, "No Apply Queue to process.");
       }
 
-      const nextItem = state.activeApplyQueue.items.find(i => i.status === 'PENDING');
+      // Check for an existing IN_PROGRESS item first (Resume logic)
+      let nextItem = state.activeApplyQueue.items.find(i => i.status === 'IN_PROGRESS');
+      
+      // If none, take next PENDING
+      if (!nextItem) {
+        nextItem = state.activeApplyQueue.items.find(i => i.status === 'PENDING');
+      }
+
       if (!nextItem) {
           return this.updateState({
               ...state,
@@ -1632,8 +1639,20 @@ export class AgentUseCase {
           });
       }
 
+      // Update status to IN_PROGRESS if it wasn't already
+      if (nextItem.status !== 'IN_PROGRESS') {
+        nextItem.status = 'IN_PROGRESS';
+        const queue = state.activeApplyQueue;
+        queue.summary.pending = queue.items.filter(i => i.status === 'PENDING').length;
+        await this.storage.saveApplyQueue(siteId, queue);
+      }
+      
+      // Ensure we have the latest queue in state
+      const queue = state.activeApplyQueue;
+
       let currentState = await this.updateState({
           ...state,
+          activeApplyQueue: queue, // Ensure UI updates with new status
           status: AgentStatus.FINDING_APPLY_BUTTON,
           logs: [...state.logs, `Probing Apply Entrypoint for ${nextItem.url}...`]
       });
@@ -1707,6 +1726,7 @@ export class AgentUseCase {
                   coverLetterHint: formSnapshot.coverLetterSelector || null,
                   submitHint: formSnapshot.submitSelector || null
               },
+              successTextHints: ['Отклик отправлен', 'Вы откликнулись', 'Success'],
               blockers: {
                   requiresLogin: false,
                   captchaOrAntibot: false,
@@ -1759,14 +1779,29 @@ export class AgentUseCase {
           let filled = false;
           let readbackHash: string | null = null;
           let summary = "";
+          let coverLetterSource: CoverLetterSource = 'NONE';
 
           // 2. Logic: Fill Cover Letter if Field Exists
           if (formProbe.detectedFields.coverLetterTextarea && formProbe.safeLocators.coverLetterHint) {
-              const coverLetterText = "Здравствуйте! Меня очень заинтересовала ваша вакансия. У меня есть релевантный опыт работы с React и TypeScript более 5 лет. Буду рад обсудить детали на интервью. Спасибо!"; // Stub for now, later from config
+              
+              const queueItem = state.activeApplyQueue?.items.find(i => i.vacancyId === vacancyId);
+              const config = await this.storage.getConfig();
+              const defaultText = "Здравствуйте! Меня очень заинтересовала ваша вакансия. У меня есть релевантный опыт работы с React и TypeScript более 5 лет. Буду рад обсудить детали на интервью. Спасибо!";
+              
+              let coverLetterText = defaultText;
+              coverLetterSource = 'DEFAULT';
+
+              if (queueItem?.generatedCoverLetter && queueItem.generatedCoverLetter.trim().length > 0) {
+                   coverLetterText = queueItem.generatedCoverLetter;
+                   coverLetterSource = 'GENERATED';
+              } else if (config?.coverLetterTemplate && config.coverLetterTemplate.trim().length > 0) {
+                   coverLetterText = config.coverLetterTemplate;
+                   coverLetterSource = 'TEMPLATE';
+              }
               
               currentState = await this.updateState({
                   ...currentState,
-                  logs: [...currentState.logs, `Filling Cover Letter (${coverLetterText.length} chars)...`]
+                  logs: [...currentState.logs, `Filling Cover Letter from ${coverLetterSource} (${coverLetterText.length} chars)...`]
               });
 
               const filledSuccess = await this.browser.inputText(formProbe.safeLocators.coverLetterHint, coverLetterText);
@@ -1798,13 +1833,14 @@ export class AgentUseCase {
               coverLetterFieldFound: formProbe.detectedFields.coverLetterTextarea,
               coverLetterFilled: filled,
               coverLetterReadbackHash: readbackHash,
+              coverLetterSource,
               formStateSummary: summary,
               blockedReason
           };
 
           await this.storage.saveApplyDraftSnapshot(siteId, draftSnapshot);
 
-          const statusLog = filled ? "DRAFT SUCCESS: Cover letter filled." : `DRAFT STATUS: ${summary}`;
+          const statusLog = filled ? `DRAFT SUCCESS: Cover letter filled (${coverLetterSource}).` : `DRAFT STATUS: ${summary}`;
 
           return this.updateState({
               ...currentState,
@@ -1817,6 +1853,156 @@ export class AgentUseCase {
            console.error(e);
            return this.failSession(currentState, `Draft Fill Failed: ${e.message}`);
       }
+  }
+  
+  // --- Phase E1.4: Submit Apply Form ---
+  async submitApplyForm(state: AgentState, siteId: string): Promise<AgentState> {
+      if (!state.activeApplyProbe || !state.activeApplyFormProbe || !state.activeApplyQueue) {
+          return this.failSession(state, "Missing dependencies for submit (Probe, Form, or Queue).");
+      }
+
+      const vacancyId = state.activeApplyProbe.taskId;
+      const formProbe = state.activeApplyFormProbe;
+      const entrypointSelector = state.activeApplyProbe.foundControls[0].selector;
+      const url = state.activeApplyProbe.vacancyUrl;
+      const successHints = formProbe.successTextHints || ['Success', 'отправлен'];
+
+      // Find the queue item
+      const queueItem = state.activeApplyQueue.items.find(i => i.vacancyId === vacancyId);
+      if (!queueItem) {
+          return this.failSession(state, `Queue item for vacancy ${vacancyId} not found.`);
+      }
+
+      if (!formProbe.safeLocators.submitHint) {
+           return this.failSession(state, "No submit button locator found.");
+      }
+
+      let currentState = await this.updateState({
+          ...state,
+          status: AgentStatus.SUBMITTING_APPLICATION,
+          logs: [...state.logs, `INITIATING SUBMIT for vacancy ${vacancyId} (One-Way Trip)...`]
+      });
+
+      let failureReason: ApplyFailureReason | null = null;
+      let successConfirmed = false;
+      let confirmationEvidence = null;
+
+      try {
+          // 1. RE-OPEN & RE-FILL (Deterministic Idempotency)
+          // Navigation clears inputs in Mock, so we must refill.
+          currentState = await this.updateState({
+              ...currentState,
+              logs: [...currentState.logs, `Navigating to ${url} and re-opening form...`]
+          });
+          await this.browser.navigateTo(url);
+          const clickSuccess = await this.browser.clickElement(entrypointSelector);
+          if (!clickSuccess) {
+              throw new Error("Failed to re-open apply form.");
+          }
+          await new Promise(r => setTimeout(r, 1000));
+
+          // 2. Refill Text if needed
+          if (formProbe.detectedFields.coverLetterTextarea && formProbe.safeLocators.coverLetterHint) {
+              const config = await this.storage.getConfig();
+              let text = "Default Cover Letter"; // Fallback
+              
+              if (queueItem.generatedCoverLetter) text = queueItem.generatedCoverLetter;
+              else if (config?.coverLetterTemplate) text = config.coverLetterTemplate;
+              
+              currentState = await this.updateState({
+                  ...currentState,
+                  logs: [...currentState.logs, `Re-filling cover letter (${text.length} chars)...`]
+              });
+              await this.browser.inputText(formProbe.safeLocators.coverLetterHint, text);
+          }
+
+          // 3. CLICK SUBMIT
+          currentState = await this.updateState({
+              ...currentState,
+              logs: [...currentState.logs, `CLICKING SUBMIT BUTTON: ${formProbe.safeLocators.submitHint}`]
+          });
+          
+          const submitClicked = await this.browser.clickElement(formProbe.safeLocators.submitHint);
+          if (!submitClicked) {
+              failureReason = 'SUBMIT_BUTTON_NOT_FOUND';
+              throw new Error("Submit button click failed.");
+          }
+
+          // 4. VERIFY SUCCESS
+          currentState = await this.updateState({
+              ...currentState,
+              logs: [...currentState.logs, "Submit clicked. Waiting for confirmation..."]
+          });
+
+          // Wait loop (Mock is instant, but logic handles delays)
+          let attempts = 0;
+          while (attempts < 5 && !successConfirmed) {
+              await new Promise(r => setTimeout(r, 1000));
+              const pageText = await this.browser.getPageTextMinimal();
+              
+              for (const hint of successHints) {
+                  if (pageText.includes(hint)) {
+                      successConfirmed = true;
+                      confirmationEvidence = hint;
+                      break;
+                  }
+              }
+              attempts++;
+          }
+
+          if (!successConfirmed) {
+              failureReason = 'NO_CONFIRMATION';
+          }
+
+      } catch (e: any) {
+          console.error(e);
+          failureReason = failureReason || 'UNKNOWN';
+          currentState = await this.updateState({
+              ...currentState,
+              logs: [...currentState.logs, `Submit Error: ${e.message}`]
+          });
+      }
+
+      // 5. UPDATE QUEUE STATUS
+      queueItem.status = successConfirmed ? 'APPLIED' : 'FAILED';
+      queueItem.applicationResult = new Date().toISOString();
+      const newSummary = state.activeApplyQueue.summary;
+      newSummary.pending = state.activeApplyQueue.items.filter(i => i.status === 'PENDING' || i.status === 'IN_PROGRESS').length; 
+      // Note: IN_PROGRESS counts as pending until done. 
+      // Re-calc explicit stats:
+      newSummary.applied = state.activeApplyQueue.items.filter(i => i.status === 'APPLIED').length;
+      newSummary.failed = state.activeApplyQueue.items.filter(i => i.status === 'FAILED').length;
+      newSummary.pending = state.activeApplyQueue.items.filter(i => i.status === 'PENDING').length;
+
+      await this.storage.saveApplyQueue(siteId, state.activeApplyQueue);
+
+      // 6. CREATE RECEIPT
+      const receipt: ApplySubmitReceiptV1 = {
+          receiptId: crypto.randomUUID(),
+          vacancyId,
+          siteId,
+          submittedAt: Date.now(),
+          submitAttempts: 1,
+          successConfirmed,
+          confirmationSource: successConfirmed ? 'text_hint' : 'unknown',
+          confirmationEvidence,
+          finalQueueStatus: successConfirmed ? 'APPLIED' : 'FAILED',
+          failureReason
+      };
+
+      await this.storage.saveApplySubmitReceipt(siteId, receipt);
+
+      const finalStatus = successConfirmed ? AgentStatus.APPLY_SUBMIT_SUCCESS : AgentStatus.APPLY_SUBMIT_FAILED;
+      const logMsg = successConfirmed 
+          ? `SUCCESS: Application submitted and verified via hint "${confirmationEvidence}".`
+          : `FAILURE: Application submitted but verification failed. Reason: ${failureReason}`;
+
+      return this.updateState({
+          ...currentState,
+          status: finalStatus,
+          activeApplyQueue: state.activeApplyQueue, // Force UI update
+          logs: [...currentState.logs, logMsg]
+      });
   }
 
 

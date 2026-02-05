@@ -1,4 +1,4 @@
-# 📘 PROJECT DOCUMENTATION — v1.17
+# 📘 PROJECT DOCUMENTATION — v1.22
 
 **Проект:** Agent-based Job Search Automation  
 **Аудитория:** LLM-агент-разработчик (Gemini / GPT / Claude)  
@@ -101,12 +101,42 @@ MASTER PLAN v1.0 — JobSearch Agent (Mode 1: HH.ru, затем мультиса
 - Определение типа формы (Modal/Inline)
 - Детекция полей: Cover Letter, Resume Select, Submit
 - Формирование ApplyFormProbeV1
+✅ Done-E1.2-P1.1: UI Settings - Cover Letter Template (Editable)
+- Добавлено поле редактирования шаблона сопроводительного письма в SettingsScreen.
+- Значение сохраняется в AgentConfig и используется при заполнении формы.
 ✅ Done-E1.3: Draft Application Fill (No Submit)
 - Открытие формы заново (через entrypoint)
 - Заполнение поля Cover Letter (input)
 - Verification Read-Back (проверка вставки)
 - ApplyDraftSnapshotV1 (blocked_reason / filled boolean)
 - Safety: Submit НЕ нажат
+✅ Done-E1.2-P1.2: UI Status - Apply Draft Filled Control Deck
+- Добавлено UI-состояние для `APPLY_DRAFT_FILLED` с заблокированной кнопкой Submit.
+- Пользователь видит, что отправка будет доступна в Phase E1.4.
+✅ Done-E1.2-P1.3: UI Control - Waiting For Human (Confirm Login)
+- Исправлен Dead End в статусе `WAITING_FOR_HUMAN`.
+- Добавлена кнопка "CONFIRM LOGIN SUCCESS".
+✅ Done-E1.2-P1.4: UI Control - Waiting For Profile Page (Confirm Profile)
+- Исправлен Dead End в статусе `WAITING_FOR_PROFILE_PAGE`.
+- Добавлена кнопка "PROFILE PAGE OPENED".
+✅ Done-E1.2-P1.5: UI Control - Waiting For Search Prefs (Search Prefs Form)
+- Исправлен Dead End в статусе `WAITING_FOR_SEARCH_PREFS`.
+- Добавлена динамическая форма (Inputs/Selects/Checkboxes) для настройки фильтров поиска перед стартом.
+✅ Done-E1.2-P1.6: Connect Cover Letter Template (Logic)
+- UseCase теперь читает `coverLetterTemplate` из конфига и использует его при заполнении драфта.
+✅ Done-E1.2-P1.7: Presenter Config Rehydration (Reliability)
+- При старте приложения Presenter восстанавливает конфиг из storage.
+- F5 не сбрасывает контекст сайта/шаблона, даже если не вызван startLoginSequence.
+✅ Done-E1.2-P1.8: Apply Queue Cover Letter Priority
+- `generatedCoverLetter` из очереди имеет приоритет над глобальным шаблоном.
+- Источник текста (`GENERATED`/`TEMPLATE`/`DEFAULT`) фиксируется в снепшоте драфта.
+✅ Done-E1.2-P1.9: Mock Adapter Contract Fidelity
+- Из `MockBrowserAdapter` удалены хардкодные селекторы hh.ru.
+- Внедрены абстрактные mock-идентификаторы (`mock://...`) и сценарное состояние (`isApplyModalOpen`, `applyFormInputs`).
+✅ Done-E1.2-P1.11: E1.4 Readiness Fix Pack
+- MockBrowserAdapter симулирует состояние успеха после Submit.
+- ApplyQueueItem получает статус IN_PROGRESS при обработке.
+- ApplyFormProbeV1 содержит текстовые маркеры успеха (Success Hints) вместо селекторов.
 
 2) MASTER PLAN — от “сейчас” до “финиша”
 PHASE E — Auto Apply (отклики)

@@ -31,6 +31,7 @@ interface Props {
   onProbeApplyEntrypoint?: () => void; // Phase E1.1
   onOpenApplyForm?: () => void; // Phase E1.2
   onFillApplyDraft?: () => void; // Phase E1.3
+  onSubmitApply?: () => void; // Phase E1.4
 }
 
 export const AgentStatusScreen: React.FC<Props> = ({ 
@@ -58,7 +59,8 @@ export const AgentStatusScreen: React.FC<Props> = ({
   onBuildApplyQueue,
   onProbeApplyEntrypoint,
   onOpenApplyForm,
-  onFillApplyDraft
+  onFillApplyDraft,
+  onSubmitApply
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [localPrefs, setLocalPrefs] = useState<UserSearchPrefsV1 | null>(null);
@@ -131,6 +133,9 @@ export const AgentStatusScreen: React.FC<Props> = ({
       case AgentStatus.APPLY_BUTTON_FOUND: return 'text-green-400';
       case AgentStatus.APPLY_FORM_OPENED: return 'text-emerald-300';
       case AgentStatus.APPLY_DRAFT_FILLED: return 'text-emerald-400';
+      case AgentStatus.SUBMITTING_APPLICATION: return 'text-purple-400';
+      case AgentStatus.APPLY_SUBMIT_SUCCESS: return 'text-green-500';
+      case AgentStatus.APPLY_SUBMIT_FAILED: return 'text-red-500';
       case AgentStatus.COMPLETED: return 'text-green-500';
       case AgentStatus.FAILED: return 'text-red-500';
       default: return 'text-gray-100';
@@ -138,7 +143,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
   };
 
   const getStatusIcon = (status: AgentStatus) => {
-    if (status === AgentStatus.NAVIGATING || status === AgentStatus.EXTRACTING || status === AgentStatus.STARTING || status === AgentStatus.TARGETING_PENDING || status === AgentStatus.NAVIGATING_TO_SEARCH || status === AgentStatus.EXTRACTING_SEARCH_UI || status === AgentStatus.ANALYZING_SEARCH_UI || status === AgentStatus.APPLYING_FILTERS || status === AgentStatus.EXTRACTING_VACANCIES || status === AgentStatus.FINDING_APPLY_BUTTON) return <Loader2 className="animate-spin" />;
+    if (status === AgentStatus.NAVIGATING || status === AgentStatus.EXTRACTING || status === AgentStatus.STARTING || status === AgentStatus.TARGETING_PENDING || status === AgentStatus.NAVIGATING_TO_SEARCH || status === AgentStatus.EXTRACTING_SEARCH_UI || status === AgentStatus.ANALYZING_SEARCH_UI || status === AgentStatus.APPLYING_FILTERS || status === AgentStatus.EXTRACTING_VACANCIES || status === AgentStatus.FINDING_APPLY_BUTTON || status === AgentStatus.SUBMITTING_APPLICATION) return <Loader2 className="animate-spin" />;
     if (status === AgentStatus.WAITING_FOR_HUMAN) return <AlertCircle />;
     if (status === AgentStatus.WAITING_FOR_PROFILE_PAGE) return <FileText />;
     if (status === AgentStatus.LOGGED_IN_CONFIRMED) return <UserCheck />;
@@ -162,14 +167,61 @@ export const AgentStatusScreen: React.FC<Props> = ({
     if (status === AgentStatus.APPLY_BUTTON_FOUND) return <MousePointerClick />;
     if (status === AgentStatus.APPLY_FORM_OPENED) return <FormInput />;
     if (status === AgentStatus.APPLY_DRAFT_FILLED) return <PenTool />;
+    if (status === AgentStatus.APPLY_SUBMIT_SUCCESS) return <CheckCircle />;
+    if (status === AgentStatus.APPLY_SUBMIT_FAILED) return <XCircle />;
     if (status === AgentStatus.COMPLETED) return <CheckCircle />;
     return <Terminal />;
   };
 
-  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY && state.status !== AgentStatus.APPLY_BUTTON_FOUND && state.status !== AgentStatus.APPLY_FORM_OPENED && state.status !== AgentStatus.APPLY_DRAFT_FILLED;
+  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY && state.status !== AgentStatus.APPLY_BUTTON_FOUND && state.status !== AgentStatus.APPLY_FORM_OPENED && state.status !== AgentStatus.APPLY_DRAFT_FILLED && state.status !== AgentStatus.APPLY_SUBMIT_SUCCESS && state.status !== AgentStatus.APPLY_SUBMIT_FAILED;
   const isFinished = state.status === AgentStatus.COMPLETED || state.status === AgentStatus.FAILED;
   // Can reset profile if captured OR targeting ready OR dom ready OR waiting prefs OR plan ready
-  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY || state.status === AgentStatus.APPLY_BUTTON_FOUND || state.status === AgentStatus.APPLY_FORM_OPENED || state.status === AgentStatus.APPLY_DRAFT_FILLED;
+  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY || state.status === AgentStatus.APPLY_BUTTON_FOUND || state.status === AgentStatus.APPLY_FORM_OPENED || state.status === AgentStatus.APPLY_DRAFT_FILLED || state.status === AgentStatus.APPLY_SUBMIT_SUCCESS || state.status === AgentStatus.APPLY_SUBMIT_FAILED;
+
+  const renderFieldInput = (field: SearchFieldDefinition, currentValue: any) => {
+      switch (field.uiControlType) {
+          case 'CHECKBOX':
+              return (
+                  <label className="flex items-center space-x-3 cursor-pointer">
+                       <input 
+                          type="checkbox" 
+                          checked={!!currentValue} 
+                          onChange={(e) => handlePrefChange(field.key, e.target.checked)}
+                          className="w-5 h-5 rounded bg-gray-900 border-gray-600 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-gray-800"
+                       />
+                       <span className="text-sm text-gray-300 select-none">Yes / Include</span>
+                  </label>
+              );
+          case 'SELECT':
+               return (
+                   <div className="relative">
+                       <select 
+                          value={String(currentValue || '')} 
+                          onChange={(e) => handlePrefChange(field.key, e.target.value)}
+                          className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 appearance-none"
+                       >
+                          <option value="">(Select Option)</option>
+                          {field.options?.map(opt => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                       </select>
+                       <div className="absolute right-3 top-2.5 pointer-events-none text-gray-500">
+                           <ChevronRight size={14} className="rotate-90" />
+                       </div>
+                   </div>
+               );
+          default: // TEXT, RANGE, etc
+               return (
+                   <input 
+                      type={field.uiControlType === 'RANGE' ? 'number' : 'text'}
+                      value={String(currentValue || '')} 
+                      onChange={(e) => handlePrefChange(field.key, e.target.value)}
+                      placeholder={field.label}
+                      className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 font-mono"
+                   />
+               );
+      }
+  };
 
   const renderVerificationRow = (res: ControlVerificationResult) => {
       let color = 'text-gray-400';
@@ -361,11 +413,14 @@ export const AgentStatusScreen: React.FC<Props> = ({
                   <div className="text-xs text-gray-400">{card?.company}</div>
               </div>
               <div className="flex items-center gap-3">
-                  <div className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 uppercase font-mono">
+                  <div className={`text-xs px-2 py-1 rounded uppercase font-mono ${item.status === 'APPLIED' ? 'bg-green-900 text-green-400' : 'bg-gray-700 text-gray-300'}`}>
                       {item.status}
                   </div>
                   {item.status === 'PENDING' && (
                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                  )}
+                  {item.status === 'IN_PROGRESS' && (
+                       <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></div>
                   )}
               </div>
           </div>
@@ -391,6 +446,40 @@ export const AgentStatusScreen: React.FC<Props> = ({
              <div className="flex-1 bg-gray-900/50 m-1 rounded-lg flex items-center justify-center border border-gray-800/50 border-dashed relative overflow-auto">
                 {state.status === AgentStatus.IDLE && (
                    <div className="text-center"><Terminal size={48} className="mx-auto text-gray-700 mb-4" /><p className="text-gray-600 font-mono">Waiting for initialization...</p></div>
+                )}
+                
+                {/* SEARCH PREFS FORM */}
+                {state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS && state.activeSearchUISpec && localPrefs && (
+                    <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                         <div className="mb-6 border-b border-gray-800 pb-4">
+                             <div className="flex items-center text-emerald-500 mb-2">
+                                <Filter size={24} className="mr-3" />
+                                <h3 className="font-bold text-xl text-white">Configure Search Filters</h3>
+                            </div>
+                            <p className="text-gray-400 text-sm">
+                                The agent identified these filters on the page. Confirm or adjust values before applying.
+                            </p>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-10">
+                            {state.activeSearchUISpec.fields.map(field => {
+                                // Skip submit buttons and explicitly ignored fields
+                                if (field.semanticType === 'SUBMIT' || field.defaultBehavior === 'IGNORE' || field.defaultBehavior === 'EXCLUDE') return null;
+                                
+                                const val = localPrefs.additionalFilters[field.key] ?? '';
+                                
+                                return (
+                                    <div key={field.key} className="bg-gray-800 p-4 rounded-lg border border-gray-700 hover:border-gray-600 transition-colors">
+                                         <div className="flex justify-between items-start mb-2">
+                                            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{field.label}</label>
+                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-700 text-gray-400 font-mono">{field.semanticType}</span>
+                                         </div>
+                                         {renderFieldInput(field, val)}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
                 )}
 
                 {/* VERIFICATION REPORT (Persistent until replaced) */}
@@ -837,6 +926,40 @@ export const AgentStatusScreen: React.FC<Props> = ({
                   </button>
                 )}
 
+                {/* WAITING_FOR_HUMAN -> CONFIRM LOGIN */}
+                {state.status === AgentStatus.WAITING_FOR_HUMAN && (
+                   <div className="flex items-center space-x-4">
+                      <span className="text-xs text-orange-400 animate-pulse hidden lg:inline-block">
+                        После логина на сайте нажмите кнопку &rarr;
+                      </span>
+                      <button onClick={onConfirmLogin} className="flex items-center space-x-2 bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-green-900/20">
+                        <UserCheck size={18} />
+                        <span>CONFIRM LOGIN SUCCESS</span>
+                      </button>
+                   </div>
+                )}
+
+                {/* WAITING_FOR_PROFILE_PAGE -> CONFIRM PROFILE */}
+                {state.status === AgentStatus.WAITING_FOR_PROFILE_PAGE && onConfirmProfile && (
+                   <div className="flex items-center space-x-4">
+                      <span className="text-xs text-pink-400 animate-pulse hidden lg:inline-block">
+                        Откройте страницу резюме и подтвердите &rarr;
+                      </span>
+                      <button onClick={onConfirmProfile} className="flex items-center space-x-2 bg-pink-600 hover:bg-pink-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-pink-900/20">
+                        <FileText size={18} />
+                        <span>PROFILE PAGE OPENED</span>
+                      </button>
+                   </div>
+                )}
+                
+                {/* SEARCH_PREFS -> CONFIRM */}
+                {state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS && (
+                    <button onClick={handleSubmitPrefs} className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-emerald-900/20">
+                        <CheckSquare size={18} />
+                        <span>CONFIRM & SAVE PREFS</span>
+                    </button>
+                )}
+
                 {/* TARGETING_READY -> NAVIGATE TO SEARCH */}
                 {state.status === AgentStatus.TARGETING_READY && onContinueToSearch && (
                   <button onClick={onContinueToSearch} className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-indigo-900/20">
@@ -968,6 +1091,14 @@ export const AgentStatusScreen: React.FC<Props> = ({
                      <button onClick={onFillApplyDraft} className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-emerald-900/20">
                         <PenTool size={18} />
                         <span>FILL DRAFT (NO SUBMIT)</span>
+                    </button>
+                )}
+
+                {/* APPLY_DRAFT_FILLED -> SUBMIT (E1.4) */}
+                {state.status === AgentStatus.APPLY_DRAFT_FILLED && onSubmitApply && (
+                    <button onClick={onSubmitApply} className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-purple-900/20">
+                        <Send size={18} />
+                        <span>SUBMIT APPLICATION (E1.4)</span>
                     </button>
                 )}
 

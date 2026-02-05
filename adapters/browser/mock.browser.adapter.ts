@@ -14,6 +14,9 @@ export class MockBrowserAdapter implements BrowserPort {
   private isApplyModalOpen: boolean = false;
   // State specifically for apply inputs
   private applyFormInputs: Record<string, string> = {};
+  
+  // PATCH P1.11: Track success state after submit
+  private isSuccessState: boolean = false;
 
   async launch(): Promise<void> {
     console.log('[BrowserAdapter] Launching virtual browser session...');
@@ -25,6 +28,7 @@ export class MockBrowserAdapter implements BrowserPort {
     this.currentUrlVal = url;
     this.isApplyModalOpen = false; // Reset on nav
     this.applyFormInputs = {}; // Reset inputs
+    this.isSuccessState = false; // Reset success state
     await new Promise(resolve => setTimeout(resolve, 1500));
   }
 
@@ -44,6 +48,16 @@ export class MockBrowserAdapter implements BrowserPort {
   }
 
   async getPageTextMinimal(): Promise<string> {
+    // PATCH P1.11: Return success marker if submitted
+    if (this.isSuccessState) {
+        return `
+          Mock Profile Content:    Senior Engineer
+          ...
+          Application Sent Successfully!
+          Отклик отправлен
+        `;
+    }
+
     // Stub: messy text to prove normalization
     return `
       Mock Profile Content:    Senior Engineer
@@ -74,14 +88,14 @@ export class MockBrowserAdapter implements BrowserPort {
     console.log('[BrowserAdapter] Scanning DOM for form controls...');
     await new Promise(resolve => setTimeout(resolve, 1200));
 
-    // Mock: Return Advanced Search Fields (mimicking HH.ru)
+    // Mock: Return Advanced Search Fields (generic, not site-specific)
     return [
         {
             id: 'f1',
             tag: 'input',
             inputType: 'text',
             label: 'Ключевые слова',
-            attributes: { name: 'text', 'data-qa': 'vacancy-search-keyword' },
+            attributes: { name: 'text', 'mock-id': 'search-keyword' },
             isVisible: true
         },
         {
@@ -89,14 +103,14 @@ export class MockBrowserAdapter implements BrowserPort {
             tag: 'input',
             inputType: 'number',
             label: 'Уровень дохода',
-            attributes: { name: 'salary', 'data-qa': 'vacancy-search-salary' },
+            attributes: { name: 'salary', 'mock-id': 'search-salary' },
             isVisible: true
         },
         {
             id: 'f3',
             tag: 'select',
             label: 'Регион',
-            attributes: { name: 'area' },
+            attributes: { name: 'area', 'mock-id': 'search-area' },
             options: [{ value: '1', label: 'Москва' }, { value: '2', label: 'Spb' }],
             isVisible: true
         },
@@ -105,14 +119,14 @@ export class MockBrowserAdapter implements BrowserPort {
             tag: 'input',
             inputType: 'checkbox',
             label: 'Только удаленная работа',
-            attributes: { name: 'schedule', value: 'remote' },
+            attributes: { name: 'schedule', value: 'remote', 'mock-id': 'search-remote' },
             isVisible: true
         },
         {
             id: 'f5',
             tag: 'button',
             label: 'Найти',
-            attributes: { type: 'submit', 'data-qa': 'advanced-search-submit' },
+            attributes: { type: 'submit', 'mock-id': 'search-submit' },
             isVisible: true
         }
     ];
@@ -238,11 +252,11 @@ export class MockBrowserAdapter implements BrowserPort {
       console.log('[BrowserAdapter] Scanning for Apply controls...');
       await new Promise(resolve => setTimeout(resolve, 800));
       
-      // Mock: Found "Respond" button
+      // Mock: Found "Respond" button with explicit mock selector
       return [
           {
               label: 'Откликнуться',
-              selector: 'data-qa=vacancy-response-link-top',
+              selector: 'mock://vacancy/apply-button',
               type: 'BUTTON'
           }
       ];
@@ -252,11 +266,20 @@ export class MockBrowserAdapter implements BrowserPort {
       console.log(`[BrowserAdapter] CLICKING element: ${selector}`);
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Mock logic: If we click the response button, modal opens
-      if (selector.includes('vacancy-response-link-top')) {
+      // Mock logic: Detect our mock-specific selector
+      if (selector === 'mock://vacancy/apply-button') {
           this.isApplyModalOpen = true;
           return true;
       }
+      
+      // PATCH P1.11: Handle submit specifically
+      if (selector === 'mock://apply-form/submit') {
+          console.log('[BrowserAdapter] SUBMIT clicked! Closing modal, setting success state.');
+          this.isApplyModalOpen = false;
+          this.isSuccessState = true;
+          return true;
+      }
+
       return false;
   }
 
@@ -271,8 +294,8 @@ export class MockBrowserAdapter implements BrowserPort {
               hasResumeSelect: true,
               hasSubmit: true,
               hasQuestionnaire: false,
-              coverLetterSelector: 'textarea[data-qa="vacancy-response-popup-form-letter-input"]',
-              submitSelector: 'button[data-qa="vacancy-response-submit-popup"]'
+              coverLetterSelector: 'mock://apply-form/cover-letter',
+              submitSelector: 'mock://apply-form/submit'
           };
       }
 
@@ -292,6 +315,7 @@ export class MockBrowserAdapter implements BrowserPort {
     
     // Check if we can input (simulate state)
     if (this.isApplyModalOpen) {
+        // Use generic selector as key for mock state
         this.applyFormInputs[selector] = text;
         return true;
     }
