@@ -67,6 +67,9 @@ export enum AgentStatus {
   // Phase E1.2
   APPLY_FORM_OPENED = 'APPLY_FORM_OPENED',
 
+  // Phase E1.3
+  APPLY_DRAFT_FILLED = 'APPLY_DRAFT_FILLED',
+
   COMPLETED = 'COMPLETED',
   FAILED = 'FAILED'
 }
@@ -92,4 +95,6 @@ export interface AgentConfig {
   city?: string;
   workMode?: WorkMode;
   targetLanguages?: string[];
+  // User Templates
+  coverLetterTemplate?: string;
 }

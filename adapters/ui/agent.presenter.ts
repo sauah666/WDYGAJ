@@ -290,6 +290,18 @@ export class AgentPresenter implements UIPort {
       }
   }
 
+  // Phase E1.3: Fill Draft
+  async fillApplyDraft(currentState: AgentState) {
+      if (!this.useCase) return;
+      try {
+          const site = this.currentConfig.targetSite || 'hh.ru';
+          await this.useCase.fillApplyFormDraft(currentState, site);
+      } catch (e) {
+          console.error(e);
+          await this.useCase.failSession(currentState, "Fill Apply Draft Error");
+      }
+  }
+
   async resetProfile(currentState: AgentState) {
       if (!this.useCase) return;
       try {

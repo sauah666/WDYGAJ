@@ -1,35 +1,29 @@
 # Developer Context (Save Game)
 
-**Last Updated**: Phase E1.2 Verified
+**Last Updated**: Phase E1.3 Verified
 **Role**: Senior Agent Architect
 **Manifesto**: See `docs/PROJECT_DOCUMENTATION.md` (Rule D-01)
 
 ## Где мы сейчас?
-Мы находимся в **PHASE E1.2: CLICK APPLY ENTRYPOINT (READ-ONLY)**.
+Мы находимся в **PHASE E1.3: DRAFT APPLICATION FILL (NO SUBMIT)**.
 
 ### Что сделано:
-1.  **Queue & Entrypoint**: Очередь построена, кнопка отклика найдена (E1.1).
-2.  **Interaction**: Агент выполнил клик по кнопке "Откликнуться".
-3.  **Form Analysis**: Агент просканировал открывшуюся форму (Модал/Страница) на наличие:
-    *   Поля для сопроводительного письма.
-    *   Селектора резюме.
-    *   Кнопки отправки.
-    *   Признаков анкеты (questionnaire detection).
-4.  **Artifact**: `ApplyFormProbeV1` сохранён в state (activeApplyFormProbe).
+1.  **Drafting**: Агент научился открывать форму отклика, находить поле сопроводительного письма и заполнять его текстом (заглушка).
+2.  **Safety**: Реализован механизм "Read-Back" — проверка, что текст реально попал в поле ввода.
+3.  **Artifact**: `ApplyDraftSnapshotV1` сохраняется. Содержит хеш текста и статус заполнения.
+4.  **No Submit**: Кнопка отправки найдена, но намеренно не нажимается.
 
 ### Текущее техническое состояние:
-*   `AgentStatus` переходит в `APPLY_FORM_OPENED`.
-*   В стейте доступен `activeApplyFormProbe`.
-*   Поля `detectedFields` показывают, можно ли отправлять сопроводительное письмо.
+*   `AgentStatus` переходит в `APPLY_DRAFT_FILLED`.
+*   В стейте доступен `activeApplyDraft`.
+*   Очередь (`activeApplyQueue`) не двигается (статус `PENDING`).
 
 ### Следующий шаг (IMMEDIATE NEXT):
-**PHASE E1.3 — INSERT COVER LETTER (NO SUBMIT)**:
-1.  Сгенерировать (или взять заглушку) сопроводительное письмо для текущей вакансии.
-    *   *Примечание: Пока можно использовать простой шаблон, чтобы не тратить токены, или простой LLM вызов.*
-2.  Вставить текст в найденное поле `coverLetterTextarea` (через BrowserPort).
-3.  Проверить, что значение в поле изменилось (Read back verification).
-4.  Убедиться, что кнопка Submit активна (или хотя бы присутствует).
-5.  **НЕ НАЖИМАТЬ SUBMIT**.
+**PHASE E1.4 — SUBMIT APPLICATION & VERIFY**:
+1.  Выполнить клик по кнопке Submit (используя `submitHint` из `ApplyFormProbeV1`).
+2.  Ожидать появления подтверждения (UI change / modal close / success message).
+3.  Обновить статус элемента в `ApplyQueueV1` (`APPLIED` или `FAILED`).
+4.  Зафиксировать результат отклика.
 
 ## Правила разработки (Strict)
 См. `docs/PROJECT_DOCUMENTATION.md`

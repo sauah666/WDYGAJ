@@ -103,6 +103,7 @@ export default function App() {
   // Phase E Actions
   const handleProbeApplyEntrypoint = () => agentPresenter.probeApplyEntrypoint(agentState);
   const handleOpenApplyForm = () => agentPresenter.openApplyForm(agentState);
+  const handleFillApplyDraft = () => agentPresenter.fillApplyDraft(agentState);
 
   // Router
   let screen;
@@ -143,6 +144,7 @@ export default function App() {
           onBuildApplyQueue={handleBuildApplyQueue}
           onProbeApplyEntrypoint={handleProbeApplyEntrypoint}
           onOpenApplyForm={handleOpenApplyForm}
+          onFillApplyDraft={handleFillApplyDraft}
         />
       );
       break;

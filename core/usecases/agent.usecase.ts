@@ -6,7 +6,7 @@ import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
 import { AgentStatus, AgentConfig } from '../../types';
-import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem, ApplyEntrypointProbeV1, ApplyFormProbeV1 } from '../domain/entities';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem, ApplyEntrypointProbeV1, ApplyFormProbeV1, ApplyDraftSnapshotV1, ApplyBlockedReason } from '../domain/entities';
 import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode, LLMScreeningInputV1, ScreeningCard, EvaluateExtractsInputV1, EvalCandidate } from '../domain/llm_contracts';
 
 export class AgentUseCase {
@@ -639,7 +639,10 @@ export class AgentUseCase {
 
       // 3. Sort Steps
       // Logic: Fill Location -> Work Mode -> Salary -> Other Inputs -> Submit
-      steps.sort((a, b) => a.priority - b.priority);
+      steps.sort((a, b) => {
+          // If priorities equal, sort by stepId stability (or generic)
+          return a.priority - b.priority;
+      });
 
       // 4. Create & Save Plan
       const plan: SearchApplyPlanV1 = {
@@ -681,8 +684,6 @@ export class AgentUseCase {
       }
 
       // 2. Determine Next Step
-      // Find the first step in plan that is NOT in snapshot results as SUCCESS
-      // This implicitly allows Retries (if a step failed, it's not successful, so it is picked again)
       const successfulStepIds = new Set(snapshot.results.filter(r => r.success).map(r => r.stepId));
       const nextStep = plan.steps.find(s => !successfulStepIds.has(s.stepId));
 
@@ -704,7 +705,6 @@ export class AgentUseCase {
       // 3. Prepare Execution
       const fieldDef = spec.fields.find(f => f.key === nextStep.fieldKey);
       if (!fieldDef) {
-           // Critical error: Plan refers to missing field
            return this.failSession(state, `Plan references unknown field key: ${nextStep.fieldKey}`);
       }
 
@@ -764,8 +764,6 @@ export class AgentUseCase {
       const MAX_RETRIES = 3;
 
       while (true) {
-          // 1. Check for Stop Condition from outside? (Not implemented in this loop, assumes run to completion)
-          
           // 2. Get Snapshot for retry check
           const snapshot = await this.storage.getAppliedFiltersSnapshot(siteId);
           if (snapshot && snapshot.overallStatus === 'FAILED') {
@@ -813,14 +811,10 @@ export class AgentUseCase {
           }
 
           if (currentState.status === AgentStatus.APPLY_STEP_FAILED) {
-              // Wait before retry
               await new Promise(r => setTimeout(r, 1000));
           } else if (currentState.status === AgentStatus.APPLY_STEP_DONE) {
-              // Small delay for realism
               await new Promise(r => setTimeout(r, 500));
           }
-          
-          // Loop continues...
       }
   }
 
@@ -843,7 +837,6 @@ export class AgentUseCase {
       // 2. Identify unique fields processed successfully
       const processedFields = new Map<string, AppliedStepResult>();
       
-      // Iterate strictly in order, overwriting with latest success
       for (const step of snapshot.results) {
           if (step.success) {
               processedFields.set(step.fieldKey, step);
@@ -853,12 +846,10 @@ export class AgentUseCase {
       // 3. Verify each field
       for (const [key, step] of processedFields) {
            const fieldDef = spec.fields.find(f => f.key === key);
-           if (!fieldDef || fieldDef.semanticType === 'SUBMIT') continue; // Skip buttons/unknowns
+           if (!fieldDef || fieldDef.semanticType === 'SUBMIT') continue; 
 
-           // a. Read from Browser
            const readResult = await this.browser.readControlValue(fieldDef);
            
-           // b. Compare
            const isMatch = this.looseEquals(step.intendedValue, readResult.value);
            const status: VerificationStatus = readResult.source === 'UNKNOWN' ? 'UNKNOWN' : (isMatch ? 'MATCH' : 'MISMATCH');
 
@@ -876,7 +867,6 @@ export class AgentUseCase {
            }
       }
 
-      // 4. Create Verification Record
       const verification: FiltersAppliedVerificationV1 = {
           siteId,
           verifiedAt: Date.now(),
@@ -887,7 +877,6 @@ export class AgentUseCase {
 
       await this.storage.saveFiltersAppliedVerification(siteId, verification);
 
-      // 5. Update State
       const finalLog = mismatches.length === 0 
         ? `Verification Passed: All ${results.length} controls match.` 
         : `Verification WARNING: ${mismatches.length} mismatches detected.`;
@@ -905,7 +894,6 @@ export class AgentUseCase {
       let currentState = await this.updateState({ ...state, logs });
 
       try {
-          // 1. Scan via Port
           const limit = 15;
           const { cards: rawCards, nextPageCursor } = await this.browser.scanVacancyCards(limit);
 
@@ -916,19 +904,16 @@ export class AgentUseCase {
               });
           }
 
-          // 2. Normalize and Map to Domain Entity
           const cards: VacancyCardV1[] = [];
           
           for (const raw of rawCards) {
-              const url = raw.url; // already absolute from adapter
+              const url = raw.url; 
               const title = raw.title.trim();
               const company = raw.company?.trim() || null;
               
-              // Generate hash for dedup (Site + URL + Title)
               const hashInput = `${siteId}|${url}|${title}`;
               const cardHash = await this.computeHash(hashInput);
 
-              // Parse Work Mode if present in raw text
               let workMode: 'remote' | 'hybrid' | 'office' | 'unknown' = 'unknown';
               if (raw.workModeText) {
                   const wm = raw.workModeText.toLowerCase();
@@ -937,12 +922,6 @@ export class AgentUseCase {
                   else if (wm.includes('офис') || wm.includes('office')) workMode = 'office';
               }
 
-              // Salary Parsing is handled by Adapter usually, but if Adapter returns text, we parse here or assume Adapter did it.
-              // For B1, we assume Adapter does heavy lifting or we do simple checks.
-              // Let's rely on Adapter to have populated salary if possible, 
-              // but our RawVacancyCard has 'salaryText'.
-              // We need to parse it to VacancySalary structure if we want structured data now.
-              // For simplicity in B1, we'll try to parse the text or leave null.
               const salary = this.parseSalaryString(raw.salaryText);
 
               cards.push({
@@ -960,9 +939,8 @@ export class AgentUseCase {
               });
           }
 
-          // 3. Create Batch
           const currentUrl = await this.browser.getCurrentUrl();
-          const queryFingerprint = await this.computeHash(currentUrl); // Simplified fingerprint
+          const queryFingerprint = await this.computeHash(currentUrl); 
 
           const batch: VacancyCardBatchV1 = {
               batchId: crypto.randomUUID(),
@@ -973,10 +951,8 @@ export class AgentUseCase {
               pageCursor: nextPageCursor || null
           };
 
-          // 4. Save Batch
           await this.storage.saveVacancyCardBatch(siteId, batch);
 
-          // 5. Update State
           return this.updateState({
               ...currentState,
               status: AgentStatus.VACANCIES_CAPTURED,
@@ -992,7 +968,6 @@ export class AgentUseCase {
 
   // --- Phase B2: Dedup & Select ---
   async dedupAndSelectVacancyBatch(state: AgentState, siteId: string): Promise<AgentState> {
-      // 1. Context Check
       if (!state.activeVacancyBatch) {
           return this.failSession(state, "No vacancy batch found to process.");
       }
@@ -1011,11 +986,9 @@ export class AgentUseCase {
           }
           const seenSet = new Set(seenIndex.seenKeys);
 
-          // 2. Group Cards
           const groups = new Map<string, VacancyCardV1[]>();
 
           for (const card of batch.cards) {
-              // Group Key Logic: Use externalId if available, else Hash(Title+Company+Salary)
               let groupKey = '';
               if (card.externalId) {
                   groupKey = `EXT:${card.externalId}`;
@@ -1029,7 +1002,6 @@ export class AgentUseCase {
               groups.get(groupKey)!.push(card);
           }
 
-          // 3. Process Groups
           const results: DedupedCardResult[] = [];
           const newSeenKeys: string[] = [];
           
@@ -1038,11 +1010,9 @@ export class AgentUseCase {
           let countSeen = 0;
 
           for (const [key, groupCards] of groups) {
-              // Check if already seen
-              const isSeen = seenSet.has(key); // We check key, not individual card hash, because key represents the "position"
+              const isSeen = seenSet.has(key); 
               
               if (isSeen) {
-                   // Mark all as SKIP_SEEN
                    for (const c of groupCards) {
                        results.push({ cardId: c.id, decision: VacancyDecision.SKIP_SEEN, dedupKey: key });
                    }
@@ -1050,8 +1020,6 @@ export class AgentUseCase {
                    continue;
               }
 
-              // Selection Logic within Group
-              // Sort by: 1. City Match, 2. Completeness, 3. Hash Stability
               groupCards.sort((a, b) => {
                   if (userCity) {
                       const aCity = a.city?.toLowerCase() || '';
@@ -1060,7 +1028,6 @@ export class AgentUseCase {
                       if (!aCity.includes(userCity) && bCity.includes(userCity)) return 1;
                   }
                   
-                  // Completeness score
                   const scoreA = (a.salary ? 2 : 0) + (a.workMode !== 'unknown' ? 1 : 0);
                   const scoreB = (b.salary ? 2 : 0) + (b.workMode !== 'unknown' ? 1 : 0);
                   if (scoreA !== scoreB) return scoreB - scoreA;
@@ -1068,20 +1035,17 @@ export class AgentUseCase {
                   return a.cardHash.localeCompare(b.cardHash);
               });
 
-              // Winner
               const winner = groupCards[0];
               results.push({ cardId: winner.id, decision: VacancyDecision.SELECTED, dedupKey: key });
               newSeenKeys.push(key);
               countSelected++;
 
-              // Losers
               for (let i = 1; i < groupCards.length; i++) {
                   results.push({ cardId: groupCards[i].id, decision: VacancyDecision.DUPLICATE, dedupKey: key });
                   countDuplicates++;
               }
           }
 
-          // 4. Update Persistence
           seenIndex.seenKeys = [...seenIndex.seenKeys, ...newSeenKeys];
           seenIndex.lastUpdatedAt = Date.now();
           await this.storage.saveSeenVacancyIndex(siteId, seenIndex);
@@ -1103,7 +1067,6 @@ export class AgentUseCase {
 
           await this.storage.saveDedupedVacancyBatch(siteId, dedupedBatch);
 
-          // 5. Update State
           return this.updateState({
               ...currentState,
               status: AgentStatus.VACANCIES_DEDUPED,
@@ -1119,13 +1082,12 @@ export class AgentUseCase {
   
   // --- Phase C1: Script Prefilter ---
   async runScriptPrefilter(state: AgentState, siteId: string): Promise<AgentState> {
-      // 1. Context Check
       if (!state.activeDedupedBatch || !state.activeVacancyBatch) {
           return this.failSession(state, "No deduped batch found to filter.");
       }
 
       const targeting = await this.storage.getTargetingSpec(siteId);
-      const userPrefs = await this.storage.getUserSearchPrefs(siteId); // For raw minSalary constraints if needed
+      const userPrefs = await this.storage.getUserSearchPrefs(siteId); 
       
       if (!targeting) {
            return this.failSession(state, "Missing targeting spec for prefilter.");
@@ -1145,7 +1107,6 @@ export class AgentUseCase {
           let countDefer = 0;
           let countReject = 0;
 
-          // Only process SELECTED cards
           const selectedResults = batch.results.filter(r => r.decision === VacancyDecision.SELECTED);
           
           for (const res of selectedResults) {
@@ -1158,7 +1119,6 @@ export class AgentUseCase {
               let workModeGate: 'PASS' | 'FAIL' | 'UNKNOWN' = 'UNKNOWN';
 
               // --- 1. Salary Gate ---
-              // Rule: Reject if card.max < user.min
               if (card.salary && card.salary.max && userPrefs?.minSalary) {
                    if (card.salary.max < userPrefs.minSalary) {
                        salaryGate = 'FAIL';
@@ -1167,27 +1127,23 @@ export class AgentUseCase {
                        salaryGate = 'PASS';
                    }
               } else if (card.salary) {
-                  salaryGate = 'PASS'; // Salary exists but no strict conflict
+                  salaryGate = 'PASS'; 
               } else {
                   salaryGate = 'UNKNOWN';
               }
 
               // --- 2. WorkMode Gate ---
-              // Logic: If strictMode is ON, we require exact match (or acceptable mapping)
-              // Simplified: If user said REMOTE, reject OFFICE/HYBRID.
-              // If User said ANY, pass all.
               const userMode = userPrefs?.workMode || WorkMode.ANY;
               const strictMode = targeting.workModeRules.strictMode;
               
               if (userMode === WorkMode.ANY) {
                   workModeGate = 'PASS';
               } else if (card.workMode === 'unknown') {
-                  workModeGate = 'UNKNOWN'; // Give benefit of doubt
+                  workModeGate = 'UNKNOWN';
               } else {
-                  // Mismatch logic
                   let isMatch = false;
                   if (userMode === WorkMode.REMOTE && card.workMode === 'remote') isMatch = true;
-                  else if (userMode === WorkMode.HYBRID && (card.workMode === 'hybrid' || card.workMode === 'office')) isMatch = true; // Hybrid usually allows office
+                  else if (userMode === WorkMode.HYBRID && (card.workMode === 'hybrid' || card.workMode === 'office')) isMatch = true;
                   else if (userMode === WorkMode.OFFICE && card.workMode === 'office') isMatch = true;
                   
                   if (!isMatch && strictMode) {
@@ -1201,14 +1157,11 @@ export class AgentUseCase {
               // --- 3. Title Score ---
               const normalizedTitle = this.normalizeText(card.title);
               
-              // Negative Keywords
               const isNegative = targeting.titleMatchWeights.negativeKeywords.some(kw => normalizedTitle.includes(this.normalizeText(kw)));
               if (isNegative) {
                   score = -1.0;
                   reasons.push('negative_keyword');
               } else {
-                  // Positive Matching
-                  // Exact match
                   const allTargets = [...targeting.targetRoles.ruTitles, ...targeting.targetRoles.enTitles];
                   const exactMatch = allTargets.some(t => normalizedTitle.includes(this.normalizeText(t)));
                   
@@ -1216,8 +1169,6 @@ export class AgentUseCase {
                       score += 1.0;
                       reasons.push('title_exact_match');
                   } else {
-                      // Token overlap (Fuzzy)
-                      // Simple implementation: count overlapping words
                       const titleTokens = normalizedTitle.split(' ');
                       let maxOverlap = 0;
                       for (const target of allTargets) {
@@ -1229,9 +1180,6 @@ export class AgentUseCase {
                       score += (0.5 * maxOverlap);
                       if (maxOverlap > 0.5) reasons.push('title_fuzzy_match');
                   }
-                  
-                  // Seniority Bonus
-                  // (Omitted in minimal impl, can add if needed)
               }
 
               // --- 4. Final Decision ---
@@ -1261,7 +1209,6 @@ export class AgentUseCase {
               });
           }
 
-          // 5. Artifact
           const prefilterBatch: PreFilterResultBatchV1 = {
               id: crypto.randomUUID(),
               siteId,
@@ -1278,7 +1225,6 @@ export class AgentUseCase {
 
           await this.storage.savePreFilterResultBatch(siteId, prefilterBatch);
 
-          // 6. Update State
           return this.updateState({
               ...currentState,
               status: AgentStatus.PREFILTER_DONE,
@@ -1294,7 +1240,6 @@ export class AgentUseCase {
 
   // --- Phase C2: LLM Batch Screening ---
   async runLLMBatchScreening(state: AgentState, siteId: string): Promise<AgentState> {
-      // 1. Context Check
       if (!state.activePrefilterBatch || !state.activeVacancyBatch) {
           return this.failSession(state, "No prefilter batch results found for LLM screening.");
       }
@@ -1310,14 +1255,11 @@ export class AgentUseCase {
       try {
           const prefilterBatch = state.activePrefilterBatch;
           
-          // 2. Select Candidates (Priority: READ > DEFER, Score Desc)
           const candidates = prefilterBatch.results
               .filter(r => r.decision === 'READ_CANDIDATE' || r.decision === 'DEFER')
               .sort((a, b) => {
-                  // Prioritize READ over DEFER
                   if (a.decision === 'READ_CANDIDATE' && b.decision !== 'READ_CANDIDATE') return -1;
                   if (a.decision !== 'READ_CANDIDATE' && b.decision === 'READ_CANDIDATE') return 1;
-                  // Then by Score Desc
                   return b.score - a.score;
               });
 
@@ -1329,11 +1271,9 @@ export class AgentUseCase {
              });
           }
 
-          // Limit to 15 items per batch
           const batchSize = 15;
           const selection = candidates.slice(0, batchSize);
           
-          // 3. Prepare Input
           const inputCards: ScreeningCard[] = [];
           for (const sel of selection) {
               const card = state.activeVacancyBatch!.cards.find(c => c.id === sel.cardId);
@@ -1359,10 +1299,8 @@ export class AgentUseCase {
               cards: inputCards
           };
 
-          // 4. Call LLM
           const llmOutput = await this.llm.screenVacancyCardsBatch(llmInput);
 
-          // 5. Artifact
           const decisions: LLMDecisionV1[] = llmOutput.results.map(r => ({
               cardId: r.cardId,
               decision: r.decision,
@@ -1370,7 +1308,6 @@ export class AgentUseCase {
               reasons: r.reasons
           }));
           
-          // Populate Queues
           const read_queue = decisions.filter(d => d.decision === 'READ').map(d => d.cardId);
           const defer_queue = decisions.filter(d => d.decision === 'DEFER').map(d => d.cardId);
           const ignore_queue = decisions.filter(d => d.decision === 'IGNORE').map(d => d.cardId);
@@ -1395,7 +1332,6 @@ export class AgentUseCase {
 
           await this.storage.saveLLMDecisionBatch(siteId, llmBatch);
 
-          // 6. Update State
           const finalLog = `LLM Screened ${decisions.length} cards. READ: ${llmBatch.summary.read}, DEFER: ${llmBatch.summary.defer}, IGNORE: ${llmBatch.summary.ignore}.`;
           
           return this.updateState({
@@ -1413,7 +1349,6 @@ export class AgentUseCase {
 
   // --- Phase D1: Vacancy Extraction ---
   async runVacancyExtraction(state: AgentState, siteId: string): Promise<AgentState> {
-      // 1. Context Check
       if (!state.activeLLMBatch) {
           return this.failSession(state, "No LLM decision batch found to extract from.");
       }
@@ -1444,18 +1379,15 @@ export class AgentUseCase {
                continue;
            }
 
-           // Log step
            currentState = await this.updateState({
                ...currentState,
                logs: [...currentState.logs, `Extracting details for: ${card.title} ...`]
            });
 
-           // 2. Open Page & Extract
            try {
                await this.browser.navigateTo(card.url);
                const parsedPage = await this.browser.extractVacancyPage();
 
-               // 3. Map to Entity
                const extract: VacancyExtractV1 = {
                    vacancyId: card.id,
                    siteId,
@@ -1474,12 +1406,10 @@ export class AgentUseCase {
                extractedResults.push(extract);
                successCount++;
                
-               // Small delay to simulate human-like reading/loading
                await new Promise(r => setTimeout(r, 500));
 
            } catch (e: any) {
                console.error(`Failed to extract ${card.url}`, e);
-               // Push failed record
                extractedResults.push({
                    vacancyId: card.id,
                    siteId,
@@ -1497,7 +1427,6 @@ export class AgentUseCase {
            }
       }
 
-      // 4. Save Batch
       const extractionBatch: VacancyExtractionBatchV1 = {
           id: crypto.randomUUID(),
           siteId,
@@ -1513,7 +1442,6 @@ export class AgentUseCase {
 
       await this.storage.saveVacancyExtractionBatch(siteId, extractionBatch);
 
-      // 5. Update State
       return this.updateState({
           ...currentState,
           status: AgentStatus.VACANCIES_EXTRACTED,
@@ -1524,7 +1452,6 @@ export class AgentUseCase {
 
   // --- Phase D2: LLM Batch Evaluation ---
   async runLLMEvalBatch(state: AgentState, siteId: string): Promise<AgentState> {
-      // 1. Context Check
       const extractionBatch = state.activeExtractionBatch;
       const targeting = await this.storage.getTargetingSpec(siteId);
       const profile = await this.storage.getProfile(siteId);
@@ -1533,11 +1460,9 @@ export class AgentUseCase {
            return this.failSession(state, "Missing Context for Evaluation (ExtractionBatch, Targeting, or Profile).");
       }
 
-      // 2. Select Items to Evaluate (Only Successfully Extracted)
-      // Limit to 15 max per rule D2.1
       const candidatesToEval = extractionBatch.results
           .filter(r => r.extractionStatus === 'COMPLETE')
-          .slice(0, 15); // Batch rule
+          .slice(0, 15); 
 
       if (candidatesToEval.length === 0) {
            return this.updateState({
@@ -1552,7 +1477,6 @@ export class AgentUseCase {
           logs: [...state.logs, `Preparing LLM evaluation for ${candidatesToEval.length} candidates...`]
       });
 
-      // 3. Construct Input Payload
       const evalCandidates: EvalCandidate[] = [];
       for (const extract of candidatesToEval) {
            const originalCard = state.activeVacancyBatch?.cards.find(c => c.id === extract.vacancyId);
@@ -1574,7 +1498,7 @@ export class AgentUseCase {
       }
       
       const input: EvaluateExtractsInputV1 = {
-          profileSummary: profile.rawContent, // Full text normalized
+          profileSummary: profile.rawContent, 
           targetingRules: {
               targetRoles: [...targeting.targetRoles.ruTitles, ...targeting.targetRoles.enTitles],
               workModeRules: { strictMode: targeting.workModeRules.strictMode },
@@ -1584,7 +1508,6 @@ export class AgentUseCase {
       };
 
       try {
-          // 4. Call LLM
           currentState = await this.updateState({
               ...currentState,
               logs: [...currentState.logs, `Calling LLM (Batch Size: ${evalCandidates.length})...`]
@@ -1592,7 +1515,6 @@ export class AgentUseCase {
 
           const output = await this.llm.evaluateVacancyExtractsBatch(input);
 
-          // 5. Transform to Artifact
           const results: LLMVacancyEvalResult[] = output.results.map(r => ({
               vacancyId: r.id,
               decision: r.decision,
@@ -1618,10 +1540,8 @@ export class AgentUseCase {
               status: 'OK'
           };
 
-          // 6. Save
           await this.storage.saveLLMVacancyEvalBatch(siteId, evalBatch);
 
-          // 7. Update State
           return this.updateState({
               ...currentState,
               status: AgentStatus.EVALUATION_DONE,
@@ -1637,7 +1557,6 @@ export class AgentUseCase {
 
   // --- Phase D2.2: Build Apply Queue ---
   async buildApplyQueue(state: AgentState, siteId: string): Promise<AgentState> {
-      // 1. Context Check
       if (!state.activeEvalBatch) {
           return this.failSession(state, "No evaluation batch found to build queue from.");
       }
@@ -1646,7 +1565,6 @@ export class AgentUseCase {
       let currentState = await this.updateState({ ...state, logs });
 
       try {
-          // 2. Filter Candidates (Only APPLY)
           const applyCandidates = state.activeEvalBatch.results.filter(r => r.decision === 'APPLY');
           
           if (applyCandidates.length === 0) {
@@ -1657,7 +1575,6 @@ export class AgentUseCase {
                });
           }
 
-          // 3. Construct Queue Items
           const items: ApplyQueueItem[] = [];
           
           for (const cand of applyCandidates) {
@@ -1672,7 +1589,6 @@ export class AgentUseCase {
                });
           }
 
-          // 4. Create Queue Entity
           const queue: ApplyQueueV1 = {
               id: crypto.randomUUID(),
               siteId,
@@ -1687,10 +1603,8 @@ export class AgentUseCase {
               }
           };
 
-          // 5. Save
           await this.storage.saveApplyQueue(siteId, queue);
 
-          // 6. Update State
           return this.updateState({
               ...currentState,
               status: AgentStatus.APPLY_QUEUE_READY,
@@ -1706,12 +1620,10 @@ export class AgentUseCase {
   
   // --- Phase E1.1: Probe Apply Entrypoint ---
   async probeNextApplyEntrypoint(state: AgentState, siteId: string): Promise<AgentState> {
-      // 1. Context Check
       if (!state.activeApplyQueue) {
           return this.failSession(state, "No Apply Queue to process.");
       }
 
-      // 2. Find Next Pending
       const nextItem = state.activeApplyQueue.items.find(i => i.status === 'PENDING');
       if (!nextItem) {
           return this.updateState({
@@ -1727,26 +1639,22 @@ export class AgentUseCase {
       });
 
       try {
-          // 3. Navigate
           await this.browser.navigateTo(nextItem.url);
 
-          // 4. Scan
           const controls = await this.browser.scanApplyEntrypoints();
           
-          // 5. Create Probe Artifact (Transient)
           const probe: ApplyEntrypointProbeV1 = {
               taskId: nextItem.vacancyId,
               vacancyUrl: nextItem.url,
               foundControls: controls,
               blockers: {
-                  requiresLogin: false, // In a real app, detect login wall
+                  requiresLogin: false, 
                   applyNotAvailable: controls.length === 0,
                   unknownLayout: false
               },
               probedAt: Date.now()
           };
 
-          // 6. Update State
           const logMsg = controls.length > 0 
               ? `Found ${controls.length} potential apply controls.` 
               : `WARNING: No apply controls found.`;
@@ -1766,28 +1674,24 @@ export class AgentUseCase {
 
   // --- Phase E1.2: Click and Scan Apply Form ---
   async openAndScanApplyForm(state: AgentState, siteId: string): Promise<AgentState> {
-      // 1. Check Context
       if (!state.activeApplyProbe || state.activeApplyProbe.foundControls.length === 0) {
           return this.failSession(state, "No valid apply entrypoint found to click.");
       }
 
-      const control = state.activeApplyProbe.foundControls[0]; // Take best/first
+      const control = state.activeApplyProbe.foundControls[0]; 
       let currentState = await this.updateState({
           ...state,
           logs: [...state.logs, `Clicking apply control: "${control.label}"...`]
       });
 
       try {
-          // 2. Click
           const clickSuccess = await this.browser.clickElement(control.selector);
           if (!clickSuccess) {
               return this.failSession(currentState, `Failed to click apply element: ${control.selector}`);
           }
 
-          // 3. Scan Form
           const formSnapshot = await this.browser.scanApplyForm();
 
-          // 4. Create Artifact
           const formProbe: ApplyFormProbeV1 = {
               taskId: state.activeApplyProbe.taskId,
               vacancyUrl: state.activeApplyProbe.vacancyUrl,
@@ -1812,7 +1716,6 @@ export class AgentUseCase {
               scannedAt: Date.now()
           };
 
-          // 5. Update State
           const logMsg = formProbe.applyUiKind === 'MODAL' 
               ? `Apply Form Opened (Modal). Cover Letter Field: ${formProbe.detectedFields.coverLetterTextarea ? 'YES' : 'NO'}`
               : `Apply Form Status Unknown/Inline.`;
@@ -1827,6 +1730,92 @@ export class AgentUseCase {
       } catch (e: any) {
           console.error(e);
           return this.failSession(currentState, `Apply Form Scan Failed: ${e.message}`);
+      }
+  }
+
+  // --- Phase E1.3: Fill Application Draft (No Submit) ---
+  async fillApplyFormDraft(state: AgentState, siteId: string): Promise<AgentState> {
+      if (!state.activeApplyProbe || !state.activeApplyFormProbe) {
+          return this.failSession(state, "Missing Apply Probe or Form Probe data.");
+      }
+
+      const vacancyId = state.activeApplyProbe.taskId;
+      const formProbe = state.activeApplyFormProbe;
+      const url = state.activeApplyProbe.vacancyUrl;
+      const entrypointSelector = state.activeApplyProbe.foundControls[0].selector;
+
+      let currentState = await this.updateState({
+          ...state,
+          logs: [...state.logs, `Starting Draft Fill for vacancy ${vacancyId} (NO SUBMIT)...`]
+      });
+
+      try {
+          // 1. Re-navigate to Ensure State
+          await this.browser.navigateTo(url);
+          await this.browser.clickElement(entrypointSelector);
+          await new Promise(r => setTimeout(r, 1000)); // Wait for modal
+
+          let blockedReason: ApplyBlockedReason = null;
+          let filled = false;
+          let readbackHash: string | null = null;
+          let summary = "";
+
+          // 2. Logic: Fill Cover Letter if Field Exists
+          if (formProbe.detectedFields.coverLetterTextarea && formProbe.safeLocators.coverLetterHint) {
+              const coverLetterText = "Здравствуйте! Меня очень заинтересовала ваша вакансия. У меня есть релевантный опыт работы с React и TypeScript более 5 лет. Буду рад обсудить детали на интервью. Спасибо!"; // Stub for now, later from config
+              
+              currentState = await this.updateState({
+                  ...currentState,
+                  logs: [...currentState.logs, `Filling Cover Letter (${coverLetterText.length} chars)...`]
+              });
+
+              const filledSuccess = await this.browser.inputText(formProbe.safeLocators.coverLetterHint, coverLetterText);
+              
+              if (filledSuccess) {
+                  // 3. Verification (Readback)
+                  const readBackValue = await this.browser.readInputValue(formProbe.safeLocators.coverLetterHint);
+                  if (readBackValue === coverLetterText) {
+                      filled = true;
+                      readbackHash = await this.computeHash(readBackValue);
+                      summary = "Cover letter filled and verified.";
+                  } else {
+                      blockedReason = 'READBACK_FAILED';
+                      summary = "Failed to verify input text.";
+                  }
+              } else {
+                  blockedReason = 'FIELD_NOT_FOUND'; // Failed to input
+                  summary = "Input action failed.";
+              }
+          } else {
+               summary = "No cover letter field detected, skipping fill.";
+          }
+
+          // 4. Create Artifact
+          const draftSnapshot: ApplyDraftSnapshotV1 = {
+              vacancyId,
+              siteId,
+              createdAt: Date.now(),
+              coverLetterFieldFound: formProbe.detectedFields.coverLetterTextarea,
+              coverLetterFilled: filled,
+              coverLetterReadbackHash: readbackHash,
+              formStateSummary: summary,
+              blockedReason
+          };
+
+          await this.storage.saveApplyDraftSnapshot(siteId, draftSnapshot);
+
+          const statusLog = filled ? "DRAFT SUCCESS: Cover letter filled." : `DRAFT STATUS: ${summary}`;
+
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.APPLY_DRAFT_FILLED,
+              activeApplyDraft: draftSnapshot,
+              logs: [...currentState.logs, statusLog, "Safety Stop: Submit NOT clicked."]
+          });
+
+      } catch (e: any) {
+           console.error(e);
+           return this.failSession(currentState, `Draft Fill Failed: ${e.message}`);
       }
   }
 

@@ -12,6 +12,8 @@ export class MockBrowserAdapter implements BrowserPort {
 
   // Mock State for Apply Flow
   private isApplyModalOpen: boolean = false;
+  // State specifically for apply inputs
+  private applyFormInputs: Record<string, string> = {};
 
   async launch(): Promise<void> {
     console.log('[BrowserAdapter] Launching virtual browser session...');
@@ -22,6 +24,7 @@ export class MockBrowserAdapter implements BrowserPort {
     console.log(`[BrowserAdapter] Navigating to ${url}...`);
     this.currentUrlVal = url;
     this.isApplyModalOpen = false; // Reset on nav
+    this.applyFormInputs = {}; // Reset inputs
     await new Promise(resolve => setTimeout(resolve, 1500));
   }
 
@@ -281,6 +284,28 @@ export class MockBrowserAdapter implements BrowserPort {
           hasSubmit: false,
           hasQuestionnaire: false
       };
+  }
+
+  async inputText(selector: string, text: string): Promise<boolean> {
+    console.log(`[BrowserAdapter] INPUT into ${selector}: "${text.substring(0, 20)}..."`);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Check if we can input (simulate state)
+    if (this.isApplyModalOpen) {
+        this.applyFormInputs[selector] = text;
+        return true;
+    }
+    return false;
+  }
+
+  async readInputValue(selector: string): Promise<string | null> {
+    console.log(`[BrowserAdapter] READING value from ${selector}`);
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    if (this.isApplyModalOpen && this.applyFormInputs[selector] !== undefined) {
+        return this.applyFormInputs[selector];
+    }
+    return null;
   }
 
   async close(): Promise<void> {

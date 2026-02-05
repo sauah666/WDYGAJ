@@ -423,6 +423,21 @@ export interface ApplyFormProbeV1 {
     scannedAt: number;
 }
 
+// --- Phase E1.3: Apply Draft Snapshot ---
+
+export type ApplyBlockedReason = 'VACANCY_NOT_OPENED' | 'APPLY_ENTRYPOINT_NOT_FOUND' | 'FORM_NOT_REACHED' | 'FIELD_NOT_FOUND' | 'READBACK_FAILED' | null;
+
+export interface ApplyDraftSnapshotV1 {
+  vacancyId: string;
+  siteId: string;
+  createdAt: number;
+  coverLetterFieldFound: boolean;
+  coverLetterFilled: boolean;
+  coverLetterReadbackHash: string | null;
+  formStateSummary: string; // Short desc e.g. "Visible: textarea, submit"
+  blockedReason: ApplyBlockedReason;
+}
+
 // --- Core State ---
 
 export interface AgentState {
@@ -449,6 +464,7 @@ export interface AgentState {
   activeApplyQueue?: ApplyQueueV1 | null; // Phase D2.2: Queue for Auto Apply
   activeApplyProbe?: ApplyEntrypointProbeV1 | null; // Phase E1.1: Transient Probe Result
   activeApplyFormProbe?: ApplyFormProbeV1 | null; // Phase E1.2: Transient Form Probe
+  activeApplyDraft?: ApplyDraftSnapshotV1 | null; // Phase E1.3: Transient Draft Result
 }
 
 export interface ProfileSnapshot {
@@ -480,5 +496,6 @@ export const createInitialAgentState = (): AgentState => ({
   activeEvalBatch: null,
   activeApplyQueue: null,
   activeApplyProbe: null,
-  activeApplyFormProbe: null
+  activeApplyFormProbe: null,
+  activeApplyDraft: null
 });

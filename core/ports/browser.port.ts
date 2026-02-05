@@ -129,6 +129,16 @@ export interface BrowserPort {
   scanApplyForm(): Promise<RawApplyFormSnapshot>;
 
   /**
+   * Phase E1.3: Enters text into a specific element.
+   */
+  inputText(selector: string, text: string): Promise<boolean>;
+
+  /**
+   * Phase E1.3: Reads the value/text from a specific element.
+   */
+  readInputValue(selector: string): Promise<string | null>;
+
+  /**
    * Closes the browser session.
    */
   close(): Promise<void>;

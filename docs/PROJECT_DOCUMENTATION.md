@@ -1,4 +1,4 @@
-# 📘 PROJECT DOCUMENTATION — v1.16
+# 📘 PROJECT DOCUMENTATION — v1.17
 
 **Проект:** Agent-based Job Search Automation  
 **Аудитория:** LLM-агент-разработчик (Gemini / GPT / Claude)  
@@ -101,21 +101,17 @@ MASTER PLAN v1.0 — JobSearch Agent (Mode 1: HH.ru, затем мультиса
 - Определение типа формы (Modal/Inline)
 - Детекция полей: Cover Letter, Resume Select, Submit
 - Формирование ApplyFormProbeV1
+✅ Done-E1.3: Draft Application Fill (No Submit)
+- Открытие формы заново (через entrypoint)
+- Заполнение поля Cover Letter (input)
+- Verification Read-Back (проверка вставки)
+- ApplyDraftSnapshotV1 (blocked_reason / filled boolean)
+- Safety: Submit НЕ нажат
 
 2) MASTER PLAN — от “сейчас” до “финиша”
-PHASE D — Deep Read (извлечь только важные куски текста)
-D2. LLM Batch Evaluation (10–15 извлечений → 1 запрос) (DONE)
-- EvaluateExtractsInputV1 -> LLM -> EvaluateExtractsOutputV1
-- Decisions: APPLY / SKIP / NEEDS_HUMAN
-- Artifact: LLMVacancyEvalBatchV1
-
-D2.2. Build Apply Queue (DONE)
-- Filter APPLY -> QueueItems
-- Idempotency check
-
 PHASE E — Auto Apply (отклики)
 E1. Apply With Cover Letter (script)
-- Нажать “Откликнуться”, вставить сопроводительное, отправить
+- E1.4: Submit & Verify (Click Submit -> Check Confirmation UI)
 E2. Questionnaire Handling (DOM → LLM → Fill)
 - Ответы строго по ProfileSnapshot, без выдумок
 E3. Retry & Failover
@@ -145,5 +141,5 @@ UI: выбор режима/сайта/настроек и reset’ов.
 Документация: позволяет новому агенту продолжить без истории.
 
 4) Текущая точка
-Последний завершённый этап: PHASE E1.2 — CLICK APPLY ENTRYPOINT
-Текущий этап: PHASE E1.3 — INSERT COVER LETTER (NO SUBMIT)
+Последний завершённый этап: PHASE E1.3 — DRAFT APPLICATION FILL (NO SUBMIT)
+Текущий этап: PHASE E1.4 — SUBMIT APPLICATION & VERIFY

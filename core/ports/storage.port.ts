@@ -2,7 +2,7 @@
 // Purpose: Define contracts for persistence.
 
 import { AgentConfig } from '../../types';
-import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1, LLMVacancyEvalBatchV1, ApplyQueueV1 } from '../domain/entities';
+import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1, LLMVacancyEvalBatchV1, ApplyQueueV1, ApplyDraftSnapshotV1 } from '../domain/entities';
 import { TargetingSpecV1 } from '../domain/llm_contracts';
 
 export interface StoragePort {
@@ -84,6 +84,10 @@ export interface StoragePort {
   // Phase D2.2: Apply Queue
   saveApplyQueue(siteId: string, queue: ApplyQueueV1): Promise<void>;
   getApplyQueue(siteId: string, queueId: string): Promise<ApplyQueueV1 | null>;
+
+  // Phase E1.3: Apply Draft
+  saveApplyDraftSnapshot(siteId: string, snapshot: ApplyDraftSnapshotV1): Promise<void>;
+  getApplyDraftSnapshot(siteId: string, vacancyId: string): Promise<ApplyDraftSnapshotV1 | null>;
 
   // Data (Stub for future vacanies/profiles)
   saveDataStub(key: string, data: unknown): Promise<void>;
