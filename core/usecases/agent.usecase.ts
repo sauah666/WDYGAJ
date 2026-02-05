@@ -1,430 +1,650 @@
 // Layer: USE CASES
-// Purpose: Application logic and orchestration.
+// Purpose: Application specific business rules. Orchestrates flow between Domain and Ports.
 
-import { AgentStatus, AgentConfig } from '../../types';
-import { 
-  AgentState, 
-  createInitialAgentState, 
-  ProfileSnapshot, 
-  SearchDOMSnapshotV1, 
-  UserSearchPrefsV1, 
-  SearchApplyPlanV1, 
-  AppliedFiltersSnapshotV1,
-  FiltersAppliedVerificationV1,
-  VacancyCardBatchV1,
-  DedupedVacancyBatchV1,
-  SeenVacancyIndexV1,
-  PreFilterResultBatchV1,
-  LLMDecisionBatchV1,
-  VacancyExtractionBatchV1,
-  LLMVacancyEvalBatchV1,
-  ApplyQueueV1,
-  ApplyEntrypointProbeV1,
-  ApplyFormProbeV1,
-  ApplyDraftSnapshotV1,
-  ApplySubmitReceiptV1
-} from '../domain/entities';
-import { BrowserPort } from '../ports/browser.port';
+import { BrowserPort, RawVacancyCard } from '../ports/browser.port';
 import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
-import { 
-  ProfileSummaryV1, 
-  SearchUIAnalysisInputV1, 
-  LLMScreeningInputV1, 
-  EvaluateExtractsInputV1 
-} from '../domain/llm_contracts';
+import { AgentStatus, AgentConfig } from '../../types';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem, ApplyEntrypointProbeV1, ApplyFormProbeV1, ApplyDraftSnapshotV1, ApplyBlockedReason, CoverLetterSource, ApplySubmitReceiptV1, ApplyFailureReason } from '../domain/entities';
+import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode, LLMScreeningInputV1, ScreeningCard, EvaluateExtractsInputV1, EvalCandidate } from '../domain/llm_contracts';
 
 export class AgentUseCase {
   constructor(
     private browser: BrowserPort,
     private storage: StoragePort,
     private ui: UIPort,
-    private llm: LLMProviderPort
+    private lllm: LLMProviderPort
   ) {}
 
-  // --- Helper: State Management ---
-  private async updateState(newState: AgentState): Promise<AgentState> {
-    await this.storage.saveAgentState(newState);
-    this.ui.renderState(newState);
-    return newState;
+  private async updateState(state: AgentState): Promise<AgentState> {
+    await this.storage.saveAgentState(state);
+    this.ui.renderState(state);
+    return state;
   }
 
-  async failSession(state: AgentState, reason: string): Promise<AgentState> {
-    const failedState = {
-      ...state,
-      status: AgentStatus.FAILED,
-      logs: [...state.logs, `ERROR: ${reason}`]
+  // --- Helpers for Profile Logic ---
+  private normalizeText(text: string): string {
+    // Collapse whitespace and lowercase
+    return text.replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  private async computeHash(text: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(text);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  
+  // Minimal Site Registry for Stage 5.2 (Hardcoded for now)
+  private getSiteDefinition(siteId: string): SiteDefinition {
+    // In a real app, this would come from a repository
+    if (siteId.includes('hh.ru')) {
+      return {
+        id: 'hh.ru',
+        name: 'HeadHunter',
+        searchStrategy: {
+          knownUrls: ['https://hh.ru/search/vacancy/advanced'],
+          keywords: ['расширенный поиск', 'advanced search', 'поиск вакансий'],
+          maxSteps: 3
+        }
+      };
+    }
+    // Default fallback
+    return {
+      id: siteId,
+      name: siteId,
+      searchStrategy: {
+        knownUrls: [],
+        keywords: ['search', 'jobs'],
+        maxSteps: 3
+      }
     };
-    return this.updateState(failedState);
+  }
+  // --------------------------------
+
+  async startLoginFlow(state: AgentState, url: string): Promise<AgentState> {
+    let currentState = { ...state, status: AgentStatus.STARTING, logs: [...state.logs, 'Initializing login flow...'] };
+    await this.updateState(currentState);
+    
+    await this.browser.launch();
+    
+    currentState = { ...currentState, status: AgentStatus.NAVIGATING, currentUrl: url, logs: [...currentState.logs, `Navigating to ${url}`] };
+    await this.updateState(currentState);
+    
+    await this.browser.navigateTo(url);
+
+    currentState = { 
+      ...currentState, 
+      status: AgentStatus.WAITING_FOR_HUMAN, 
+      logs: [...currentState.logs, 'Waiting for manual login confirmation...'] 
+    };
+    return this.updateState(currentState);
   }
 
-  async abortSession(state: AgentState): Promise<AgentState> {
-    return this.updateState({
-        ...state,
-        status: AgentStatus.IDLE,
-        logs: [...state.logs, "Session aborted by user."]
-    });
-  }
-
-  async resetSession(state: AgentState): Promise<AgentState> {
-    await this.browser.close();
-    const cleanState = createInitialAgentState();
-    return this.updateState(cleanState);
-  }
-
-  // --- Step 1: Initialization ---
-  async startLoginFlow(state: AgentState, targetSite: string): Promise<AgentState> {
-    const startingState = await this.updateState({
-      ...state,
-      status: AgentStatus.STARTING,
-      logs: [...state.logs, `Starting session for ${targetSite}...`]
-    });
-
-    try {
-      await this.browser.launch();
-      
-      // Navigate to site root
-      const url = `https://${targetSite}`;
-      await this.browser.navigateTo(url);
-
-      return this.updateState({
-        ...startingState,
-        status: AgentStatus.WAITING_FOR_HUMAN,
-        currentUrl: url,
-        logs: [...startingState.logs, "Navigated to root. Waiting for manual login..."]
-      });
-    } catch (e: any) {
-      return this.failSession(startingState, `Launch failed: ${e.message}`);
-    }
-  }
-
-  // --- Step 2: Confirm Login ---
   async confirmLogin(state: AgentState): Promise<AgentState> {
-    return this.updateState({
-      ...state,
-      status: AgentStatus.LOGGED_IN_CONFIRMED,
-      logs: [...state.logs, "User confirmed login."]
-    });
-  }
-
-  // --- Step 3: Profile Capture ---
-  async checkAndCaptureProfile(state: AgentState, siteId: string): Promise<AgentState> {
-    // 1. Check if we already have a profile
-    const existingProfile = await this.storage.getProfile(siteId);
-    if (existingProfile) {
-      return this.updateState({
-        ...state,
-        status: AgentStatus.PROFILE_CAPTURED,
-        logs: [...state.logs, "Found existing profile. Skipping capture."]
-      });
+    if (state.status !== AgentStatus.WAITING_FOR_HUMAN) {
+      throw new Error(`Cannot confirm login from status ${state.status}`);
     }
 
-    // 2. If not, ask user to navigate
-    return this.updateState({
-      ...state,
-      status: AgentStatus.WAITING_FOR_PROFILE_PAGE,
-      logs: [...state.logs, "No profile found. Please navigate to your Resume/Profile page."]
-    });
+    const newState = { 
+      ...state, 
+      status: AgentStatus.LOGGED_IN_CONFIRMED, 
+      logs: [...state.logs, 'Human login confirmed. Session authenticated.'] 
+    };
+    return this.updateState(newState);
   }
 
-  async executeProfileCapture(state: AgentState, siteId: string): Promise<AgentState> {
-    const capturingState = await this.updateState({
-      ...state,
-      status: AgentStatus.EXTRACTING,
-      logs: [...state.logs, "Capturing profile page..."]
-    });
+  async captureContext(state: AgentState): Promise<AgentState> {
+    const newState = { ...state, status: AgentStatus.EXTRACTING, logs: [...state.logs, 'Capturing DOM snapshot...'] };
+    await this.updateState(newState);
+    const snapshot = await this.browser.getDomSnapshot();
+    
+    const finalState = { 
+        ...newState, 
+        lastSnapshotTimestamp: Date.now(), 
+        logs: [...newState.logs, `Snapshot captured (${snapshot.length} chars)`] 
+    };
+    return this.updateState(finalState);
+  }
 
-    try {
-      const url = await this.browser.getCurrentUrl();
-      const rawText = await this.browser.getPageTextMinimal();
+  /**
+   * Stage 3.1: Skeleton for "One-time Profile Capture".
+   */
+  async checkAndCaptureProfile(state: AgentState, siteId: string): Promise<AgentState> {
+    const logs = [...state.logs, `Checking existing profile for ${siteId}...`];
+    let currentState = await this.updateState({ ...state, logs });
+
+    // 1. Check if profile exists
+    const existing = await this.storage.getProfile(siteId);
+    if (existing) {
+      // Stage 4.3: Ensure we reload the spec if we have the profile
+      const spec = await this.storage.getTargetingSpec(siteId);
       
-      // Simple hash for change detection
-      const hash = btoa(unescape(encodeURIComponent(rawText.substring(0, 100) + rawText.length)));
+      if (spec) {
+          // Optimized Path: Spec exists, skip generation
+          currentState = { 
+            ...currentState, 
+            status: AgentStatus.TARGETING_READY,
+            activeTargetingSpec: spec, 
+            logs: [...currentState.logs, `Profile found. Existing Targeting Spec loaded. Skipping generation.`] 
+          };
+      } else {
+          // Standard Path: Profile exists, Spec missing -> trigger generation
+          currentState = { 
+            ...currentState, 
+            status: AgentStatus.PROFILE_CAPTURED,
+            activeTargetingSpec: null, 
+            logs: [...currentState.logs, `Profile found! Hash: ${existing.contentHash.substring(0, 8)}...`] 
+          };
+      }
+      return this.updateState(currentState);
+    }
+
+    // 2. If unknown, we need user navigation
+    currentState = { 
+      ...currentState, 
+      status: AgentStatus.WAITING_FOR_PROFILE_PAGE,
+      logs: [...currentState.logs, `Profile unknown. Waiting for user to navigate to profile page...`]
+    };
+    return this.updateState(currentState);
+  }
+
+  /**
+   * Stage 3.3: Capture, Normalize, Hash, and Compare.
+   */
+  async executeProfileCapture(state: AgentState, siteId: string): Promise<AgentState> {
+      let newState = { ...state, status: AgentStatus.EXTRACTING, logs: [...state.logs, 'Extracting profile data...'] };
+      await this.updateState(newState);
+
+      // 1. Extract
+      const url = await this.browser.getCurrentUrl();
+      const rawContent = await this.browser.getPageTextMinimal();
+      
+      // 2. Normalize
+      const normalizedContent = this.normalizeText(rawContent);
+      
+      // 3. Hash
+      const hash = await this.computeHash(normalizedContent);
+
+      // 4. Compare with existing (if any)
+      const existing = await this.storage.getProfile(siteId);
+      let logMsg = '';
+      
+      if (existing && existing.contentHash === hash) {
+          logMsg = `Profile content identical (Hash: ${hash.substring(0,8)}). Timestamp updated.`;
+      } else if (existing) {
+          logMsg = `Profile changed! (Old: ${existing.contentHash.substring(0,8)} -> New: ${hash.substring(0,8)}). Updated.`;
+      } else {
+          logMsg = `Profile captured for first time. Hash: ${hash.substring(0,8)}.`;
+      }
 
       const profile: ProfileSnapshot = {
-        siteId,
-        capturedAt: Date.now(),
-        sourceUrl: url,
-        rawContent: rawText,
-        contentHash: hash
+          siteId,
+          capturedAt: Date.now(),
+          sourceUrl: url,
+          rawContent: normalizedContent,
+          contentHash: hash
       };
 
       await this.storage.saveProfile(profile);
 
-      return this.updateState({
-        ...capturingState,
-        status: AgentStatus.PROFILE_CAPTURED,
-        logs: [...capturingState.logs, "Profile captured successfully."]
+      newState = { 
+          ...newState, 
+          status: AgentStatus.PROFILE_CAPTURED, 
+          logs: [...newState.logs, logMsg] 
+      };
+      return this.updateState(newState);
+  }
+
+  /**
+   * Stage 4.2: Derive Targeting Spec from Profile (LLM)
+   */
+  async generateTargetingSpec(state: AgentState, siteId: string): Promise<AgentState> {
+    // 1. Verify Profile
+    const profile = await this.storage.getProfile(siteId);
+    if (!profile) {
+      return this.failSession(state, "Cannot generate targeting: Profile not found.");
+    }
+
+    // 2. Update Status
+    let currentState = await this.updateState({ 
+      ...state, 
+      status: AgentStatus.TARGETING_PENDING,
+      logs: [...state.logs, 'Initializing AI Analysis of profile...']
+    });
+
+    // 3. Prepare Input
+    const config = await this.storage.getConfig();
+    const input: ProfileSummaryV1 = {
+      siteId,
+      profileHash: profile.contentHash,
+      profileTextNormalized: profile.rawContent,
+      userConstraints: {
+        preferredWorkMode: config?.workMode || WorkMode.ANY,
+        minSalary: config?.minSalary || null,
+        currency: config?.currency || 'RUB',
+        city: config?.city || null,
+        targetLanguages: config?.targetLanguages || ['ru']
+      }
+    };
+
+    try {
+      // 4. Call LLM (Single Shot)
+      currentState = await this.updateState({ 
+        ...currentState, 
+        logs: [...currentState.logs, 'Sending profile to LLM for targeting generation...']
       });
+      
+      const spec = await this.lllm.analyzeProfile(input);
+
+      // 5. Validate Output (Strict)
+      this.validateTargetingSpec(spec);
+
+      // 6. Save Result
+      await this.storage.saveTargetingSpec(siteId, spec);
+
+      // 7. Complete
+      const finalState = {
+        ...currentState,
+        status: AgentStatus.TARGETING_READY,
+        activeTargetingSpec: spec, // Stage 4.3: Store spec in state for UI
+        logs: [...currentState.logs, 'Targeting specification generated and saved.']
+      };
+      return this.updateState(finalState);
 
     } catch (e: any) {
-      return this.failSession(capturingState, `Profile capture failed: ${e.message}`);
+      console.error(e);
+      const errorState = {
+        ...currentState,
+        status: AgentStatus.TARGETING_ERROR,
+        logs: [...currentState.logs, `LLM Analysis Failed: ${e.message}`]
+      };
+      return this.updateState(errorState);
     }
   }
 
-  async resetProfileData(state: AgentState, siteId: string): Promise<AgentState> {
-      await this.storage.resetProfile(siteId);
-      await this.storage.deleteTargetingSpec(siteId); // Cascade delete
-      return this.updateState({
-          ...state,
-          activeTargetingSpec: null,
-          status: AgentStatus.LOGGED_IN_CONFIRMED,
-          logs: [...state.logs, "Profile data reset."]
-      });
+  private validateTargetingSpec(spec: TargetingSpecV1): void {
+    if (!spec.targetRoles.ruTitles.length && !spec.targetRoles.enTitles.length) {
+      throw new Error("LLM returned empty target roles.");
+    }
+    if (spec.titleMatchWeights.exact < 0 || spec.titleMatchWeights.exact > 1) {
+       throw new Error("Invalid weight range.");
+    }
   }
 
-  // --- Step 4: Targeting Strategy (LLM) ---
-  async generateTargetingSpec(state: AgentState, siteId: string): Promise<AgentState> {
-      const processingState = await this.updateState({
-          ...state,
-          status: AgentStatus.TARGETING_PENDING,
-          logs: [...state.logs, "Analyzing profile to generate targeting strategy..."]
+  // --- Stage 5.2: Auto-Navigation to Search ---
+  async navigateToSearchPage(state: AgentState, siteId: string): Promise<AgentState> {
+    let currentState = await this.updateState({ 
+      ...state, 
+      status: AgentStatus.NAVIGATING_TO_SEARCH,
+      logs: [...state.logs, `Initiating auto-navigation to search page for ${siteId}...`]
+    });
+
+    const siteDef = this.getSiteDefinition(siteId);
+    const strategy = siteDef.searchStrategy;
+
+    try {
+      // Strategy 1: Known Direct URLs
+      if (strategy.knownUrls.length > 0) {
+        const target = strategy.knownUrls[0];
+        currentState = await this.updateState({ 
+            ...currentState, 
+            logs: [...currentState.logs, `Using known direct URL: ${target}`] 
+        });
+        await this.browser.navigateTo(target);
+        // Assume success for now, or check URL
+        return this.updateState({
+          ...currentState,
+          status: AgentStatus.SEARCH_PAGE_READY,
+          logs: [...currentState.logs, `Navigation completed (Direct URL). Ready to scan.`]
+        });
+      }
+
+      // Strategy 2: Heuristic Search (Find Links)
+      let steps = 0;
+      currentState = await this.updateState({ 
+          ...currentState, 
+          logs: [...currentState.logs, `No direct URL. Scanning page for keywords: [${strategy.keywords.join(', ')}]...`] 
       });
 
-      try {
-          const profile = await this.storage.getProfile(siteId);
-          const config = await this.storage.getConfig();
+      while (steps < strategy.maxSteps) {
+         const links = await this.browser.findLinksByTextKeywords(strategy.keywords);
+         
+         if (links.length > 0) {
+             const bestLink = links[0]; // Take first match
+             currentState = await this.updateState({ 
+                ...currentState, 
+                logs: [...currentState.logs, `Found link: "${bestLink.text}" (${bestLink.href}). Clicking...`] 
+             });
+             await this.browser.clickLink(bestLink.href);
+             
+             // Simple heuristic: If we clicked, we assume we are transitioning
+             return this.updateState({
+                ...currentState,
+                status: AgentStatus.SEARCH_PAGE_READY,
+                logs: [...currentState.logs, `Navigation completed (Link Click). Ready to scan.`]
+             });
+         }
+         
+         steps++;
+         if (steps < strategy.maxSteps) {
+            // Wait/Retry or check if page changed (omitted for brevity in skeleton)
+             await new Promise(r => setTimeout(r, 1000));
+         }
+      }
 
-          if (!profile || !config) {
-              throw new Error("Missing profile or config data.");
+      // Fallback: Failed to find
+      return this.updateState({
+        ...currentState,
+        status: AgentStatus.WAITING_FOR_HUMAN_ASSISTANCE,
+        logs: [...currentState.logs, `Auto-navigation failed. Could not find search page links. Please navigate manually.`]
+      });
+
+    } catch (e: any) {
+       console.error(e);
+       return this.updateState({
+        ...currentState,
+        status: AgentStatus.WAITING_FOR_HUMAN_ASSISTANCE,
+        logs: [...currentState.logs, `Navigation Error: ${e.message}. Please navigate manually.`]
+      });
+    }
+  }
+
+  // --- Stage 5.2.3: Scan Search Page DOM ---
+  async scanSearchPageDOM(state: AgentState, siteId: string): Promise<AgentState> {
+    let currentState = await this.updateState({
+       ...state,
+       status: AgentStatus.EXTRACTING_SEARCH_UI,
+       logs: [...state.logs, `Starting DOM Scan for ${siteId}...`]
+    });
+
+    try {
+        // 1. Check if snapshot already exists
+        const existing = await this.storage.getSearchDOMSnapshot(siteId);
+        if (existing) {
+             return this.updateState({
+                ...currentState,
+                status: AgentStatus.SEARCH_DOM_READY,
+                activeSearchDOMSnapshot: existing,
+                logs: [...currentState.logs, `Found existing DOM snapshot (v${existing.domVersion}). Skipping scan.`]
+             });
+        }
+
+        // 2. Scan
+        const fields = await this.browser.scanPageInteractionElements();
+        const currentUrl = await this.browser.getCurrentUrl();
+
+        // 3. Serialize
+        const snapshot: SearchDOMSnapshotV1 = {
+            siteId,
+            capturedAt: Date.now(),
+            pageUrl: currentUrl,
+            domVersion: 1,
+            fields: fields
+        };
+
+        // 4. Save
+        await this.storage.saveSearchDOMSnapshot(siteId, snapshot);
+
+        // 5. Update State
+        return this.updateState({
+            ...currentState,
+            status: AgentStatus.SEARCH_DOM_READY,
+            activeSearchDOMSnapshot: snapshot,
+            logs: [...currentState.logs, `DOM Scan complete. Captured ${fields.length} interaction elements.`]
+        });
+
+    } catch (e: any) {
+        console.error(e);
+        return this.updateState({
+            ...currentState,
+            status: AgentStatus.FAILED, // Or recover
+            logs: [...currentState.logs, `DOM Scan Failed: ${e.message}`]
+        });
+    }
+  }
+
+  // --- Stage 5.3: LLM Analysis of Search DOM ---
+  async performSearchUIAnalysis(state: AgentState, siteId: string): Promise<AgentState> {
+      // 1. Preconditions
+      const snapshot = await this.storage.getSearchDOMSnapshot(siteId);
+      const targeting = await this.storage.getTargetingSpec(siteId);
+      const config = await this.storage.getConfig(); // Need config for auto-fill
+
+      if (!snapshot || !targeting) {
+          return this.failSession(state, "Missing DOM Snapshot or Targeting Spec for analysis.");
+      }
+
+      // 2. Check Existance
+      const existingSpec = await this.storage.getSearchUISpec(siteId);
+      if (existingSpec) {
+          // If spec exists, we also try to recover draft prefs or create new ones
+          const existingPrefs = await this.storage.getUserSearchPrefs(siteId);
+          
+          if (existingPrefs) {
+              return this.updateState({
+                  ...state,
+                  status: AgentStatus.SEARCH_PREFS_SAVED, // Already done!
+                  activeSearchUISpec: existingSpec,
+                  activeSearchPrefs: existingPrefs,
+                  logs: [...state.logs, `Loaded existing UI Spec and User Prefs. Ready to filter.`]
+              });
           }
 
-          // Construct LLM Input
-          const input: ProfileSummaryV1 = {
-              siteId,
-              profileHash: profile.contentHash,
-              profileTextNormalized: profile.rawContent,
-              userConstraints: {
-                  preferredWorkMode: config.workMode as any || 'ANY',
-                  minSalary: config.minSalary || null,
-                  currency: config.currency || 'RUB',
-                  city: config.city || null,
-                  targetLanguages: config.targetLanguages || ['ru']
-              }
-          };
-
-          const spec = await this.llm.analyzeProfile(input);
-          await this.storage.saveTargetingSpec(siteId, spec);
+          // If Spec exists but Prefs do not -> Generate Draft
+          const draftPrefs = this.createDraftPrefs(siteId, existingSpec, targeting, config || {});
 
           return this.updateState({
-              ...processingState,
-              activeTargetingSpec: spec,
-              status: AgentStatus.TARGETING_READY,
-              logs: [...processingState.logs, "Targeting strategy generated."]
-          });
-
-      } catch (e: any) {
-          return this.updateState({
-             ...processingState,
-             status: AgentStatus.TARGETING_ERROR,
-             logs: [...processingState.logs, `Targeting generation failed: ${e.message}`]
+              ...state,
+              status: AgentStatus.WAITING_FOR_SEARCH_PREFS,
+              activeSearchUISpec: existingSpec,
+              activeSearchPrefs: draftPrefs,
+              logs: [...state.logs, `Loaded existing UI Spec (v${existingSpec.version}). Prepared draft preferences.`]
           });
       }
-  }
 
-  // --- Stage 5: Search Configuration ---
-
-  async navigateToSearchPage(state: AgentState, siteId: string): Promise<AgentState> {
+      // 3. Prepare Input
       let currentState = await this.updateState({
           ...state,
-          status: AgentStatus.NAVIGATING_TO_SEARCH,
-          logs: [...state.logs, "Navigating to Advanced Search..."]
+          status: AgentStatus.ANALYZING_SEARCH_UI,
+          logs: [...state.logs, `Sending ${snapshot.fields.length} DOM elements to LLM for semantic analysis...`]
       });
 
+      const input: SearchUIAnalysisInputV1 = {
+          siteId,
+          domSnapshot: {
+              pageUrl: snapshot.pageUrl,
+              fields: snapshot.fields
+          },
+          targetingContext: {
+              targetRoles: [...targeting.targetRoles.ruTitles, ...targeting.targetRoles.enTitles],
+              workModeRules: { strictMode: targeting.workModeRules.strictMode },
+              salaryRules: { minThresholdStrategy: targeting.salaryRules.minThresholdStrategy }
+          }
+      };
+
       try {
-          // 1. Try known direct link
-          const searchUrl = siteId === 'hh.ru' ? 'https://hh.ru/search/vacancy/advanced' : null;
-          if (searchUrl) {
-              await this.browser.navigateTo(searchUrl);
-          } else {
-              // 2. Try to find link on page
-              const links = await this.browser.findLinksByTextKeywords(['advanced search', 'расширенный поиск']);
-              if (links.length > 0) {
-                  await this.browser.clickLink(links[0].href);
-              } else {
-                  throw new Error("Could not find Advanced Search link.");
-              }
+          // 4. LLM Call
+          const spec = await this.lllm.analyzeSearchDOM(input);
+
+          // 5. Validate (Basic)
+          if (!spec.fields.some(f => f.semanticType !== 'OTHER')) {
+             throw new Error("LLM failed to identify any semantic fields.");
           }
 
+          // 6. Save Spec
+          await this.storage.saveSearchUISpec(siteId, spec);
+
+          // 7. Generate Draft Prefs (Stage 5.4 Logic)
+          const draftPrefs = this.createDraftPrefs(siteId, spec, targeting, config || {});
+
+          // 8. Finalize
           return this.updateState({
               ...currentState,
-              status: AgentStatus.SEARCH_PAGE_READY,
-              logs: [...currentState.logs, "Arrived at Search Page."]
-          });
-      } catch (e: any) {
-          return this.failSession(currentState, `Search navigation failed: ${e.message}`);
-      }
-  }
-
-  async scanSearchPageDOM(state: AgentState, siteId: string): Promise<AgentState> {
-      const workingState = await this.updateState({
-          ...state,
-          status: AgentStatus.EXTRACTING_SEARCH_UI,
-          logs: [...state.logs, "Scanning search form elements..."]
-      });
-
-      try {
-          const elements = await this.browser.scanPageInteractionElements();
-          const currentUrl = await this.browser.getCurrentUrl();
-
-          const snapshot: SearchDOMSnapshotV1 = {
-              siteId,
-              capturedAt: Date.now(),
-              pageUrl: currentUrl,
-              domVersion: 1,
-              fields: elements
-          };
-
-          await this.storage.saveSearchDOMSnapshot(siteId, snapshot);
-
-          return this.updateState({
-              ...workingState,
-              activeSearchDOMSnapshot: snapshot,
-              status: AgentStatus.SEARCH_DOM_READY,
-              logs: [...workingState.logs, `DOM Scanned: Found ${elements.length} interactive elements.`]
-          });
-
-      } catch (e: any) {
-          return this.failSession(workingState, `DOM Scan failed: ${e.message}`);
-      }
-  }
-
-  async performSearchUIAnalysis(state: AgentState, siteId: string): Promise<AgentState> {
-      if (!state.activeSearchDOMSnapshot || !state.activeTargetingSpec) {
-          return this.failSession(state, "Missing DOM Snapshot or Targeting Spec.");
-      }
-
-      const workingState = await this.updateState({
-          ...state,
-          status: AgentStatus.ANALYZING_SEARCH_UI,
-          logs: [...state.logs, "LLM is analyzing Search UI semantics..."]
-      });
-
-      try {
-          const input: SearchUIAnalysisInputV1 = {
-              siteId,
-              domSnapshot: {
-                  pageUrl: state.activeSearchDOMSnapshot.pageUrl,
-                  fields: state.activeSearchDOMSnapshot.fields
-              },
-              targetingContext: {
-                  targetRoles: [
-                      ...state.activeTargetingSpec.targetRoles.ruTitles,
-                      ...state.activeTargetingSpec.targetRoles.enTitles
-                  ],
-                  workModeRules: state.activeTargetingSpec.workModeRules,
-                  salaryRules: state.activeTargetingSpec.salaryRules
-              }
-          };
-
-          const uiSpec = await this.llm.analyzeSearchDOM(input);
-          await this.storage.saveSearchUISpec(siteId, uiSpec);
-
-          return this.updateState({
-              ...workingState,
-              activeSearchUISpec: uiSpec,
               status: AgentStatus.WAITING_FOR_SEARCH_PREFS,
-              logs: [...workingState.logs, `Analysis Complete. Identified ${uiSpec.fields.length} relevant fields.`]
+              activeSearchUISpec: spec,
+              activeSearchPrefs: draftPrefs, // Inject draft
+              logs: [...currentState.logs, `Analysis complete. Identified ${spec.fields.length} fields. Draft preferences generated.`]
           });
 
       } catch (e: any) {
-          return this.failSession(workingState, `UI Analysis failed: ${e.message}`);
+          console.error(e);
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.FAILED,
+              logs: [...currentState.logs, `UI Analysis Failed: ${e.message}`]
+          });
       }
   }
 
+  // --- Stage 5.3: Create Draft Prefs ---
+  private createDraftPrefs(siteId: string, spec: SearchUISpecV1, targeting: TargetingSpecV1, config: Partial<AgentConfig>): UserSearchPrefsV1 {
+    const additionalFilters: Record<string, any> = {};
+
+    // Auto-fill logic based on semantic types
+    for (const field of spec.fields) {
+        if (field.defaultBehavior === 'IGNORE' || field.defaultBehavior === 'EXCLUDE') continue;
+
+        switch (field.semanticType) {
+            case 'KEYWORD':
+                // Combine roles. Just taking the first RU role for simplicity, or all joined
+                // Real implementation might differ based on UI type (single input vs tag list)
+                if (targeting.targetRoles.ruTitles.length > 0) {
+                   additionalFilters[field.key] = targeting.targetRoles.ruTitles.join(' OR ');
+                }
+                break;
+            case 'SALARY':
+                if (config.minSalary) {
+                   additionalFilters[field.key] = config.minSalary;
+                }
+                break;
+            case 'LOCATION':
+                if (config.city) {
+                   // If it's a SELECT, we'd need to match options. 
+                   // For now, we assume simple text or value match. 
+                   // Complex fuzzy matching omitted for skeleton.
+                   // If options exist, try to find one that includes the city name
+                   if (field.options) {
+                      const match = field.options.find(opt => opt.label.toLowerCase().includes(config.city!.toLowerCase()));
+                      if (match) additionalFilters[field.key] = match.value;
+                   } else {
+                      additionalFilters[field.key] = config.city;
+                   }
+                }
+                break;
+            case 'WORK_MODE':
+                if (config.workMode && config.workMode !== WorkMode.ANY) {
+                    // For Checkbox: 'true' if we want it.
+                    // But usually "Remote" is a specific checkbox.
+                    // We assume the LLM identified the specific "Remote" checkbox.
+                    // If the label contains "remote" or "удален", check it.
+                    const isRemoteField = field.label.toLowerCase().includes('удален') || field.label.toLowerCase().includes('remote');
+                    if (isRemoteField && config.workMode === WorkMode.REMOTE) {
+                         additionalFilters[field.key] = true;
+                    }
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    return {
+        siteId,
+        updatedAt: Date.now(),
+        city: config.city,
+        minSalary: config.minSalary,
+        workMode: config.workMode,
+        additionalFilters
+    };
+  }
+
+  // --- Stage 5.3: Submit Prefs ---
   async submitSearchPrefs(state: AgentState, prefs: UserSearchPrefsV1): Promise<AgentState> {
+      // 1. Save to storage
       await this.storage.saveUserSearchPrefs(prefs.siteId, prefs);
+
+      // 2. Update State
       return this.updateState({
           ...state,
-          activeSearchPrefs: prefs,
           status: AgentStatus.SEARCH_PREFS_SAVED,
-          logs: [...state.logs, "Search preferences saved."]
+          activeSearchPrefs: prefs,
+          logs: [...state.logs, `User Search Preferences saved. Ready to build plan.`]
       });
   }
 
+  // --- Stage 5.4: Build Apply Plan ---
   async buildSearchApplyPlan(state: AgentState, siteId: string): Promise<AgentState> {
-      if (!state.activeSearchUISpec || !state.activeSearchPrefs || !state.activeTargetingSpec) {
-          return this.failSession(state, "Missing data for planning.");
+      // 1. Checks
+      const spec = await this.storage.getSearchUISpec(siteId);
+      const prefs = await this.storage.getUserSearchPrefs(siteId);
+
+      if (!spec || !prefs) {
+          return this.failSession(state, "Cannot build Apply Plan: Missing Spec or Prefs.");
       }
 
-      // Simple Logic: Map Prefs -> UI Fields -> Steps
-      const steps: any[] = [];
-      const uiFields = state.activeSearchUISpec.fields;
-      const prefs = state.activeSearchPrefs;
-      const targeting = state.activeTargetingSpec;
+      const existingPlan = await this.storage.getSearchApplyPlan(siteId);
+      if (existingPlan) {
+          // Also load existing execution snapshot if any
+          const existingSnapshot = await this.storage.getAppliedFiltersSnapshot(siteId);
 
-      // 1. Keywords
-      const keywordField = uiFields.find(f => f.semanticType === 'KEYWORD');
-      if (keywordField) {
-          // Combine top roles
-          const value = targeting.targetRoles.ruTitles.slice(0, 2).join(' OR ');
-          steps.push({
-              stepId: crypto.randomUUID(),
-              fieldKey: keywordField.key,
-              actionType: 'FILL_TEXT',
-              value: value,
-              rationale: 'Primary Role Keywords',
-              priority: 1
+          return this.updateState({
+             ...state,
+             status: AgentStatus.APPLY_PLAN_READY,
+             activeSearchApplyPlan: existingPlan,
+             activeAppliedFilters: existingSnapshot,
+             logs: [...state.logs, `Apply Plan already exists (${existingPlan.steps.length} steps). Ready to apply.`]
           });
       }
 
-      // 2. Salary
-      const salaryField = uiFields.find(f => f.semanticType === 'SALARY');
-      if (salaryField && prefs.minSalary) {
-           steps.push({
-              stepId: crypto.randomUUID(),
-              fieldKey: salaryField.key,
-              actionType: 'FILL_TEXT',
-              value: prefs.minSalary.toString(),
-              rationale: 'Minimum Salary Constraint',
-              priority: 2
-          });
-      }
+      // 2. Build Steps
+      const steps: SearchApplyStep[] = [];
+      const logs = [...state.logs, 'Building execution plan from user preferences...'];
 
-      // 3. Work Mode (e.g. Remote)
-      const workModeField = uiFields.find(f => f.semanticType === 'WORK_MODE');
-      if (workModeField && prefs.workMode === 'REMOTE') {
-           steps.push({
-              stepId: crypto.randomUUID(),
-              fieldKey: workModeField.key,
-              actionType: 'TOGGLE_CHECKBOX',
-              value: true,
-              rationale: 'Remote Work Only',
-              priority: 3
-          });
-      }
+      for (const field of spec.fields) {
+          if (field.defaultBehavior === 'IGNORE' || field.defaultBehavior === 'EXCLUDE') continue;
 
-      // 4. Region
-      const regionField = uiFields.find(f => f.semanticType === 'LOCATION');
-      if (regionField && regionField.options && prefs.city) {
-           // Simple match
-           const opt = regionField.options.find(o => o.label.toLowerCase().includes(prefs.city!.toLowerCase()));
-           if (opt) {
+          // Special Case: SUBMIT button
+          if (field.semanticType === 'SUBMIT') {
+              steps.push({
+                  stepId: crypto.randomUUID(),
+                  fieldKey: field.key,
+                  actionType: 'CLICK',
+                  value: true,
+                  rationale: 'Submitting the search form',
+                  priority: 100 // High priority (last)
+              });
+              continue;
+          }
+
+          const userValue = prefs.additionalFilters[field.key];
+          
+          // Only add step if user provided a value
+          if (userValue !== undefined && userValue !== null && userValue !== '') {
+               const priority = this.getSemanticPriority(field.semanticType);
+               const action = this.mapControlTypeToAction(field.uiControlType);
+               
                steps.push({
                    stepId: crypto.randomUUID(),
-                   fieldKey: regionField.key,
-                   actionType: 'SELECT_OPTION',
-                   value: opt.value,
-                   rationale: `City: ${opt.label}`,
-                   priority: 4
+                   fieldKey: field.key,
+                   actionType: action,
+                   value: userValue,
+                   rationale: `User preference for ${field.semanticType} (${field.label})`,
+                   priority
                });
-           }
+          }
       }
 
-      // 5. Submit
-      const submitBtn = uiFields.find(f => f.semanticType === 'SUBMIT');
-      if (submitBtn) {
-          steps.push({
-              stepId: crypto.randomUUID(),
-              fieldKey: submitBtn.key,
-              actionType: 'CLICK',
-              value: 'click',
-              rationale: 'Start Search',
-              priority: 10
-          });
-      }
+      // 3. Sort Steps
+      // Logic: Fill Location -> Work Mode -> Salary -> Other Inputs -> Submit
+      steps.sort((a, b) => {
+          // If priorities equal, sort by stepId stability (or generic)
+          return a.priority - b.priority;
+      });
 
+      // 4. Create & Save Plan
       const plan: SearchApplyPlanV1 = {
           siteId,
           createdAt: Date.now(),
@@ -433,23 +653,26 @@ export class AgentUseCase {
 
       await this.storage.saveSearchApplyPlan(siteId, plan);
 
+      // 5. Update State
       return this.updateState({
           ...state,
-          activeSearchApplyPlan: plan,
           status: AgentStatus.APPLY_PLAN_READY,
-          logs: [...state.logs, `Plan created with ${steps.length} steps.`]
+          activeSearchApplyPlan: plan,
+          logs: [...logs, `Plan built: ${steps.length} steps scheduled. Waiting for execution.`]
       });
   }
 
-  // --- Phase A1.1: Execution ---
-
+  // --- Phase A1.1: Execute Single Step ---
   async executeSearchPlanStep(state: AgentState, siteId: string): Promise<AgentState> {
-      if (!state.activeSearchApplyPlan || !state.activeSearchUISpec) {
-           return this.failSession(state, "No plan to execute.");
+      // 1. Load context
+      const plan = await this.storage.getSearchApplyPlan(siteId);
+      const spec = await this.storage.getSearchUISpec(siteId);
+      let snapshot = await this.storage.getAppliedFiltersSnapshot(siteId);
+
+      if (!plan || !spec) {
+          return this.failSession(state, "Missing Plan or Spec for execution.");
       }
 
-      // Initialize Snapshot if null
-      let snapshot = state.activeAppliedFilters;
       if (!snapshot) {
           snapshot = {
               siteId,
@@ -460,39 +683,42 @@ export class AgentUseCase {
           };
       }
 
-      // Find next pending step
-      const executedIds = new Set(snapshot.results.map(r => r.stepId));
-      const nextStep = state.activeSearchApplyPlan.steps
-          .sort((a, b) => a.priority - b.priority)
-          .find(s => !executedIds.has(s.stepId));
+      // 2. Determine Next Step
+      const successfulStepIds = new Set(snapshot.results.filter(r => r.success).map(r => r.stepId));
+      const nextStep = plan.steps.find(s => !successfulStepIds.has(s.stepId));
 
       if (!nextStep) {
-          // All done
-           snapshot.overallStatus = 'COMPLETED';
-           await this.storage.saveAppliedFiltersSnapshot(siteId, snapshot);
-           return this.updateState({
-               ...state,
-               activeAppliedFilters: snapshot,
-               status: AgentStatus.SEARCH_READY,
-               logs: [...state.logs, "All filters applied."]
-           });
+          // All steps done!
+          const logs = [...state.logs, "All steps executed successfully. Moving to SEARCH_READY."];
+          snapshot.overallStatus = 'COMPLETED';
+          snapshot.lastUpdatedAt = Date.now();
+          await this.storage.saveAppliedFiltersSnapshot(siteId, snapshot);
+          
+          return this.updateState({
+              ...state,
+              status: AgentStatus.SEARCH_READY,
+              activeAppliedFilters: snapshot,
+              logs
+          });
       }
 
-      // Execute Step
-      const workingState = await this.updateState({
+      // 3. Prepare Execution
+      const fieldDef = spec.fields.find(f => f.key === nextStep.fieldKey);
+      if (!fieldDef) {
+           return this.failSession(state, `Plan references unknown field key: ${nextStep.fieldKey}`);
+      }
+
+      let currentState = await this.updateState({
           ...state,
-          activeAppliedFilters: snapshot,
           status: AgentStatus.APPLYING_FILTERS,
-          logs: [...state.logs, `Executing: ${nextStep.rationale}...`]
+          logs: [...state.logs, `Executing Step: ${nextStep.actionType} on ${fieldDef.label}...`]
       });
 
+      // 4. Execute via Port
       try {
-          const fieldDef = state.activeSearchUISpec.fields.find(f => f.key === nextStep.fieldKey);
-          if (!fieldDef) throw new Error(`Field definition not found for ${nextStep.fieldKey}`);
-
           const result = await this.browser.applyControlAction(fieldDef, nextStep.actionType, nextStep.value);
-
-          snapshot.results.push({
+          
+          const stepResult: AppliedStepResult = {
               stepId: nextStep.stepId,
               fieldKey: nextStep.fieldKey,
               timestamp: Date.now(),
@@ -501,72 +727,147 @@ export class AgentUseCase {
               success: result.success,
               observedValue: result.observedValue,
               error: result.error
-          });
+          };
+
+          // 5. Update Snapshot
+          snapshot.results.push(stepResult);
           snapshot.lastUpdatedAt = Date.now();
-          
+          snapshot.overallStatus = 'IN_PROGRESS';
           await this.storage.saveAppliedFiltersSnapshot(siteId, snapshot);
 
+          // 6. Update State
+          const status = result.success ? AgentStatus.APPLY_STEP_DONE : AgentStatus.APPLY_STEP_FAILED;
+          const logMsg = result.success 
+              ? `Step Success: Set ${fieldDef.label} = ${nextStep.value}` 
+              : `Step Failed: ${result.error}`;
+
           return this.updateState({
-              ...workingState,
+              ...currentState,
+              status,
               activeAppliedFilters: snapshot,
-              status: result.success ? AgentStatus.APPLY_STEP_DONE : AgentStatus.APPLY_STEP_FAILED,
-              logs: [...workingState.logs, `Step finished: ${result.success ? 'OK' : 'FAIL'}`]
+              logs: [...currentState.logs, logMsg]
           });
 
       } catch (e: any) {
-          return this.failSession(workingState, `Step Execution Failed: ${e.message}`);
+           console.error(e);
+           return this.updateState({
+              ...currentState,
+              status: AgentStatus.APPLY_STEP_FAILED,
+              logs: [...currentState.logs, `Execution Error: ${e.message}`]
+           });
       }
   }
 
+  // --- Phase A1.2: Execute Plan Cycle ---
   async executeApplyPlanCycle(state: AgentState, siteId: string): Promise<AgentState> {
       let currentState = state;
-      // Max 10 steps to prevent loops
-      for (let i = 0; i < 10; i++) {
+      const MAX_RETRIES = 3;
+
+      while (true) {
+          // 2. Get Snapshot for retry check
+          const snapshot = await this.storage.getAppliedFiltersSnapshot(siteId);
+          if (snapshot && snapshot.overallStatus === 'FAILED') {
+              return this.failSession(currentState, "Plan execution previously failed permanently.");
+          }
+
+          // 3. Identify Next Step (Peek)
+          const plan = await this.storage.getSearchApplyPlan(siteId);
+          if (!plan) return this.failSession(currentState, "No plan found.");
+
+          const successfulStepIds = new Set(snapshot?.results.filter(r => r.success).map(r => r.stepId) || []);
+          const nextStep = plan.steps.find(s => !successfulStepIds.has(s.stepId));
+
+          if (!nextStep) {
+               // Nothing left to do, ensure state is updated final time
+               return this.executeSearchPlanStep(currentState, siteId); 
+          }
+
+          // 4. Retry Policy Check
+          const failuresForStep = snapshot?.results.filter(r => r.stepId === nextStep.stepId && !r.success).length || 0;
+          if (failuresForStep >= MAX_RETRIES) {
+               const logs = [...currentState.logs, `Step ${nextStep.fieldKey} failed ${failuresForStep} times. Aborting session.`];
+               if (snapshot) {
+                   snapshot.overallStatus = 'FAILED';
+                   await this.storage.saveAppliedFiltersSnapshot(siteId, snapshot);
+               }
+               return this.updateState({
+                   ...currentState,
+                   status: AgentStatus.FAILED,
+                   activeAppliedFilters: snapshot || undefined,
+                   logs
+               });
+          }
+
+          // 5. Execute Step
           currentState = await this.executeSearchPlanStep(currentState, siteId);
-          if (currentState.status === AgentStatus.SEARCH_READY || currentState.status === AgentStatus.FAILED) {
-              break;
+
+          // 6. Evaluate Result
+          if (currentState.status === AgentStatus.SEARCH_READY) {
+              return currentState; // Done
           }
+
+          if (currentState.status === AgentStatus.FAILED) {
+              return currentState; // Critical error
+          }
+
           if (currentState.status === AgentStatus.APPLY_STEP_FAILED) {
-              // Decide: abort or continue? For now, continue best effort.
+              await new Promise(r => setTimeout(r, 1000));
+          } else if (currentState.status === AgentStatus.APPLY_STEP_DONE) {
+              await new Promise(r => setTimeout(r, 500));
           }
-          await new Promise(r => setTimeout(r, 500)); // Pacing
       }
-      return currentState;
   }
 
-  // --- Phase A2.1: Verification ---
+  // --- Phase A2.1: Verify Applied Filters ---
   async verifyAppliedFilters(state: AgentState, siteId: string): Promise<AgentState> {
-      if (!state.activeSearchApplyPlan || !state.activeSearchUISpec) {
-          return this.failSession(state, "Missing plan/spec for verification.");
+      // 1. Load context
+      const snapshot = await this.storage.getAppliedFiltersSnapshot(siteId);
+      const spec = await this.storage.getSearchUISpec(siteId);
+      
+      if (!snapshot || !spec) {
+          return this.failSession(state, "Missing snapshot or spec for verification.");
       }
 
-      const results = [];
-      const mismatches = [];
+      const logs = [...state.logs, "Verifying applied filters against actual DOM state..."];
+      let currentState = await this.updateState({ ...state, logs });
 
-      // Only verify steps that are not clicks
-      const stepsToVerify = state.activeSearchApplyPlan.steps.filter(s => s.actionType !== 'CLICK');
+      const results: ControlVerificationResult[] = [];
+      const mismatches: ControlVerificationResult[] = [];
 
-      for (const step of stepsToVerify) {
-          const fieldDef = state.activeSearchUISpec.fields.find(f => f.key === step.fieldKey);
-          if (fieldDef) {
-              const readResult = await this.browser.readControlValue(fieldDef);
-              // Simple check: loosely equal
-              const isMatch = String(readResult.value) == String(step.value); 
-              
-              const verification = {
-                  fieldKey: step.fieldKey,
-                  expectedValue: step.value,
-                  actualValue: readResult.value,
-                  source: readResult.source,
-                  status: isMatch ? 'MATCH' : 'MISMATCH'
-              } as const; // Cast to satisfy strict union if needed
-
-              results.push(verification);
-              if (!isMatch) mismatches.push(verification);
+      // 2. Identify unique fields processed successfully
+      const processedFields = new Map<string, AppliedStepResult>();
+      
+      for (const step of snapshot.results) {
+          if (step.success) {
+              processedFields.set(step.fieldKey, step);
           }
       }
 
-      const verifSnapshot: FiltersAppliedVerificationV1 = {
+      // 3. Verify each field
+      for (const [key, step] of processedFields) {
+           const fieldDef = spec.fields.find(f => f.key === key);
+           if (!fieldDef || fieldDef.semanticType === 'SUBMIT') continue; 
+
+           const readResult = await this.browser.readControlValue(fieldDef);
+           
+           const isMatch = this.looseEquals(step.intendedValue, readResult.value);
+           const status: VerificationStatus = readResult.source === 'UNKNOWN' ? 'UNKNOWN' : (isMatch ? 'MATCH' : 'MISMATCH');
+
+           const result: ControlVerificationResult = {
+               fieldKey: key,
+               expectedValue: step.intendedValue,
+               actualValue: readResult.value,
+               source: readResult.source,
+               status
+           };
+
+           results.push(result);
+           if (status === 'MISMATCH') {
+               mismatches.push(result);
+           }
+      }
+
+      const verification: FiltersAppliedVerificationV1 = {
           siteId,
           verifiedAt: Date.now(),
           verified: mismatches.length === 0,
@@ -574,430 +875,786 @@ export class AgentUseCase {
           mismatches
       };
 
-      await this.storage.saveFiltersAppliedVerification(siteId, verifSnapshot);
+      await this.storage.saveFiltersAppliedVerification(siteId, verification);
+
+      const finalLog = mismatches.length === 0 
+        ? `Verification Passed: All ${results.length} controls match.` 
+        : `Verification WARNING: ${mismatches.length} mismatches detected.`;
 
       return this.updateState({
-          ...state,
-          activeVerification: verifSnapshot,
-          logs: [...state.logs, `Verification: ${mismatches.length} mismatches found.`]
+          ...currentState,
+          activeVerification: verification,
+          logs: [...currentState.logs, finalLog]
       });
   }
 
-  // --- Phase B1: Capture Vacancy Batch ---
+  // --- Phase B1: Collect Vacancy Cards ---
   async collectVacancyCardsBatch(state: AgentState, siteId: string): Promise<AgentState> {
-      const workingState = await this.updateState({
-          ...state,
-          status: AgentStatus.EXTRACTING,
-          logs: [...state.logs, "Scanning vacancy list..."]
-      });
+      const logs = [...state.logs, "Scanning page for vacancy cards (Limit: 15)..."];
+      let currentState = await this.updateState({ ...state, logs });
 
       try {
-          // 1. Scan from Browser
-          const result = await this.browser.scanVacancyCards(15); // limit 15
+          const limit = 15;
+          const { cards: rawCards, nextPageCursor } = await this.browser.scanVacancyCards(limit);
 
-          // 2. Map to Domain Entities
-          const cards = result.cards.map(raw => ({
-              id: crypto.randomUUID(),
-              siteId,
-              externalId: raw.externalId || null,
-              url: raw.url,
-              title: raw.title,
-              company: raw.company || null,
-              city: raw.city || null,
-              workMode: (raw.workModeText?.toLowerCase().includes('удален') ? 'remote' : 'office') as any, // Simple heuristic
-              salary: null, // Parsing raw string is complex, leaving null for now or simple mock
-              publishedAt: raw.publishedAtText || null,
-              cardHash: btoa(raw.url + raw.title)
-          }));
+          if (rawCards.length === 0) {
+              return this.updateState({
+                  ...currentState,
+                  logs: [...currentState.logs, "WARNING: No vacancy cards found on current page."]
+              });
+          }
 
-          // 3. Create Batch
+          const cards: VacancyCardV1[] = [];
+          
+          for (const raw of rawCards) {
+              const url = raw.url; 
+              const title = raw.title.trim();
+              const company = raw.company?.trim() || null;
+              
+              const hashInput = `${siteId}|${url}|${title}`;
+              const cardHash = await this.computeHash(hashInput);
+
+              let workMode: 'remote' | 'hybrid' | 'office' | 'unknown' = 'unknown';
+              if (raw.workModeText) {
+                  const wm = raw.workModeText.toLowerCase();
+                  if (wm.includes('удален') || wm.includes('remote')) workMode = 'remote';
+                  else if (wm.includes('гибрид') || wm.includes('hybrid')) workMode = 'hybrid';
+                  else if (wm.includes('офис') || wm.includes('office')) workMode = 'office';
+              }
+
+              const salary = this.parseSalaryString(raw.salaryText);
+
+              cards.push({
+                  id: crypto.randomUUID(),
+                  siteId,
+                  externalId: raw.externalId || null,
+                  url,
+                  title,
+                  company,
+                  city: raw.city || null,
+                  workMode,
+                  salary,
+                  publishedAt: raw.publishedAtText || null,
+                  cardHash: cardHash
+              });
+          }
+
+          const currentUrl = await this.browser.getCurrentUrl();
+          const queryFingerprint = await this.computeHash(currentUrl); 
+
           const batch: VacancyCardBatchV1 = {
               batchId: crypto.randomUUID(),
               siteId,
               capturedAt: Date.now(),
-              queryFingerprint: 'mock-query-hash',
+              queryFingerprint,
               cards,
-              pageCursor: result.nextPageCursor || null
+              pageCursor: nextPageCursor || null
           };
 
           await this.storage.saveVacancyCardBatch(siteId, batch);
 
           return this.updateState({
-              ...workingState,
-              activeVacancyBatch: batch,
+              ...currentState,
               status: AgentStatus.VACANCIES_CAPTURED,
-              logs: [...workingState.logs, `Captured ${cards.length} vacancies.`]
+              activeVacancyBatch: batch,
+              logs: [...currentState.logs, `Collected batch of ${cards.length} vacancies.`]
           });
 
       } catch (e: any) {
-          return this.failSession(workingState, `Vacancy Scan failed: ${e.message}`);
+          console.error(e);
+          return this.failSession(currentState, `Vacancy Collection Failed: ${e.message}`);
       }
   }
 
-  // --- Phase B2: Dedup ---
+  // --- Phase B2: Dedup & Select ---
   async dedupAndSelectVacancyBatch(state: AgentState, siteId: string): Promise<AgentState> {
-      if (!state.activeVacancyBatch) return this.failSession(state, "No active batch to dedup.");
-
-      // 1. Load Index
-      let index = await this.storage.getSeenVacancyIndex(siteId);
-      if (!index) {
-          index = { siteId, lastUpdatedAt: Date.now(), seenKeys: [] };
+      if (!state.activeVacancyBatch) {
+          return this.failSession(state, "No vacancy batch found to process.");
       }
-      const seenSet = new Set(index.seenKeys);
+      
+      const logs = [...state.logs, "Processing vacancies: Deduplication & City Matching..."];
+      let currentState = await this.updateState({ ...state, logs });
 
-      const results = [];
-      let duplicates = 0;
-      let seenCount = 0;
-      let selected = 0;
-
-      for (const card of state.activeVacancyBatch.cards) {
-          // Key = URL (usually sufficient) or ID
-          const key = card.externalId || card.url;
+      try {
+          const batch = state.activeVacancyBatch;
+          const prefs = await this.storage.getUserSearchPrefs(siteId);
+          const userCity = prefs?.city?.toLowerCase() || null;
           
-          if (seenSet.has(key)) {
-              results.push({ cardId: card.id, decision: 'SKIP_SEEN', dedupKey: key });
-              seenCount++;
-          } else {
-              // For now, we assume no duplicates within the same batch for simplicity
-              results.push({ cardId: card.id, decision: 'SELECTED', dedupKey: key });
-              seenSet.add(key);
-              selected++;
+          let seenIndex = await this.storage.getSeenVacancyIndex(siteId);
+          if (!seenIndex) {
+              seenIndex = { siteId, lastUpdatedAt: Date.now(), seenKeys: [] };
           }
+          const seenSet = new Set(seenIndex.seenKeys);
+
+          const groups = new Map<string, VacancyCardV1[]>();
+
+          for (const card of batch.cards) {
+              let groupKey = '';
+              if (card.externalId) {
+                  groupKey = `EXT:${card.externalId}`;
+              } else {
+                  const salarySig = card.salary ? `${card.salary.min}-${card.salary.max}-${card.salary.currency}` : 'NOSALARY';
+                  const rawKey = `${this.normalizeText(card.title)}|${this.normalizeText(card.company || '')}|${salarySig}`;
+                  groupKey = `HASH:${await this.computeHash(rawKey)}`;
+              }
+              
+              if (!groups.has(groupKey)) groups.set(groupKey, []);
+              groups.get(groupKey)!.push(card);
+          }
+
+          const results: DedupedCardResult[] = [];
+          const newSeenKeys: string[] = [];
+          
+          let countSelected = 0;
+          let countDuplicates = 0;
+          let countSeen = 0;
+
+          for (const [key, groupCards] of groups) {
+              const isSeen = seenSet.has(key); 
+              
+              if (isSeen) {
+                   for (const c of groupCards) {
+                       results.push({ cardId: c.id, decision: VacancyDecision.SKIP_SEEN, dedupKey: key });
+                   }
+                   countSeen += groupCards.length;
+                   continue;
+              }
+
+              groupCards.sort((a, b) => {
+                  if (userCity) {
+                      const aCity = a.city?.toLowerCase() || '';
+                      const bCity = b.city?.toLowerCase() || '';
+                      if (aCity.includes(userCity) && !bCity.includes(userCity)) return -1;
+                      if (!aCity.includes(userCity) && bCity.includes(userCity)) return 1;
+                  }
+                  
+                  const scoreA = (a.salary ? 2 : 0) + (a.workMode !== 'unknown' ? 1 : 0);
+                  const scoreB = (b.salary ? 2 : 0) + (b.workMode !== 'unknown' ? 1 : 0);
+                  if (scoreA !== scoreB) return scoreB - scoreA;
+
+                  return a.cardHash.localeCompare(b.cardHash);
+              });
+
+              const winner = groupCards[0];
+              results.push({ cardId: winner.id, decision: VacancyDecision.SELECTED, dedupKey: key });
+              newSeenKeys.push(key);
+              countSelected++;
+
+              for (let i = 1; i < groupCards.length; i++) {
+                  results.push({ cardId: groupCards[i].id, decision: VacancyDecision.DUPLICATE, dedupKey: key });
+                  countDuplicates++;
+              }
+          }
+
+          seenIndex.seenKeys = [...seenIndex.seenKeys, ...newSeenKeys];
+          seenIndex.lastUpdatedAt = Date.now();
+          await this.storage.saveSeenVacancyIndex(siteId, seenIndex);
+
+          const dedupedBatch: DedupedVacancyBatchV1 = {
+              id: crypto.randomUUID(),
+              batchId: batch.batchId,
+              siteId,
+              processedAt: Date.now(),
+              userCity,
+              results,
+              summary: {
+                  total: batch.cards.length,
+                  selected: countSelected,
+                  duplicates: countDuplicates,
+                  seen: countSeen
+              }
+          };
+
+          await this.storage.saveDedupedVacancyBatch(siteId, dedupedBatch);
+
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.VACANCIES_DEDUPED,
+              activeDedupedBatch: dedupedBatch,
+              logs: [...currentState.logs, `Deduped: ${countSelected} selected, ${countDuplicates} duplicates, ${countSeen} seen.`]
+          });
+
+      } catch (e: any) {
+          console.error(e);
+          return this.failSession(currentState, `Dedup Failed: ${e.message}`);
       }
-
-      // Save updated index
-      index.seenKeys = Array.from(seenSet);
-      index.lastUpdatedAt = Date.now();
-      await this.storage.saveSeenVacancyIndex(siteId, index);
-
-      const dedupBatch: DedupedVacancyBatchV1 = {
-          id: crypto.randomUUID(),
-          batchId: state.activeVacancyBatch.batchId,
-          siteId,
-          processedAt: Date.now(),
-          userCity: state.activeSearchPrefs?.city || null,
-          results: results as any,
-          summary: { total: state.activeVacancyBatch.cards.length, selected, duplicates, seen: seenCount }
-      };
-
-      await this.storage.saveDedupedVacancyBatch(siteId, dedupBatch);
-
-      return this.updateState({
-          ...state,
-          activeDedupedBatch: dedupBatch,
-          status: AgentStatus.VACANCIES_DEDUPED,
-          logs: [...state.logs, `Deduped: ${selected} new, ${seenCount} seen.`]
-      });
   }
-
+  
   // --- Phase C1: Script Prefilter ---
   async runScriptPrefilter(state: AgentState, siteId: string): Promise<AgentState> {
-      if (!state.activeDedupedBatch || !state.activeVacancyBatch) return this.failSession(state, "No batch to prefilter.");
-
-      const selectedIds = new Set(
-          state.activeDedupedBatch.results
-              .filter(r => r.decision === 'SELECTED')
-              .map(r => r.cardId)
-      );
-
-      const cards = state.activeVacancyBatch.cards.filter(c => selectedIds.has(c.id));
-      const results: any[] = [];
-
-      for (const card of cards) {
-          // Mock Script Logic: Reject if title contains "Manager" (as example of negative keyword not covered by targeting)
-          // In reality, this checks basic constraints
-          let decision: 'READ_CANDIDATE' | 'REJECT' = 'READ_CANDIDATE';
-          const reasons = [];
-
-          if (card.title.toLowerCase().includes('marketing')) {
-               decision = 'REJECT';
-               reasons.push('bad_keyword');
-          }
-
-          results.push({
-              cardId: card.id,
-              decision,
-              reasons,
-              score: 1,
-              gates: { salary: 'UNKNOWN', workMode: 'UNKNOWN' }
-          });
+      if (!state.activeDedupedBatch || !state.activeVacancyBatch) {
+          return this.failSession(state, "No deduped batch found to filter.");
       }
 
-      const batch: PreFilterResultBatchV1 = {
-          id: crypto.randomUUID(),
-          siteId,
-          inputBatchId: state.activeDedupedBatch.id,
-          processedAt: Date.now(),
-          thresholds: { read: 0, defer: 0 },
-          results,
-          summary: {
-              read: results.filter(r => r.decision === 'READ_CANDIDATE').length,
-              defer: 0,
-              reject: results.filter(r => r.decision === 'REJECT').length
+      const targeting = await this.storage.getTargetingSpec(siteId);
+      const userPrefs = await this.storage.getUserSearchPrefs(siteId); 
+      
+      if (!targeting) {
+           return this.failSession(state, "Missing targeting spec for prefilter.");
+      }
+
+      const logs = [...state.logs, "Running Script Prefilter (Salary, WorkMode, Title Score)..."];
+      let currentState = await this.updateState({ ...state, logs });
+
+      try {
+          const THRESHOLD_READ = 0.7;
+          const THRESHOLD_DEFER = 0.4;
+
+          const batch = state.activeDedupedBatch;
+          const results: PreFilterDecisionV1[] = [];
+          
+          let countRead = 0;
+          let countDefer = 0;
+          let countReject = 0;
+
+          const selectedResults = batch.results.filter(r => r.decision === VacancyDecision.SELECTED);
+          
+          for (const res of selectedResults) {
+              const card = state.activeVacancyBatch!.cards.find(c => c.id === res.cardId);
+              if (!card) continue;
+
+              const reasons: string[] = [];
+              let score = 0;
+              let salaryGate: 'PASS' | 'FAIL' | 'UNKNOWN' = 'UNKNOWN';
+              let workModeGate: 'PASS' | 'FAIL' | 'UNKNOWN' = 'UNKNOWN';
+
+              // --- 1. Salary Gate ---
+              if (card.salary && card.salary.max && userPrefs?.minSalary) {
+                   if (card.salary.max < userPrefs.minSalary) {
+                       salaryGate = 'FAIL';
+                       reasons.push('salary_too_low');
+                   } else {
+                       salaryGate = 'PASS';
+                   }
+              } else if (card.salary) {
+                  salaryGate = 'PASS'; 
+              } else {
+                  salaryGate = 'UNKNOWN';
+              }
+
+              // --- 2. WorkMode Gate ---
+              const userMode = userPrefs?.workMode || WorkMode.ANY;
+              const strictMode = targeting.workModeRules.strictMode;
+              
+              if (userMode === WorkMode.ANY) {
+                  workModeGate = 'PASS';
+              } else if (card.workMode === 'unknown') {
+                  workModeGate = 'UNKNOWN';
+              } else {
+                  let isMatch = false;
+                  if (userMode === WorkMode.REMOTE && card.workMode === 'remote') isMatch = true;
+                  else if (userMode === WorkMode.HYBRID && (card.workMode === 'hybrid' || card.workMode === 'hybrid' || card.workMode === 'office')) isMatch = true;
+                  else if (userMode === WorkMode.OFFICE && card.workMode === 'office') isMatch = true;
+                  
+                  if (!isMatch && strictMode) {
+                      workModeGate = 'FAIL';
+                      reasons.push('work_mode_mismatch');
+                  } else {
+                      workModeGate = 'PASS';
+                  }
+              }
+
+              // --- 3. Title Score ---
+              const normalizedTitle = this.normalizeText(card.title);
+              
+              const isNegative = targeting.titleMatchWeights.negativeKeywords.some(kw => normalizedTitle.includes(this.normalizeText(kw)));
+              if (isNegative) {
+                  score = -1.0;
+                  reasons.push('negative_keyword');
+              } else {
+                  const allTargets = [...targeting.targetRoles.ruTitles, ...targeting.targetRoles.enTitles];
+                  const exactMatch = allTargets.some(t => normalizedTitle.includes(this.normalizeText(t)));
+                  
+                  if (exactMatch) {
+                      score += 1.0;
+                      reasons.push('title_exact_match');
+                  } else {
+                      const titleTokens = normalizedTitle.split(' ');
+                      let maxOverlap = 0;
+                      for (const target of allTargets) {
+                           const targetTokens = this.normalizeText(target).split(' ');
+                           const intersection = titleTokens.filter(t => targetTokens.includes(t));
+                           const overlap = intersection.length / targetTokens.length;
+                           if (overlap > maxOverlap) maxOverlap = overlap;
+                      }
+                      score += (0.5 * maxOverlap);
+                      if (maxOverlap > 0.5) reasons.push('title_fuzzy_match');
+                  }
+              }
+
+              // --- 4. Final Decision ---
+              let decision: PrefilterDecisionType = 'REJECT';
+
+              if (salaryGate === 'FAIL' || workModeGate === 'FAIL' || score < 0) {
+                  decision = 'REJECT';
+                  countReject++;
+              } else if (score >= THRESHOLD_READ) {
+                  decision = 'READ_CANDIDATE';
+                  countRead++;
+              } else if (score >= THRESHOLD_DEFER) {
+                  decision = 'DEFER';
+                  countDefer++;
+              } else {
+                  decision = 'REJECT';
+                  reasons.push('low_score');
+                  countReject++;
+              }
+
+              results.push({
+                  cardId: card.id,
+                  decision,
+                  reasons,
+                  score,
+                  gates: { salary: salaryGate, workMode: workModeGate }
+              });
           }
-      };
 
-      await this.storage.savePreFilterResultBatch(siteId, batch);
+          const prefilterBatch: PreFilterResultBatchV1 = {
+              id: crypto.randomUUID(),
+              siteId,
+              inputBatchId: batch.id,
+              processedAt: Date.now(),
+              thresholds: { read: THRESHOLD_READ, defer: THRESHOLD_DEFER },
+              results,
+              summary: {
+                  read: countRead,
+                  defer: countDefer,
+                  reject: countReject
+              }
+          };
 
-      return this.updateState({
-          ...state,
-          activePrefilterBatch: batch,
-          status: AgentStatus.PREFILTER_DONE,
-          logs: [...state.logs, `Prefilter: ${batch.summary.read} passed.`]
-      });
+          await this.storage.savePreFilterResultBatch(siteId, prefilterBatch);
+
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.PREFILTER_DONE,
+              activePrefilterBatch: prefilterBatch,
+              logs: [...currentState.logs, `Prefilter: ${countRead} Candidates, ${countDefer} Deferred, ${countReject} Rejected.`]
+          });
+
+      } catch (e: any) {
+          console.error(e);
+          return this.failSession(currentState, `Prefilter Failed: ${e.message}`);
+      }
   }
 
   // --- Phase C2: LLM Batch Screening ---
   async runLLMBatchScreening(state: AgentState, siteId: string): Promise<AgentState> {
-      if (!state.activePrefilterBatch || !state.activeVacancyBatch || !state.activeTargetingSpec) return this.failSession(state, "Missing data for LLM Screening.");
-
-      const passedIds = new Set(
-          state.activePrefilterBatch.results
-              .filter(r => r.decision === 'READ_CANDIDATE')
-              .map(r => r.cardId)
-      );
-      const cards = state.activeVacancyBatch.cards.filter(c => passedIds.has(c.id));
-
-      if (cards.length === 0) {
-          return this.updateState({
-              ...state,
-              status: AgentStatus.LLM_SCREENING_DONE,
-              logs: [...state.logs, "No cards passed prefilter. Skipping LLM."]
-          });
+      if (!state.activePrefilterBatch || !state.activeVacancyBatch) {
+          return this.failSession(state, "No prefilter batch results found for LLM screening.");
       }
 
-      const input: LLMScreeningInputV1 = {
-          siteId,
-          targetingSpec: {
-              targetRoles: state.activeTargetingSpec.targetRoles.ruTitles,
-              seniority: state.activeTargetingSpec.seniorityLevels,
-              matchWeights: state.activeTargetingSpec.titleMatchWeights
-          },
-          cards: cards.map(c => ({
-              id: c.id,
-              title: c.title,
-              company: c.company,
-              salary: null,
-              workMode: c.workMode,
-              url: c.url
-          }))
-      };
+      const targeting = await this.storage.getTargetingSpec(siteId);
+      if (!targeting) {
+          return this.failSession(state, "Missing targeting spec.");
+      }
 
-      const output = await this.llm.screenVacancyCardsBatch(input);
+      const logs = [...state.logs, "Running LLM Batch Screening..."];
+      let currentState = await this.updateState({ ...state, logs });
 
-      const batch: LLMDecisionBatchV1 = {
-          id: crypto.randomUUID(),
-          siteId,
-          inputPrefilterBatchId: state.activePrefilterBatch.id,
-          decidedAt: Date.now(),
-          modelId: 'mock-llm',
-          decisions: output.results,
-          summary: {
-              read: output.results.filter(r => r.decision === 'READ').length,
-              defer: output.results.filter(r => r.decision === 'DEFER').length,
-              ignore: output.results.filter(r => r.decision === 'IGNORE').length
-          },
-          tokenUsage: output.tokenUsage,
-          read_queue: output.results.filter(r => r.decision === 'READ').map(r => r.cardId)
-      };
+      try {
+          const prefilterBatch = state.activePrefilterBatch;
+          
+          const candidates = prefilterBatch.results
+              .filter(r => r.decision === 'READ_CANDIDATE' || r.decision === 'DEFER')
+              .sort((a, b) => {
+                  if (a.decision === 'READ_CANDIDATE' && b.decision !== 'READ_CANDIDATE') return -1;
+                  if (a.decision !== 'READ_CANDIDATE' && b.decision === 'READ_CANDIDATE') return 1;
+                  return b.score - a.score;
+              });
 
-      await this.storage.saveLLMDecisionBatch(siteId, batch);
+          if (candidates.length === 0) {
+             return this.updateState({
+                 ...currentState,
+                 status: AgentStatus.LLM_SCREENING_DONE,
+                 logs: [...currentState.logs, "No candidates passed prefilter. LLM screening skipped."]
+             });
+          }
 
-      return this.updateState({
-          ...state,
-          activeLLMBatch: batch,
-          status: AgentStatus.LLM_SCREENING_DONE,
-          logs: [...state.logs, `LLM Screened: ${batch.summary.read} to read.`]
-      });
+          const batchSize = 15;
+          const selection = candidates.slice(0, batchSize);
+          
+          const inputCards: ScreeningCard[] = [];
+          for (const sel of selection) {
+              const card = state.activeVacancyBatch!.cards.find(c => c.id === sel.cardId);
+              if (card) {
+                  inputCards.push({
+                      id: card.id,
+                      title: card.title,
+                      company: card.company,
+                      salary: card.salary ? `${card.salary.min || ''}-${card.salary.max || ''} ${card.salary.currency || ''}` : null,
+                      workMode: card.workMode,
+                      url: card.url
+                  });
+              }
+          }
+
+          const llmInput: LLMScreeningInputV1 = {
+              siteId,
+              targetingSpec: {
+                  targetRoles: [...targeting.targetRoles.ruTitles, ...targeting.targetRoles.enTitles],
+                  seniority: targeting.seniorityLevels,
+                  matchWeights: targeting.titleMatchWeights
+              },
+              cards: inputCards
+          };
+
+          const llmOutput = await this.lllm.screenVacancyCardsBatch(llmInput);
+
+          const decisions: LLMDecisionV1[] = llmOutput.results.map(r => ({
+              cardId: r.cardId,
+              decision: r.decision,
+              confidence: r.confidence,
+              reasons: r.reasons
+          }));
+          
+          const read_queue = decisions.filter(d => d.decision === 'READ').map(d => d.cardId);
+          const defer_queue = decisions.filter(d => d.decision === 'DEFER').map(d => d.cardId);
+          const ignore_queue = decisions.filter(d => d.decision === 'IGNORE').map(d => d.cardId);
+
+          const llmBatch: LLMDecisionBatchV1 = {
+              id: crypto.randomUUID(),
+              siteId,
+              inputPrefilterBatchId: prefilterBatch.id,
+              decidedAt: Date.now(),
+              modelId: 'mock-llm', 
+              decisions,
+              summary: {
+                  read: read_queue.length,
+                  defer: defer_queue.length,
+                  ignore: ignore_queue.length
+              },
+              tokenUsage: llmOutput.tokenUsage,
+              read_queue,
+              defer_queue,
+              ignore_queue
+          };
+
+          await this.storage.saveLLMDecisionBatch(siteId, llmBatch);
+
+          const finalLog = `LLM Screened ${decisions.length} cards. READ: ${llmBatch.summary.read}, DEFER: ${llmBatch.summary.defer}, IGNORE: ${llmBatch.summary.ignore}.`;
+          
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.LLM_SCREENING_DONE,
+              activeLLMBatch: llmBatch,
+              logs: [...currentState.logs, finalLog]
+          });
+
+      } catch (e: any) {
+          console.error(e);
+          return this.failSession(currentState, `LLM Screening Failed: ${e.message}`);
+      }
   }
 
-  // --- Phase D1: Extraction ---
+  // --- Phase D1: Vacancy Extraction ---
   async runVacancyExtraction(state: AgentState, siteId: string): Promise<AgentState> {
-      if (!state.activeLLMBatch || !state.activeVacancyBatch) return this.failSession(state, "No LLM batch to extract.");
+      if (!state.activeLLMBatch) {
+          return this.failSession(state, "No LLM decision batch found to extract from.");
+      }
 
-      const toReadIds = state.activeLLMBatch.read_queue || [];
-      if (toReadIds.length === 0) return this.updateState({ ...state, status: AgentStatus.VACANCIES_EXTRACTED });
-
-      const workingState = await this.updateState({
-          ...state,
-          status: AgentStatus.EXTRACTING_VACANCIES,
-          logs: [...state.logs, `Extracting ${toReadIds.length} vacancies...`]
-      });
-
-      const extracted = [];
-      
-      // Loop through queue (mocking parallel or sequential)
-      for (const id of toReadIds) {
-          const card = state.activeVacancyBatch.cards.find(c => c.id === id);
-          if (!card) continue;
-
-          await this.browser.navigateTo(card.url);
-          const parsed = await this.browser.extractVacancyPage();
-
-          extracted.push({
-              vacancyId: id,
-              siteId,
-              url: card.url,
-              extractedAt: Date.now(),
-              sections: {
-                  requirements: parsed.requirements,
-                  responsibilities: parsed.responsibilities,
-                  conditions: parsed.conditions,
-                  salary: parsed.salary,
-                  workMode: parsed.workMode
-              },
-              extractionStatus: 'COMPLETE'
+      const readQueue = state.activeLLMBatch.read_queue || [];
+      if (readQueue.length === 0) {
+          return this.updateState({
+              ...state,
+              status: AgentStatus.VACANCIES_EXTRACTED,
+              logs: [...state.logs, "Extraction Skipped: No vacancies in READ queue."]
           });
       }
 
-      const batch: VacancyExtractionBatchV1 = {
+      let currentState = await this.updateState({ 
+          ...state, 
+          status: AgentStatus.EXTRACTING_VACANCIES,
+          logs: [...state.logs, `Starting Extraction for ${readQueue.length} vacancies...`] 
+      });
+
+      const extractedResults: VacancyExtractV1[] = [];
+      let successCount = 0;
+      let failedCount = 0;
+
+      for (const cardId of readQueue) {
+           const card = state.activeVacancyBatch?.cards.find(c => c.id === cardId);
+           if (!card) {
+               console.warn(`Card ${cardId} not found in active batch.`);
+               continue;
+           }
+
+           currentState = await this.updateState({
+               ...currentState,
+               logs: [...currentState.logs, `Extracting details for: ${card.title} ...`]
+           });
+
+           try {
+               await this.browser.navigateTo(card.url);
+               const parsedPage = await this.browser.extractVacancyPage();
+
+               const extract: VacancyExtractV1 = {
+                   vacancyId: card.id,
+                   siteId,
+                   url: card.url,
+                   extractedAt: Date.now(),
+                   sections: {
+                       requirements: parsedPage.requirements,
+                       responsibilities: parsedPage.responsibilities,
+                       conditions: parsedPage.conditions,
+                       salary: parsedPage.salary,
+                       workMode: parsedPage.workMode
+                   },
+                   extractionStatus: 'COMPLETE'
+               };
+
+               extractedResults.push(extract);
+               successCount++;
+               
+               await new Promise(r => setTimeout(r, 500));
+
+           } catch (e: any) {
+               console.error(`Failed to extract ${card.url}`, e);
+               extractedResults.push({
+                   vacancyId: card.id,
+                   siteId,
+                   url: card.url,
+                   extractedAt: Date.now(),
+                   sections: { requirements: [], responsibilities: [], conditions: [] },
+                   extractionStatus: 'FAILED'
+               });
+               failedCount++;
+               
+               currentState = await this.updateState({
+                   ...currentState,
+                   logs: [...currentState.logs, `Failed to extract ${card.title}: ${e.message}`]
+               });
+           }
+      }
+
+      const extractionBatch: VacancyExtractionBatchV1 = {
           id: crypto.randomUUID(),
           siteId,
           inputLLMBatchId: state.activeLLMBatch.id,
           processedAt: Date.now(),
-          results: extracted as any,
-          summary: { total: extracted.length, success: extracted.length, failed: 0 }
-      };
-
-      await this.storage.saveVacancyExtractionBatch(siteId, batch);
-
-      return this.updateState({
-          ...workingState,
-          activeExtractionBatch: batch,
-          status: AgentStatus.VACANCIES_EXTRACTED,
-          logs: [...workingState.logs, `Extracted ${extracted.length} pages.`]
-      });
-  }
-
-  // --- Phase D2: LLM Evaluation ---
-  async runLLMEvalBatch(state: AgentState, siteId: string): Promise<AgentState> {
-      if (!state.activeExtractionBatch || !state.activeTargetingSpec || !state.activeSearchPrefs) return this.failSession(state, "No extraction batch.");
-
-      const profile = await this.storage.getProfile(siteId);
-
-      const input: EvaluateExtractsInputV1 = {
-          profileSummary: profile?.rawContent || "",
-          targetingRules: {
-              targetRoles: state.activeTargetingSpec.targetRoles.ruTitles,
-              workModeRules: state.activeTargetingSpec.workModeRules,
-              minSalary: state.activeSearchPrefs.minSalary
-          },
-          candidates: state.activeExtractionBatch.results.map(r => ({
-              id: r.vacancyId,
-              title: "Unknown", // Metadata lost in extraction entity, simplified for now
-              sections: r.sections,
-              derived: {
-                  salary: r.sections.salary,
-                  workMode: r.sections.workMode
-              }
-          }))
-      };
-
-      const output = await this.llm.evaluateVacancyExtractsBatch(input);
-
-      const batch: LLMVacancyEvalBatchV1 = {
-          id: crypto.randomUUID(),
-          siteId,
-          inputExtractionBatchId: state.activeExtractionBatch.id,
-          decidedAt: Date.now(),
-          modelId: 'mock-llm',
-          results: output.results,
+          results: extractedResults,
           summary: {
-              apply: output.results.filter(r => r.decision === 'APPLY').length,
-              skip: output.results.filter(r => r.decision === 'SKIP').length,
-              needsHuman: output.results.filter(r => r.decision === 'NEEDS_HUMAN').length
-          },
-          tokenUsage: output.tokenUsage,
-          status: 'OK'
-      };
-
-      await this.storage.saveLLMVacancyEvalBatch(siteId, batch);
-
-      return this.updateState({
-          ...state,
-          activeEvalBatch: batch,
-          status: AgentStatus.EVALUATION_DONE,
-          logs: [...state.logs, `Evaluated: ${batch.summary.apply} to apply.`]
-      });
-  }
-
-  // --- Phase D2.2: Apply Queue ---
-  async buildApplyQueue(state: AgentState, siteId: string): Promise<AgentState> {
-      if (!state.activeEvalBatch || !state.activeVacancyBatch) return this.failSession(state, "Missing data.");
-
-      const applyIds = new Set(state.activeEvalBatch.results.filter(r => r.decision === 'APPLY').map(r => r.id));
-      
-      const items = state.activeVacancyBatch.cards
-          .filter(c => applyIds.has(c.id))
-          .map(c => ({
-              vacancyId: c.id,
-              url: c.url,
-              decision: 'APPLY',
-              status: 'PENDING'
-          }));
-
-      const queue: ApplyQueueV1 = {
-          id: crypto.randomUUID(),
-          siteId,
-          inputEvalBatchId: state.activeEvalBatch.id,
-          createdAt: Date.now(),
-          items: items as any,
-          summary: {
-              total: items.length,
-              pending: items.length,
-              applied: 0,
-              failed: 0
+              total: extractedResults.length,
+              success: successCount,
+              failed: failedCount
           }
       };
 
-      await this.storage.saveApplyQueue(siteId, queue);
+      await this.storage.saveVacancyExtractionBatch(siteId, extractionBatch);
 
       return this.updateState({
-          ...state,
-          activeApplyQueue: queue,
-          status: AgentStatus.APPLY_QUEUE_READY,
-          logs: [...state.logs, `Queue ready: ${items.length} vacancies.`]
+          ...currentState,
+          status: AgentStatus.VACANCIES_EXTRACTED,
+          activeExtractionBatch: extractionBatch,
+          logs: [...currentState.logs, `Extraction Complete. Success: ${successCount}, Failed: ${failedCount}.`]
       });
   }
 
+  // --- Phase D2: LLM Batch Evaluation ---
+  async runLLMEvalBatch(state: AgentState, siteId: string): Promise<AgentState> {
+      const extractionBatch = state.activeExtractionBatch;
+      const targeting = await this.storage.getTargetingSpec(siteId);
+      const profile = await this.storage.getProfile(siteId);
+
+      if (!extractionBatch || !targeting || !profile) {
+           return this.failSession(state, "Missing Context for Evaluation (ExtractionBatch, Targeting, or Profile).");
+      }
+
+      const candidatesToEval = extractionBatch.results
+          .filter(r => r.extractionStatus === 'COMPLETE')
+          .slice(0, 15); 
+
+      if (candidatesToEval.length === 0) {
+           return this.updateState({
+              ...state,
+              status: AgentStatus.EVALUATION_DONE,
+              logs: [...state.logs, "No successfully extracted candidates to evaluate. Skipping phase."]
+           });
+      }
+
+      let currentState = await this.updateState({
+          ...state,
+          logs: [...state.logs, `Preparing LLM evaluation for ${candidatesToEval.length} candidates...`]
+      });
+
+      const evalCandidates: EvalCandidate[] = [];
+      for (const extract of candidatesToEval) {
+           const originalCard = state.activeVacancyBatch?.cards.find(c => c.id === extract.vacancyId);
+           if (!originalCard) continue;
+
+           evalCandidates.push({
+               id: extract.vacancyId,
+               title: originalCard.title,
+               sections: {
+                   requirements: extract.sections.requirements,
+                   responsibilities: extract.sections.responsibilities,
+                   conditions: extract.sections.conditions
+               },
+               derived: {
+                   salary: extract.sections.salary,
+                   workMode: extract.sections.workMode
+               }
+           });
+      }
+      
+      const input: EvaluateExtractsInputV1 = {
+          profileSummary: profile.rawContent, 
+          targetingRules: {
+              targetRoles: [...targeting.targetRoles.ruTitles, ...targeting.targetRoles.enTitles],
+              workModeRules: { strictMode: targeting.workModeRules.strictMode },
+              minSalary: state.activeSearchPrefs?.minSalary
+          },
+          candidates: evalCandidates
+      };
+
+      try {
+          currentState = await this.updateState({
+              ...currentState,
+              logs: [...currentState.logs, `Calling LLM (Batch Size: ${evalCandidates.length})...`]
+          });
+
+          const output = await this.lllm.evaluateVacancyExtractsBatch(input);
+
+          const results: LLMVacancyEvalResult[] = output.results.map(r => ({
+              vacancyId: r.id,
+              decision: r.decision,
+              confidence: r.confidence,
+              reasons: r.reasons,
+              risks: r.risks,
+              factsUsed: r.factsUsed
+          }));
+
+          const evalBatch: LLMVacancyEvalBatchV1 = {
+              id: crypto.randomUUID(),
+              siteId,
+              inputExtractionBatchId: extractionBatch.id,
+              decidedAt: Date.now(),
+              modelId: 'mock-llm-pro',
+              results,
+              summary: {
+                  apply: results.filter(r => r.decision === 'APPLY').length,
+                  skip: results.filter(r => r.decision === 'SKIP').length,
+                  needsHuman: results.filter(r => r.decision === 'NEEDS_HUMAN').length
+              },
+              tokenUsage: output.tokenUsage,
+              status: 'OK'
+          };
+
+          await this.storage.saveLLMVacancyEvalBatch(siteId, evalBatch);
+
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.EVALUATION_DONE,
+              activeEvalBatch: evalBatch,
+              logs: [...currentState.logs, `Evaluation Done. APPLY: ${evalBatch.summary.apply}, SKIP: ${evalBatch.summary.skip}, HUMAN: ${evalBatch.summary.needsHuman}`]
+          });
+
+      } catch (e: any) {
+          console.error(e);
+          return this.failSession(currentState, `LLM Evaluation Failed: ${e.message}`);
+      }
+  }
+
+  // --- Phase D2.2: Build Apply Queue ---
+  async buildApplyQueue(state: AgentState, siteId: string): Promise<AgentState> {
+      if (!state.activeEvalBatch) {
+          return this.failSession(state, "No evaluation batch found to build queue from.");
+      }
+
+      const logs = [...state.logs, "Building Application Queue..."];
+      let currentState = await this.updateState({ ...state, logs });
+
+      try {
+          const applyCandidates = state.activeEvalBatch.results.filter(r => r.decision === 'APPLY');
+          
+          if (applyCandidates.length === 0) {
+               return this.updateState({
+                   ...currentState,
+                   status: AgentStatus.APPLY_QUEUE_READY,
+                   logs: [...currentState.logs, "No candidates suitable for AUTO-APPLY. Queue is empty."]
+               });
+          }
+
+          const items: ApplyQueueItem[] = [];
+          
+          for (const cand of applyCandidates) {
+               const card = state.activeVacancyBatch?.cards.find(c => c.id === cand.vacancyId);
+               if (!card) continue;
+
+               items.push({
+                   vacancyId: card.id,
+                   url: card.url,
+                   decision: cand.decision,
+                   status: 'PENDING'
+               });
+          }
+
+          const queue: ApplyQueueV1 = {
+              id: crypto.randomUUID(),
+              siteId,
+              inputEvalBatchId: state.activeEvalBatch.id,
+              createdAt: Date.now(),
+              items,
+              summary: {
+                  total: items.length,
+                  pending: items.length,
+                  applied: 0,
+                  failed: 0
+              }
+          };
+
+          await this.storage.saveApplyQueue(siteId, queue);
+
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.APPLY_QUEUE_READY,
+              activeApplyQueue: queue,
+              logs: [...currentState.logs, `Queue Built: ${items.length} vacancies ready for auto-apply.`]
+          });
+
+      } catch (e: any) {
+          console.error(e);
+          return this.failSession(currentState, `Build Queue Failed: ${e.message}`);
+      }
+  }
+  
   // --- Phase E1.1: Probe Apply Entrypoint ---
   async probeNextApplyEntrypoint(state: AgentState, siteId: string): Promise<AgentState> {
       if (!state.activeApplyQueue) {
           return this.failSession(state, "No Apply Queue to process.");
       }
 
-      // Priority 1: Resume IN_PROGRESS item (interrupted or loop continue)
+      // Check for an existing IN_PROGRESS item first (Resume logic)
       let nextItem = state.activeApplyQueue.items.find(i => i.status === 'IN_PROGRESS');
       
-      // Priority 2: Pick next PENDING item
+      // If none, take next PENDING
       if (!nextItem) {
-          nextItem = state.activeApplyQueue.items.find(i => i.status === 'PENDING');
+        nextItem = state.activeApplyQueue.items.find(i => i.status === 'PENDING');
       }
 
-      // Termination Condition: No items left
       if (!nextItem) {
-          const finishedState = {
+          return this.updateState({
               ...state,
-              status: AgentStatus.APPLY_QUEUE_COMPLETED,
-              logs: [...state.logs, "Apply Queue Cycle Finished. No more items to process."]
-          };
-          return this.updateState(finishedState);
+              logs: [...state.logs, "Apply Queue finished. No PENDING items found."]
+          });
       }
 
-      // --- Transition: Mark IN_PROGRESS ---
+      // Update status to IN_PROGRESS if it wasn't already
       if (nextItem.status !== 'IN_PROGRESS') {
-          nextItem.status = 'IN_PROGRESS';
-          // Recalculate summary
-          const queue = state.activeApplyQueue;
-          queue.summary.pending = queue.items.filter(i => i.status === 'PENDING').length;
-          await this.storage.saveApplyQueue(siteId, queue);
+        nextItem.status = 'IN_PROGRESS';
+        const queue = state.activeApplyQueue;
+        queue.summary.pending = queue.items.filter(i => i.status === 'PENDING').length;
+        await this.storage.saveApplyQueue(siteId, queue);
       }
+      
+      // Ensure we have the latest queue in state
+      const queue = state.activeApplyQueue;
 
       let currentState = await this.updateState({
           ...state,
-          activeApplyQueue: state.activeApplyQueue, // Ensure UI updates with new status
+          activeApplyQueue: queue, // Ensure UI updates with new status
           status: AgentStatus.FINDING_APPLY_BUTTON,
-          logs: [...state.logs, `Loop: Processing vacancy ${nextItem.vacancyId}. Navigating to ${nextItem.url}...`]
+          logs: [...state.logs, `Probing Apply Entrypoint for ${nextItem.url}...`]
       });
 
       try {
@@ -1030,38 +1687,35 @@ export class AgentUseCase {
 
       } catch (e: any) {
           console.error(e);
-          // If navigation fails, we might want to mark as FAILED to avoid infinite loop on broken URL
           return this.failSession(currentState, `Apply Probe Failed: ${e.message}`);
       }
   }
 
-  // --- Phase E1.2: Open and Scan Apply Form ---
+  // --- Phase E1.2: Click and Scan Apply Form ---
   async openAndScanApplyForm(state: AgentState, siteId: string): Promise<AgentState> {
       if (!state.activeApplyProbe || state.activeApplyProbe.foundControls.length === 0) {
-          return this.failSession(state, "Cannot open apply form: No entrypoint.");
+          return this.failSession(state, "No valid apply entrypoint found to click.");
       }
-      
-      // Assume we use the first control
-      const control = state.activeApplyProbe.foundControls[0];
-      
-      const workingState = await this.updateState({
+
+      const control = state.activeApplyProbe.foundControls[0]; 
+      let currentState = await this.updateState({
           ...state,
-          status: AgentStatus.APPLY_FORM_OPENED, // Tentative
-          logs: [...state.logs, `Clicking apply control: ${control.label}...`]
+          logs: [...state.logs, `Clicking apply control: "${control.label}"...`]
       });
-      
+
       try {
-          // 1. Click
-          await this.browser.clickElement(control.selector);
-          
-          // 2. Scan Form
+          const clickSuccess = await this.browser.clickElement(control.selector);
+          if (!clickSuccess) {
+              return this.failSession(currentState, `Failed to click apply element: ${control.selector}`);
+          }
+
           const formSnapshot = await this.browser.scanApplyForm();
-          
+
           const formProbe: ApplyFormProbeV1 = {
               taskId: state.activeApplyProbe.taskId,
               vacancyUrl: state.activeApplyProbe.vacancyUrl,
               entrypointUsed: control.label,
-              applyUiKind: formSnapshot.isModal ? 'MODAL' : 'PAGE',
+              applyUiKind: formSnapshot.isModal ? 'MODAL' : 'UNKNOWN',
               detectedFields: {
                   coverLetterTextarea: formSnapshot.hasCoverLetter,
                   resumeSelector: formSnapshot.hasResumeSelect,
@@ -1072,127 +1726,387 @@ export class AgentUseCase {
                   coverLetterHint: formSnapshot.coverLetterSelector || null,
                   submitHint: formSnapshot.submitSelector || null
               },
+              successTextHints: ['Отклик отправлен', 'Вы откликнулись', 'Success'],
               blockers: {
                   requiresLogin: false,
                   captchaOrAntibot: false,
-                  applyNotAvailable: false,
-                  unknownLayout: !formSnapshot.hasSubmit
+                  applyNotAvailable: !formSnapshot.hasSubmit,
+                  unknownLayout: !formSnapshot.isModal && !formSnapshot.hasSubmit
               },
               scannedAt: Date.now()
           };
-          
+
+          const logMsg = formProbe.applyUiKind === 'MODAL' 
+              ? `Apply Form Opened (Modal). Cover Letter Field: ${formProbe.detectedFields.coverLetterTextarea ? 'YES' : 'NO'}`
+              : `Apply Form Status Unknown/Inline.`;
+
           return this.updateState({
-              ...workingState,
+              ...currentState,
+              status: AgentStatus.APPLY_FORM_OPENED,
               activeApplyFormProbe: formProbe,
-              logs: [...workingState.logs, `Form Scanned. CL: ${formProbe.detectedFields.coverLetterTextarea}, Submit: ${formProbe.detectedFields.submitButtonPresent}`]
+              logs: [...currentState.logs, logMsg]
           });
-          
+
       } catch (e: any) {
-           return this.failSession(workingState, `Open Form Failed: ${e.message}`);
+          console.error(e);
+          return this.failSession(currentState, `Apply Form Scan Failed: ${e.message}`);
       }
   }
 
-  // --- Phase E1.3: Fill Draft ---
+  // --- Phase E1.3: Fill Application Draft (No Submit) ---
   async fillApplyFormDraft(state: AgentState, siteId: string): Promise<AgentState> {
-      if (!state.activeApplyFormProbe) return this.failSession(state, "No form probe.");
-      
-      const config = await this.storage.getConfig();
-      const clText = config?.coverLetterTemplate || "Здравствуйте! Прошу рассмотреть мою кандидатуру.";
-      
-      const workingState = await this.updateState({
+      if (!state.activeApplyProbe || !state.activeApplyFormProbe) {
+          return this.failSession(state, "Missing Apply Probe or Form Probe data.");
+      }
+
+      const vacancyId = state.activeApplyProbe.taskId;
+      const formProbe = state.activeApplyFormProbe;
+      const url = state.activeApplyProbe.vacancyUrl;
+      const entrypointSelector = state.activeApplyProbe.foundControls[0].selector;
+
+      let currentState = await this.updateState({
           ...state,
-          logs: [...state.logs, "Filling form draft..."]
+          logs: [...state.logs, `Starting Draft Fill for vacancy ${vacancyId} (NO SUBMIT)...`]
       });
-      
+
       try {
+          // 1. Re-navigate to Ensure State
+          await this.browser.navigateTo(url);
+          await this.browser.clickElement(entrypointSelector);
+          await new Promise(r => setTimeout(r, 1000)); // Wait for modal
+
+          let blockedReason: ApplyBlockedReason = null;
           let filled = false;
-          if (state.activeApplyFormProbe.safeLocators.coverLetterHint) {
-              await this.browser.inputText(state.activeApplyFormProbe.safeLocators.coverLetterHint, clText);
-              filled = true;
+          let readbackHash: string | null = null;
+          let summary = "";
+          let coverLetterSource: CoverLetterSource = 'NONE';
+
+          // 2. Logic: Fill Cover Letter if Field Exists
+          if (formProbe.detectedFields.coverLetterTextarea && formProbe.safeLocators.coverLetterHint) {
+              
+              const queueItem = state.activeApplyQueue?.items.find(i => i.vacancyId === vacancyId);
+              const config = await this.storage.getConfig();
+              const defaultText = "Здравствуйте! Меня очень заинтересовала ваша вакансия. У меня есть релевантный опыт работы с React и TypeScript более 5 лет. Буду рад обсудить детали на интервью. Спасибо!";
+              
+              let coverLetterText = defaultText;
+              coverLetterSource = 'DEFAULT';
+
+              if (queueItem?.generatedCoverLetter && queueItem.generatedCoverLetter.trim().length > 0) {
+                   coverLetterText = queueItem.generatedCoverLetter;
+                   coverLetterSource = 'GENERATED';
+              } else if (config?.coverLetterTemplate && config.coverLetterTemplate.trim().length > 0) {
+                   coverLetterText = config.coverLetterTemplate;
+                   coverLetterSource = 'TEMPLATE';
+              }
+              
+              currentState = await this.updateState({
+                  ...currentState,
+                  logs: [...currentState.logs, `Filling Cover Letter from ${coverLetterSource} (${coverLetterText.length} chars)...`]
+              });
+
+              const filledSuccess = await this.browser.inputText(formProbe.safeLocators.coverLetterHint, coverLetterText);
+              
+              if (filledSuccess) {
+                  // 3. Verification (Readback)
+                  const readBackValue = await this.browser.readInputValue(formProbe.safeLocators.coverLetterHint);
+                  if (readBackValue === coverLetterText) {
+                      filled = true;
+                      readbackHash = await this.computeHash(readBackValue);
+                      summary = "Cover letter filled and verified.";
+                  } else {
+                      blockedReason = 'READBACK_FAILED';
+                      summary = "Failed to verify input text.";
+                  }
+              } else {
+                  blockedReason = 'FIELD_NOT_FOUND'; // Failed to input
+                  summary = "Input action failed.";
+              }
+          } else {
+               summary = "No cover letter field detected, skipping fill.";
           }
-          
-          const draft: ApplyDraftSnapshotV1 = {
-              vacancyId: state.activeApplyFormProbe.taskId,
+
+          // 4. Create Artifact
+          const draftSnapshot: ApplyDraftSnapshotV1 = {
+              vacancyId,
               siteId,
               createdAt: Date.now(),
-              coverLetterFieldFound: !!state.activeApplyFormProbe.safeLocators.coverLetterHint,
+              coverLetterFieldFound: formProbe.detectedFields.coverLetterTextarea,
               coverLetterFilled: filled,
-              coverLetterReadbackHash: null,
-              coverLetterSource: 'TEMPLATE',
-              formStateSummary: "Draft Filled",
-              blockedReason: null
+              coverLetterReadbackHash: readbackHash,
+              coverLetterSource,
+              formStateSummary: summary,
+              blockedReason
           };
-          
-          await this.storage.saveApplyDraftSnapshot(siteId, draft);
-          
+
+          await this.storage.saveApplyDraftSnapshot(siteId, draftSnapshot);
+
+          const statusLog = filled ? `DRAFT SUCCESS: Cover letter filled (${coverLetterSource}).` : `DRAFT STATUS: ${summary}`;
+
           return this.updateState({
-              ...workingState,
-              activeApplyDraft: draft,
+              ...currentState,
               status: AgentStatus.APPLY_DRAFT_FILLED,
-              logs: [...workingState.logs, `Draft Filled.`]
+              activeApplyDraft: draftSnapshot,
+              logs: [...currentState.logs, statusLog, "Safety Stop: Submit NOT clicked."]
           });
+
       } catch (e: any) {
-           return this.failSession(workingState, `Fill Draft Failed: ${e.message}`);
+           console.error(e);
+           return this.failSession(currentState, `Draft Fill Failed: ${e.message}`);
+      }
+  }
+  
+  // --- Phase E1.4: Submit Apply Form ---
+  async submitApplyForm(state: AgentState, siteId: string): Promise<AgentState> {
+      if (!state.activeApplyProbe || !state.activeApplyFormProbe || !state.activeApplyQueue) {
+          return this.failSession(state, "Missing dependencies for submit (Probe, Form, or Queue).");
+      }
+
+      const vacancyId = state.activeApplyProbe.taskId;
+      const formProbe = state.activeApplyFormProbe;
+      const entrypointSelector = state.activeApplyProbe.foundControls[0].selector;
+      const url = state.activeApplyProbe.vacancyUrl;
+      const successHints = formProbe.successTextHints || ['Success', 'отправлен'];
+
+      // Find the queue item
+      const queueItem = state.activeApplyQueue.items.find(i => i.vacancyId === vacancyId);
+      if (!queueItem) {
+          return this.failSession(state, `Queue item for vacancy ${vacancyId} not found.`);
+      }
+
+      if (!formProbe.safeLocators.submitHint) {
+           return this.failSession(state, "No submit button locator found.");
+      }
+
+      let currentState = await this.updateState({
+          ...state,
+          status: AgentStatus.SUBMITTING_APPLICATION,
+          logs: [...state.logs, `INITIATING SUBMIT for vacancy ${vacancyId} (One-Way Trip)...`]
+      });
+
+      let failureReason: ApplyFailureReason | null = null;
+      let successConfirmed = false;
+      let confirmationEvidence = null;
+
+      try {
+          // 1. RE-OPEN & RE-FILL (Deterministic Idempotency)
+          // Navigation clears inputs in Mock, so we must refill.
+          currentState = await this.updateState({
+              ...currentState,
+              logs: [...currentState.logs, `Navigating to ${url} and re-opening form...`]
+          });
+          await this.browser.navigateTo(url);
+          const clickSuccess = await this.browser.clickElement(entrypointSelector);
+          if (!clickSuccess) {
+              throw new Error("Failed to re-open apply form.");
+          }
+          await new Promise(r => setTimeout(r, 1000));
+
+          // 2. Refill Text if needed
+          if (formProbe.detectedFields.coverLetterTextarea && formProbe.safeLocators.coverLetterHint) {
+              const config = await this.storage.getConfig();
+              let text = "Default Cover Letter"; // Fallback
+              
+              if (queueItem.generatedCoverLetter) text = queueItem.generatedCoverLetter;
+              else if (config?.coverLetterTemplate) text = config.coverLetterTemplate;
+              
+              currentState = await this.updateState({
+                  ...currentState,
+                  logs: [...currentState.logs, `Re-filling cover letter (${text.length} chars)...`]
+              });
+              await this.browser.inputText(formProbe.safeLocators.coverLetterHint, text);
+          }
+
+          // 3. CLICK SUBMIT
+          currentState = await this.updateState({
+              ...currentState,
+              logs: [...currentState.logs, `CLICKING SUBMIT BUTTON: ${formProbe.safeLocators.submitHint}`]
+          });
+          
+          const submitClicked = await this.browser.clickElement(formProbe.safeLocators.submitHint);
+          if (!submitClicked) {
+              failureReason = 'SUBMIT_BUTTON_NOT_FOUND';
+              throw new Error("Submit button click failed.");
+          }
+
+          // 4. VERIFY SUCCESS
+          currentState = await this.updateState({
+              ...currentState,
+              logs: [...currentState.logs, "Submit clicked. Waiting for confirmation..."]
+          });
+
+          // Wait loop (Mock is instant, but logic handles delays)
+          let attempts = 0;
+          while (attempts < 5 && !successConfirmed) {
+              await new Promise(r => setTimeout(r, 1000));
+              const pageText = await this.browser.getPageTextMinimal();
+              
+              for (const hint of successHints) {
+                  if (pageText.includes(hint)) {
+                      successConfirmed = true;
+                      confirmationEvidence = hint;
+                      break;
+                  }
+              }
+              attempts++;
+          }
+
+          if (!successConfirmed) {
+              failureReason = 'NO_CONFIRMATION';
+          }
+
+      } catch (e: any) {
+          console.error(e);
+          failureReason = failureReason || 'UNKNOWN';
+          currentState = await this.updateState({
+              ...currentState,
+              logs: [...currentState.logs, `Submit Error: ${e.message}`]
+          });
+      }
+
+      // 5. UPDATE QUEUE STATUS
+      queueItem.status = successConfirmed ? 'APPLIED' : 'FAILED';
+      queueItem.applicationResult = new Date().toISOString();
+      const newSummary = state.activeApplyQueue.summary;
+      newSummary.pending = state.activeApplyQueue.items.filter(i => i.status === 'PENDING' || i.status === 'IN_PROGRESS').length; 
+      // Note: IN_PROGRESS counts as pending until done. 
+      // Re-calc explicit stats:
+      newSummary.applied = state.activeApplyQueue.items.filter(i => i.status === 'APPLIED').length;
+      newSummary.failed = state.activeApplyQueue.items.filter(i => i.status === 'FAILED').length;
+      newSummary.pending = state.activeApplyQueue.items.filter(i => i.status === 'PENDING').length;
+
+      await this.storage.saveApplyQueue(siteId, state.activeApplyQueue);
+
+      // 6. CREATE RECEIPT
+      const receipt: ApplySubmitReceiptV1 = {
+          receiptId: crypto.randomUUID(),
+          vacancyId,
+          siteId,
+          submittedAt: Date.now(),
+          submitAttempts: 1,
+          successConfirmed,
+          confirmationSource: successConfirmed ? 'text_hint' : 'unknown',
+          confirmationEvidence,
+          finalQueueStatus: successConfirmed ? 'APPLIED' : 'FAILED',
+          failureReason
+      };
+
+      await this.storage.saveApplySubmitReceipt(siteId, receipt);
+
+      const finalStatus = successConfirmed ? AgentStatus.APPLY_SUBMIT_SUCCESS : AgentStatus.APPLY_SUBMIT_FAILED;
+      const logMsg = successConfirmed 
+          ? `SUCCESS: Application submitted and verified via hint "${confirmationEvidence}".`
+          : `FAILURE: Application submitted but verification failed. Reason: ${failureReason}`;
+
+      return this.updateState({
+          ...currentState,
+          status: finalStatus,
+          activeApplyQueue: state.activeApplyQueue, // Force UI update
+          logs: [...currentState.logs, logMsg]
+      });
+  }
+
+
+  private parseSalaryString(text?: string): VacancySalary | null {
+      if (!text) return null;
+      // Very basic parser for demo: "100 000 - 150 000 руб."
+      const clean = text.replace(/\s/g, '').toLowerCase();
+      // Extract numbers
+      const numbers = clean.match(/\d+/g);
+      if (!numbers) return null;
+
+      const vals = numbers.map(n => parseInt(n, 10));
+      const min = vals.length > 0 ? vals[0] : null;
+      const max = vals.length > 1 ? vals[1] : null;
+
+      let currency = 'RUB';
+      if (clean.includes('usd') || clean.includes('$')) currency = 'USD';
+      if (clean.includes('eur') || clean.includes('€')) currency = 'EUR';
+      if (clean.includes('kzt')) currency = 'KZT';
+
+      return { min, max, currency };
+  }
+
+
+  // Helper for Comparison
+  private looseEquals(expected: any, actual: any): boolean {
+      if (expected === actual) return true;
+      if (expected === null || actual === null || expected === undefined || actual === undefined) return false;
+
+      // String vs Number
+      if (String(expected) === String(actual)) return true;
+
+      // Boolean "true" vs true
+      if (typeof expected === 'boolean' || typeof actual === 'boolean') {
+          return String(expected).toLowerCase() === String(actual).toLowerCase();
+      }
+
+      return false;
+  }
+
+  private getSemanticPriority(type: SemanticFieldType): number {
+      switch (type) {
+          case 'LOCATION': return 10;
+          case 'WORK_MODE': return 20;
+          case 'SALARY': return 30;
+          case 'KEYWORD': return 40;
+          case 'SUBMIT': return 100;
+          default: return 50;
       }
   }
 
-  // --- Phase E1.4: Submit Application ---
-  async submitApplication(state: AgentState, siteId: string): Promise<AgentState> {
-      if (!state.activeApplyFormProbe || !state.activeApplyDraft) return this.failSession(state, "Not ready to submit.");
-      
-      const workingState = await this.updateState({
-          ...state,
-          status: AgentStatus.SUBMITTING_APPLICATION,
-          logs: [...state.logs, "Clicking Submit..."]
-      });
-      
-      try {
-          if (!state.activeApplyFormProbe.safeLocators.submitHint) {
-              throw new Error("No submit button locator.");
-          }
-          
-          await this.browser.clickElement(state.activeApplyFormProbe.safeLocators.submitHint);
-          
-          // Wait and check for success marker
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          const pageText = await this.browser.getPageTextMinimal();
-          const success = pageText.includes("отправлен") || pageText.includes("success") || pageText.includes("sent");
-          
-          const receipt: ApplySubmitReceiptV1 = {
-              receiptId: crypto.randomUUID(),
-              vacancyId: state.activeApplyDraft.vacancyId,
-              siteId,
-              submittedAt: Date.now(),
-              successConfirmed: success,
-              confirmationSource: 'TEXT_HINT',
-              confirmationEvidence: success ? "Found 'sent' keyword" : "None",
-              failureReason: success ? null : 'NO_CONFIRMATION'
-          };
-          
-          await this.storage.saveApplySubmitReceipt(siteId, receipt);
-
-          // Update Queue Item status
-          if (state.activeApplyQueue) {
-              const queue = state.activeApplyQueue;
-              const item = queue.items.find(i => i.vacancyId === receipt.vacancyId);
-              if (item) {
-                  item.status = success ? 'APPLIED' : 'FAILED';
-                  queue.summary.applied += success ? 1 : 0;
-                  queue.summary.failed += success ? 0 : 1;
-                  await this.storage.saveApplyQueue(siteId, queue);
-              }
-          }
-
-          return this.updateState({
-              ...workingState,
-              activeSubmitReceipt: receipt,
-              activeApplyQueue: state.activeApplyQueue, // Force refresh
-              status: success ? AgentStatus.APPLICATION_SUBMITTED : AgentStatus.APPLICATION_FAILED,
-              logs: [...workingState.logs, `Submit Result: ${success ? 'SUCCESS' : 'UNKNOWN'}`]
-          });
-          
-      } catch (e: any) {
-           return this.failSession(workingState, `Submit Failed: ${e.message}`);
+  private mapControlTypeToAction(uiType: SearchFieldType): ApplyActionType {
+      switch (uiType) {
+          case 'CHECKBOX': return 'TOGGLE_CHECKBOX';
+          case 'SELECT': return 'SELECT_OPTION';
+          case 'TEXT': 
+          case 'RANGE':
+             return 'FILL_TEXT';
+          case 'BUTTON': return 'CLICK';
+          default: return 'UNKNOWN';
       }
+  }
+
+  async resetProfileData(state: AgentState, siteId: string): Promise<AgentState> {
+      await this.storage.resetProfile(siteId);
+      await this.storage.deleteTargetingSpec(siteId); 
+      await this.storage.deleteSearchUISpec(siteId); // Cascade 
+      await this.storage.deleteUserSearchPrefs(siteId); // Cascade
+      await this.storage.deleteSearchApplyPlan(siteId); // Cascade
+      await this.storage.deleteAppliedFiltersSnapshot(siteId); // Cascade
+      await this.storage.deleteFiltersAppliedVerification(siteId); // Cascade
+
+      const logs = [...state.logs, `Profile data, targeting rules, search prefs, and plans for ${siteId} cleared.`];
+      return this.updateState({ 
+        ...state, 
+        activeTargetingSpec: null, 
+        activeSearchUISpec: null,
+        activeSearchPrefs: null,
+        activeSearchApplyPlan: null,
+        activeAppliedFilters: null,
+        activeVerification: null,
+        logs 
+      });
+  }
+
+  async completeSession(state: AgentState): Promise<AgentState> {
+      const newState = { ...state, status: AgentStatus.COMPLETED, logs: [...state.logs, 'Sequence completed successfully.'] };
+      return this.updateState(newState);
+  }
+
+  async failSession(state: AgentState, error: string): Promise<AgentState> {
+      const newState = { ...state, status: AgentStatus.FAILED, logs: [...state.logs, `Sequence failed: ${error}`] };
+      return this.updateState(newState);
+  }
+  
+  async abortSession(state: AgentState): Promise<AgentState> {
+      const newState = { ...state, status: AgentStatus.IDLE, logs: [...state.logs, 'Aborted by user.'] };
+      return this.updateState(newState);
+  }
+
+  async resetSession(state: AgentState): Promise<AgentState> {
+      const newState = createInitialAgentState();
+      newState.logs = ['Session reset by user.'];
+      await this.browser.close();
+      return this.updateState(newState);
   }
 }

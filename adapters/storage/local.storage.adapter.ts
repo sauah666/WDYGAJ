@@ -1,4 +1,3 @@
-
 // Layer: ADAPTERS
 
 import { StoragePort } from '../../core/ports/storage.port';
@@ -295,8 +294,14 @@ export class LocalStorageAdapter implements StoragePort {
   // --- Phase E1.4 Implementation ---
 
   async saveApplySubmitReceipt(siteId: string, receipt: ApplySubmitReceiptV1): Promise<void> {
-      const key = `${KEY_APPLY_RECEIPT_PREFIX}${siteId}_${receipt.receiptId}`;
+      const key = `${KEY_APPLY_RECEIPT_PREFIX}${siteId}_${receipt.vacancyId}`;
       localStorage.setItem(key, JSON.stringify(receipt));
+  }
+
+  async getApplySubmitReceipt(siteId: string, vacancyId: string): Promise<ApplySubmitReceiptV1 | null> {
+      const key = `${KEY_APPLY_RECEIPT_PREFIX}${siteId}_${vacancyId}`;
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
   }
 
   // -----------------------------

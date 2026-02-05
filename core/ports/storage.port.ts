@@ -1,4 +1,3 @@
-
 // Layer: PORTS
 // Purpose: Define contracts for persistence.
 
@@ -92,6 +91,7 @@ export interface StoragePort {
 
   // Phase E1.4: Apply Submit Receipt
   saveApplySubmitReceipt(siteId: string, receipt: ApplySubmitReceiptV1): Promise<void>;
+  getApplySubmitReceipt(siteId: string, vacancyId: string): Promise<ApplySubmitReceiptV1 | null>;
 
   // Data (Stub for future vacanies/profiles)
   saveDataStub(key: string, data: unknown): Promise<void>;

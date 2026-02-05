@@ -1,4 +1,3 @@
-
 // Layer: ADAPTERS
 // Purpose: Connects React View to Use Cases. Implements UIPort (Output) and acts as Controller (Input).
 
@@ -308,12 +307,12 @@ export class AgentPresenter implements UIPort {
       }
   }
 
-  // Phase E1.4: Submit Application
-  async submitApplication(currentState: AgentState) {
+  // Phase E1.4: Submit Apply
+  async submitApply(currentState: AgentState) {
       if (!this.useCase) return;
       try {
           const site = this.currentConfig.targetSite || 'hh.ru';
-          await this.useCase.submitApplication(currentState, site);
+          await this.useCase.submitApplyForm(currentState, site);
       } catch (e) {
           console.error(e);
           await this.useCase.failSession(currentState, "Submit Application Error");
