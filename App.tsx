@@ -100,6 +100,9 @@ export default function App() {
   const handleRunLLMEvalBatch = () => agentPresenter.runLLMEvalBatch(agentState);
   const handleBuildApplyQueue = () => agentPresenter.buildApplyQueue(agentState);
 
+  // Phase E Actions
+  const handleProbeApplyEntrypoint = () => agentPresenter.probeApplyEntrypoint(agentState);
+
   // Router
   let screen;
   switch (route) {
@@ -137,6 +140,7 @@ export default function App() {
           onRunExtraction={handleRunExtraction}
           onRunLLMEvalBatch={handleRunLLMEvalBatch}
           onBuildApplyQueue={handleBuildApplyQueue}
+          onProbeApplyEntrypoint={handleProbeApplyEntrypoint}
         />
       );
       break;

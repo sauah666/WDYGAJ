@@ -6,7 +6,7 @@ import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
 import { AgentStatus, AgentConfig } from '../../types';
-import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem } from '../domain/entities';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem, ApplyEntrypointProbeV1 } from '../domain/entities';
 import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode, LLMScreeningInputV1, ScreeningCard, EvaluateExtractsInputV1, EvalCandidate } from '../domain/llm_contracts';
 
 export class AgentUseCase {
@@ -1701,6 +1701,66 @@ export class AgentUseCase {
       } catch (e: any) {
           console.error(e);
           return this.failSession(currentState, `Build Queue Failed: ${e.message}`);
+      }
+  }
+  
+  // --- Phase E1.1: Probe Apply Entrypoint ---
+  async probeNextApplyEntrypoint(state: AgentState, siteId: string): Promise<AgentState> {
+      // 1. Context Check
+      if (!state.activeApplyQueue) {
+          return this.failSession(state, "No Apply Queue to process.");
+      }
+
+      // 2. Find Next Pending
+      const nextItem = state.activeApplyQueue.items.find(i => i.status === 'PENDING');
+      if (!nextItem) {
+          return this.updateState({
+              ...state,
+              logs: [...state.logs, "Apply Queue finished. No PENDING items found."]
+          });
+      }
+
+      let currentState = await this.updateState({
+          ...state,
+          status: AgentStatus.FINDING_APPLY_BUTTON,
+          logs: [...state.logs, `Probing Apply Entrypoint for ${nextItem.url}...`]
+      });
+
+      try {
+          // 3. Navigate
+          await this.browser.navigateTo(nextItem.url);
+
+          // 4. Scan
+          const controls = await this.browser.scanApplyEntrypoints();
+          
+          // 5. Create Probe Artifact (Transient)
+          const probe: ApplyEntrypointProbeV1 = {
+              taskId: nextItem.vacancyId,
+              vacancyUrl: nextItem.url,
+              foundControls: controls,
+              blockers: {
+                  requiresLogin: false, // In a real app, detect login wall
+                  applyNotAvailable: controls.length === 0,
+                  unknownLayout: false
+              },
+              probedAt: Date.now()
+          };
+
+          // 6. Update State
+          const logMsg = controls.length > 0 
+              ? `Found ${controls.length} potential apply controls.` 
+              : `WARNING: No apply controls found.`;
+
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.APPLY_BUTTON_FOUND,
+              activeApplyProbe: probe,
+              logs: [...currentState.logs, logMsg]
+          });
+
+      } catch (e: any) {
+          console.error(e);
+          return this.failSession(currentState, `Apply Probe Failed: ${e.message}`);
       }
   }
 

@@ -60,6 +60,10 @@ export enum AgentStatus {
   // Phase D2.2
   APPLY_QUEUE_READY = 'APPLY_QUEUE_READY', // Queue built, ready for Phase E
 
+  // Phase E1.1
+  FINDING_APPLY_BUTTON = 'FINDING_APPLY_BUTTON',
+  APPLY_BUTTON_FOUND = 'APPLY_BUTTON_FOUND',
+
   COMPLETED = 'COMPLETED',
   FAILED = 'FAILED'
 }

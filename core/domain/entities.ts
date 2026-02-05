@@ -377,6 +377,27 @@ export interface ApplyQueueV1 {
   };
 }
 
+// --- Phase E1.1: Apply Entrypoint Probe ---
+
+export interface ApplyControl {
+    label: string;
+    selector: string; // hint
+    type: 'BUTTON' | 'LINK' | 'MENU' | 'UNKNOWN';
+}
+
+export interface ApplyEntrypointProbeV1 {
+    taskId: string; // vacancyId
+    vacancyUrl: string;
+    foundControls: ApplyControl[];
+    blockers: {
+        requiresLogin: boolean;
+        applyNotAvailable: boolean;
+        unknownLayout: boolean;
+    };
+    probedAt: number;
+}
+
+
 // --- Core State ---
 
 export interface AgentState {
@@ -401,6 +422,7 @@ export interface AgentState {
   activeExtractionBatch?: VacancyExtractionBatchV1 | null; // Phase D1: Extracted Details
   activeEvalBatch?: LLMVacancyEvalBatchV1 | null; // Phase D2: Evaluated Vacancies
   activeApplyQueue?: ApplyQueueV1 | null; // Phase D2.2: Queue for Auto Apply
+  activeApplyProbe?: ApplyEntrypointProbeV1 | null; // Phase E1.1: Transient Probe Result
 }
 
 export interface ProfileSnapshot {
@@ -430,5 +452,6 @@ export const createInitialAgentState = (): AgentState => ({
   activeLLMBatch: null,
   activeExtractionBatch: null,
   activeEvalBatch: null,
-  activeApplyQueue: null
+  activeApplyQueue: null,
+  activeApplyProbe: null
 });

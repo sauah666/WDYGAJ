@@ -1,4 +1,4 @@
-# 📘 PROJECT DOCUMENTATION — v1.14
+# 📘 PROJECT DOCUMENTATION — v1.15
 
 **Проект:** Agent-based Job Search Automation  
 **Аудитория:** LLM-агент-разработчик (Gemini / GPT / Claude)  
@@ -92,6 +92,10 @@ MASTER PLAN v1.0 — JobSearch Agent (Mode 1: HH.ru, затем мультиса
 - LLMVacancyEvalBatchV1 (APPLY/SKIP/NEEDS_HUMAN)
 ✅ Done-D2.2: Build Apply Queue
 - ApplyQueueV1 (Только APPLY)
+✅ Done-E1.1: Probe Apply Entrypoint (No Click)
+- Открытие страницы вакансии из очереди
+- Поиск кнопок "Откликнуться" (scanApplyEntrypoints)
+- Формирование ApplyEntrypointProbeV1 (transient)
 
 2) MASTER PLAN — от “сейчас” до “финиша”
 PHASE D — Deep Read (извлечь только важные куски текста)
@@ -136,22 +140,5 @@ UI: выбор режима/сайта/настроек и reset’ов.
 Документация: позволяет новому агенту продолжить без истории.
 
 4) Текущая точка
-Последний завершённый этап: PHASE D2.2 — BUILD APPLY QUEUE
-Текущий этап: PHASE E — AUTO APPLY
-
----
-
-## Progress Update — PHASE D2.2
-
-### WHAT WAS ADDED
-*   **Entity:** `ApplyQueueV1`, `ApplyQueueItem`.
-*   **UseCase:** `buildApplyQueue` — Filters `APPLY` decisions into a persistent queue.
-*   **UI:** Visualization of Apply Queue (Pending/Applied).
-
-### WHY
-To separate the "Decision" phase from the "Execution" phase. Allows inspection of decisions (especially NEEDS_HUMAN in the evaluation batch) before automated actions begin. Ensures idempotency of the application process.
-
-### RULES
-*   **Queue Source**: Only `APPLY` decisions from `activeEvalBatch`.
-*   **Safety**: `NEEDS_HUMAN` are NOT queued (user must review them in EvalBatch view).
-*   **Idempotency**: Re-running build queue does not duplicate pending items.
+Последний завершённый этап: PHASE E1.1 — PROBE APPLY ENTRYPOINT
+Текущий этап: PHASE E1.2 — EXECUTE CLICK & FORM ANALYSIS

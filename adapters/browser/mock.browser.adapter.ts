@@ -2,7 +2,7 @@
 // Purpose: Implementation of ports. External world details.
 
 import { BrowserPort, RawVacancyCard, ParsedVacancyPage } from '../../core/ports/browser.port';
-import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult } from '../../core/domain/entities';
+import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult, ApplyControl } from '../../core/domain/entities';
 
 export class MockBrowserAdapter implements BrowserPort {
   private currentUrlVal: string = 'about:blank';
@@ -225,6 +225,20 @@ export class MockBrowserAdapter implements BrowserPort {
           workMode: 'remote', // Confirmed from page
           salary: { min: 250000, max: 350000, currency: 'RUB', gross: true }
       };
+  }
+
+  async scanApplyEntrypoints(): Promise<ApplyControl[]> {
+      console.log('[BrowserAdapter] Scanning for Apply controls...');
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // Mock: Found "Respond" button
+      return [
+          {
+              label: 'Откликнуться',
+              selector: 'data-qa=vacancy-response-link-top',
+              type: 'BUTTON'
+          }
+      ];
   }
 
   async close(): Promise<void> {

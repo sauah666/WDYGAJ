@@ -1,7 +1,7 @@
 // Layer: PORTS
 // Purpose: Define contracts for external services (secondary adapters).
 
-import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult, VacancySalary } from '../domain/entities';
+import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult, VacancySalary, ApplyControl } from '../domain/entities';
 
 // DTO for raw vacancy data from the browser (before normalization)
 export interface RawVacancyCard {
@@ -101,6 +101,12 @@ export interface BrowserPort {
    * Phase D1.
    */
   extractVacancyPage(): Promise<ParsedVacancyPage>;
+
+  /**
+   * Phase E1.1: Scans the page for potential "Apply" entrypoints.
+   * Does NOT click.
+   */
+  scanApplyEntrypoints(): Promise<ApplyControl[]>;
 
   /**
    * Closes the browser session.

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit, FileSearch, CheckSquare, Award, Send } from 'lucide-react';
+import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit, FileSearch, CheckSquare, Award, Send, MousePointerClick } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentStatus } from '../../types';
 import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep, ControlVerificationResult, VacancyCardV1, VacancyDecision, VacancyExtractV1, LLMVacancyEvalResult, ApplyQueueItem } from '../../core/domain/entities';
@@ -28,6 +28,7 @@ interface Props {
   onRunExtraction?: () => void; // Phase D1
   onRunLLMEvalBatch?: () => void; // Phase D2
   onBuildApplyQueue?: () => void; // Phase D2.2
+  onProbeApplyEntrypoint?: () => void; // Phase E1.1
 }
 
 export const AgentStatusScreen: React.FC<Props> = ({ 
@@ -52,7 +53,8 @@ export const AgentStatusScreen: React.FC<Props> = ({
   onRunLLMScreening,
   onRunExtraction,
   onRunLLMEvalBatch,
-  onBuildApplyQueue
+  onBuildApplyQueue,
+  onProbeApplyEntrypoint
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [localPrefs, setLocalPrefs] = useState<UserSearchPrefsV1 | null>(null);
@@ -121,6 +123,8 @@ export const AgentStatusScreen: React.FC<Props> = ({
       case AgentStatus.VACANCIES_EXTRACTED: return 'text-pink-500';
       case AgentStatus.EVALUATION_DONE: return 'text-yellow-300';
       case AgentStatus.APPLY_QUEUE_READY: return 'text-green-300';
+      case AgentStatus.FINDING_APPLY_BUTTON: return 'text-blue-300';
+      case AgentStatus.APPLY_BUTTON_FOUND: return 'text-green-400';
       case AgentStatus.COMPLETED: return 'text-green-500';
       case AgentStatus.FAILED: return 'text-red-500';
       default: return 'text-gray-100';
@@ -128,7 +132,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
   };
 
   const getStatusIcon = (status: AgentStatus) => {
-    if (status === AgentStatus.NAVIGATING || status === AgentStatus.EXTRACTING || status === AgentStatus.STARTING || status === AgentStatus.TARGETING_PENDING || status === AgentStatus.NAVIGATING_TO_SEARCH || status === AgentStatus.EXTRACTING_SEARCH_UI || status === AgentStatus.ANALYZING_SEARCH_UI || status === AgentStatus.APPLYING_FILTERS || status === AgentStatus.EXTRACTING_VACANCIES) return <Loader2 className="animate-spin" />;
+    if (status === AgentStatus.NAVIGATING || status === AgentStatus.EXTRACTING || status === AgentStatus.STARTING || status === AgentStatus.TARGETING_PENDING || status === AgentStatus.NAVIGATING_TO_SEARCH || status === AgentStatus.EXTRACTING_SEARCH_UI || status === AgentStatus.ANALYZING_SEARCH_UI || status === AgentStatus.APPLYING_FILTERS || status === AgentStatus.EXTRACTING_VACANCIES || status === AgentStatus.FINDING_APPLY_BUTTON) return <Loader2 className="animate-spin" />;
     if (status === AgentStatus.WAITING_FOR_HUMAN) return <AlertCircle />;
     if (status === AgentStatus.WAITING_FOR_PROFILE_PAGE) return <FileText />;
     if (status === AgentStatus.LOGGED_IN_CONFIRMED) return <UserCheck />;
@@ -149,14 +153,15 @@ export const AgentStatusScreen: React.FC<Props> = ({
     if (status === AgentStatus.VACANCIES_EXTRACTED) return <FileSearch />;
     if (status === AgentStatus.EVALUATION_DONE) return <Award />;
     if (status === AgentStatus.APPLY_QUEUE_READY) return <Send />;
+    if (status === AgentStatus.APPLY_BUTTON_FOUND) return <MousePointerClick />;
     if (status === AgentStatus.COMPLETED) return <CheckCircle />;
     return <Terminal />;
   };
 
-  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY;
+  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY && state.status !== AgentStatus.APPLY_BUTTON_FOUND;
   const isFinished = state.status === AgentStatus.COMPLETED || state.status === AgentStatus.FAILED;
   // Can reset profile if captured OR targeting ready OR dom ready OR waiting prefs OR plan ready
-  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY;
+  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY || state.status === AgentStatus.APPLY_BUTTON_FOUND;
 
   const renderVerificationRow = (res: ControlVerificationResult) => {
       let color = 'text-gray-400';
@@ -650,7 +655,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 )}
 
                 {/* APPLY QUEUE VIEW */}
-                {state.activeApplyQueue && (
+                {state.activeApplyQueue && !state.activeApplyProbe && (
                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
                         <div className="mb-6 border-b border-gray-800 pb-4">
                             <div className="flex items-center text-green-300 mb-2">
@@ -676,6 +681,36 @@ export const AgentStatusScreen: React.FC<Props> = ({
                              {state.activeApplyQueue.items.map(renderQueueItem)}
                         </div>
                     </div>
+                )}
+                
+                {/* PROBE VIEW (Transient) */}
+                {state.activeApplyProbe && (
+                     <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                        <div className="mb-6 border-b border-gray-800 pb-4">
+                            <div className="flex items-center text-green-400 mb-2">
+                                <MousePointerClick size={24} className="mr-3" />
+                                <h3 className="font-bold text-xl text-white">Apply Entrypoint Probe</h3>
+                            </div>
+                            <p className="text-sm text-gray-400 mb-2 truncate">URL: {state.activeApplyProbe.vacancyUrl}</p>
+                            <div className="flex gap-2 text-xs">
+                                <span className={`px-2 py-1 rounded ${state.activeApplyProbe.foundControls.length > 0 ? 'bg-green-900 text-green-400' : 'bg-red-900 text-red-400'}`}>
+                                    {state.activeApplyProbe.foundControls.length} Controls Found
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-3">
+                            {state.activeApplyProbe.foundControls.map((ctrl, i) => (
+                                <div key={i} className="bg-gray-800 p-3 rounded border border-gray-700">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className="font-bold text-white">{ctrl.label}</span>
+                                        <span className="text-xs px-2 py-0.5 bg-gray-700 rounded text-gray-300">{ctrl.type}</span>
+                                    </div>
+                                    <div className="text-xs text-gray-500 font-mono truncate">{ctrl.selector}</div>
+                                </div>
+                            ))}
+                        </div>
+                     </div>
                 )}
 
              </div>
@@ -806,11 +841,11 @@ export const AgentStatusScreen: React.FC<Props> = ({
                     </button>
                 )}
 
-                {/* APPLY_QUEUE_READY -> AUTO APPLY (Phase E - Future) */}
-                {state.status === AgentStatus.APPLY_QUEUE_READY && (
-                    <button disabled className="flex items-center space-x-2 bg-gray-700 text-gray-400 px-6 py-2 rounded-lg font-bold cursor-not-allowed border border-gray-600">
-                        <Send size={18} />
-                        <span>START AUTO APPLY (SOON)</span>
+                {/* APPLY_QUEUE_READY -> PROBE NEXT ENTRYPOINT (E1.1) */}
+                {(state.status === AgentStatus.APPLY_QUEUE_READY || state.status === AgentStatus.APPLY_BUTTON_FOUND) && onProbeApplyEntrypoint && (
+                    <button onClick={onProbeApplyEntrypoint} className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-emerald-900/20">
+                        <MousePointerClick size={18} />
+                        <span>PROBE APPLY ENTRYPOINT</span>
                     </button>
                 )}
 
