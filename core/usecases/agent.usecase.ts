@@ -6,7 +6,7 @@ import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
 import { AgentStatus, AgentConfig } from '../../types';
-import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem, ApplyEntrypointProbeV1 } from '../domain/entities';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem, ApplyEntrypointProbeV1, ApplyFormProbeV1 } from '../domain/entities';
 import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, WorkMode, LLMScreeningInputV1, ScreeningCard, EvaluateExtractsInputV1, EvalCandidate } from '../domain/llm_contracts';
 
 export class AgentUseCase {
@@ -1761,6 +1761,72 @@ export class AgentUseCase {
       } catch (e: any) {
           console.error(e);
           return this.failSession(currentState, `Apply Probe Failed: ${e.message}`);
+      }
+  }
+
+  // --- Phase E1.2: Click and Scan Apply Form ---
+  async openAndScanApplyForm(state: AgentState, siteId: string): Promise<AgentState> {
+      // 1. Check Context
+      if (!state.activeApplyProbe || state.activeApplyProbe.foundControls.length === 0) {
+          return this.failSession(state, "No valid apply entrypoint found to click.");
+      }
+
+      const control = state.activeApplyProbe.foundControls[0]; // Take best/first
+      let currentState = await this.updateState({
+          ...state,
+          logs: [...state.logs, `Clicking apply control: "${control.label}"...`]
+      });
+
+      try {
+          // 2. Click
+          const clickSuccess = await this.browser.clickElement(control.selector);
+          if (!clickSuccess) {
+              return this.failSession(currentState, `Failed to click apply element: ${control.selector}`);
+          }
+
+          // 3. Scan Form
+          const formSnapshot = await this.browser.scanApplyForm();
+
+          // 4. Create Artifact
+          const formProbe: ApplyFormProbeV1 = {
+              taskId: state.activeApplyProbe.taskId,
+              vacancyUrl: state.activeApplyProbe.vacancyUrl,
+              entrypointUsed: control.label,
+              applyUiKind: formSnapshot.isModal ? 'MODAL' : 'UNKNOWN',
+              detectedFields: {
+                  coverLetterTextarea: formSnapshot.hasCoverLetter,
+                  resumeSelector: formSnapshot.hasResumeSelect,
+                  submitButtonPresent: formSnapshot.hasSubmit,
+                  extraQuestionnaireDetected: formSnapshot.hasQuestionnaire
+              },
+              safeLocators: {
+                  coverLetterHint: formSnapshot.coverLetterSelector || null,
+                  submitHint: formSnapshot.submitSelector || null
+              },
+              blockers: {
+                  requiresLogin: false,
+                  captchaOrAntibot: false,
+                  applyNotAvailable: !formSnapshot.hasSubmit,
+                  unknownLayout: !formSnapshot.isModal && !formSnapshot.hasSubmit
+              },
+              scannedAt: Date.now()
+          };
+
+          // 5. Update State
+          const logMsg = formProbe.applyUiKind === 'MODAL' 
+              ? `Apply Form Opened (Modal). Cover Letter Field: ${formProbe.detectedFields.coverLetterTextarea ? 'YES' : 'NO'}`
+              : `Apply Form Status Unknown/Inline.`;
+
+          return this.updateState({
+              ...currentState,
+              status: AgentStatus.APPLY_FORM_OPENED,
+              activeApplyFormProbe: formProbe,
+              logs: [...currentState.logs, logMsg]
+          });
+
+      } catch (e: any) {
+          console.error(e);
+          return this.failSession(currentState, `Apply Form Scan Failed: ${e.message}`);
       }
   }
 

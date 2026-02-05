@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit, FileSearch, CheckSquare, Award, Send, MousePointerClick } from 'lucide-react';
+import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit, FileSearch, CheckSquare, Award, Send, MousePointerClick, FormInput } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentStatus } from '../../types';
 import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep, ControlVerificationResult, VacancyCardV1, VacancyDecision, VacancyExtractV1, LLMVacancyEvalResult, ApplyQueueItem } from '../../core/domain/entities';
@@ -29,6 +29,7 @@ interface Props {
   onRunLLMEvalBatch?: () => void; // Phase D2
   onBuildApplyQueue?: () => void; // Phase D2.2
   onProbeApplyEntrypoint?: () => void; // Phase E1.1
+  onOpenApplyForm?: () => void; // Phase E1.2
 }
 
 export const AgentStatusScreen: React.FC<Props> = ({ 
@@ -54,7 +55,8 @@ export const AgentStatusScreen: React.FC<Props> = ({
   onRunExtraction,
   onRunLLMEvalBatch,
   onBuildApplyQueue,
-  onProbeApplyEntrypoint
+  onProbeApplyEntrypoint,
+  onOpenApplyForm
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [localPrefs, setLocalPrefs] = useState<UserSearchPrefsV1 | null>(null);
@@ -125,6 +127,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
       case AgentStatus.APPLY_QUEUE_READY: return 'text-green-300';
       case AgentStatus.FINDING_APPLY_BUTTON: return 'text-blue-300';
       case AgentStatus.APPLY_BUTTON_FOUND: return 'text-green-400';
+      case AgentStatus.APPLY_FORM_OPENED: return 'text-emerald-300';
       case AgentStatus.COMPLETED: return 'text-green-500';
       case AgentStatus.FAILED: return 'text-red-500';
       default: return 'text-gray-100';
@@ -154,14 +157,15 @@ export const AgentStatusScreen: React.FC<Props> = ({
     if (status === AgentStatus.EVALUATION_DONE) return <Award />;
     if (status === AgentStatus.APPLY_QUEUE_READY) return <Send />;
     if (status === AgentStatus.APPLY_BUTTON_FOUND) return <MousePointerClick />;
+    if (status === AgentStatus.APPLY_FORM_OPENED) return <FormInput />;
     if (status === AgentStatus.COMPLETED) return <CheckCircle />;
     return <Terminal />;
   };
 
-  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY && state.status !== AgentStatus.APPLY_BUTTON_FOUND;
+  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY && state.status !== AgentStatus.APPLY_BUTTON_FOUND && state.status !== AgentStatus.APPLY_FORM_OPENED;
   const isFinished = state.status === AgentStatus.COMPLETED || state.status === AgentStatus.FAILED;
   // Can reset profile if captured OR targeting ready OR dom ready OR waiting prefs OR plan ready
-  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY || state.status === AgentStatus.APPLY_BUTTON_FOUND;
+  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY || state.status === AgentStatus.APPLY_BUTTON_FOUND || state.status === AgentStatus.APPLY_FORM_OPENED;
 
   const renderVerificationRow = (res: ControlVerificationResult) => {
       let color = 'text-gray-400';
@@ -684,7 +688,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 )}
                 
                 {/* PROBE VIEW (Transient) */}
-                {state.activeApplyProbe && (
+                {state.activeApplyProbe && !state.activeApplyFormProbe && (
                      <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
                         <div className="mb-6 border-b border-gray-800 pb-4">
                             <div className="flex items-center text-green-400 mb-2">
@@ -711,6 +715,64 @@ export const AgentStatusScreen: React.FC<Props> = ({
                             ))}
                         </div>
                      </div>
+                )}
+                
+                {/* APPLY FORM PROBE VIEW (Transient) */}
+                {state.activeApplyFormProbe && (
+                    <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
+                        <div className="mb-6 border-b border-gray-800 pb-4">
+                            <div className="flex items-center text-emerald-400 mb-2">
+                                <FormInput size={24} className="mr-3" />
+                                <h3 className="font-bold text-xl text-white">Apply Form Scan</h3>
+                            </div>
+                            <div className="flex gap-2">
+                                <span className="px-2 py-1 rounded bg-blue-900 text-blue-400 text-xs font-bold uppercase">
+                                    {state.activeApplyFormProbe.applyUiKind}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div className="bg-gray-800 p-3 rounded">
+                                <div className="text-xs text-gray-500 mb-1">Has Cover Letter?</div>
+                                <div className={`font-bold ${state.activeApplyFormProbe.detectedFields.coverLetterTextarea ? 'text-green-400' : 'text-red-400'}`}>
+                                    {state.activeApplyFormProbe.detectedFields.coverLetterTextarea ? 'YES' : 'NO'}
+                                </div>
+                            </div>
+                            <div className="bg-gray-800 p-3 rounded">
+                                <div className="text-xs text-gray-500 mb-1">Has Submit Button?</div>
+                                <div className={`font-bold ${state.activeApplyFormProbe.detectedFields.submitButtonPresent ? 'text-green-400' : 'text-red-400'}`}>
+                                    {state.activeApplyFormProbe.detectedFields.submitButtonPresent ? 'YES' : 'NO'}
+                                </div>
+                            </div>
+                            <div className="bg-gray-800 p-3 rounded">
+                                <div className="text-xs text-gray-500 mb-1">Resume Selector?</div>
+                                <div className={`font-bold ${state.activeApplyFormProbe.detectedFields.resumeSelector ? 'text-green-400' : 'text-gray-400'}`}>
+                                    {state.activeApplyFormProbe.detectedFields.resumeSelector ? 'YES' : 'NO'}
+                                </div>
+                            </div>
+                             <div className="bg-gray-800 p-3 rounded">
+                                <div className="text-xs text-gray-500 mb-1">Extra Questionnaire?</div>
+                                <div className={`font-bold ${state.activeApplyFormProbe.detectedFields.extraQuestionnaireDetected ? 'text-red-400' : 'text-green-400'}`}>
+                                    {state.activeApplyFormProbe.detectedFields.extraQuestionnaireDetected ? 'YES' : 'NO'}
+                                </div>
+                            </div>
+                        </div>
+                        
+                         <div className="bg-gray-800/50 p-3 rounded border border-gray-700">
+                             <div className="text-xs text-gray-500 mb-2 font-mono">SAFE LOCATORS (HINTS)</div>
+                             <div className="space-y-2">
+                                 <div>
+                                     <div className="text-[10px] text-gray-400">Cover Letter</div>
+                                     <code className="text-xs text-blue-300 bg-black/30 px-1 rounded block truncate">{state.activeApplyFormProbe.safeLocators.coverLetterHint || 'N/A'}</code>
+                                 </div>
+                                  <div>
+                                     <div className="text-[10px] text-gray-400">Submit Button</div>
+                                     <code className="text-xs text-blue-300 bg-black/30 px-1 rounded block truncate">{state.activeApplyFormProbe.safeLocators.submitHint || 'N/A'}</code>
+                                 </div>
+                             </div>
+                         </div>
+                    </div>
                 )}
 
              </div>
@@ -846,6 +908,14 @@ export const AgentStatusScreen: React.FC<Props> = ({
                     <button onClick={onProbeApplyEntrypoint} className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-emerald-900/20">
                         <MousePointerClick size={18} />
                         <span>PROBE APPLY ENTRYPOINT</span>
+                    </button>
+                )}
+
+                {/* APPLY_BUTTON_FOUND -> OPEN APPLY FORM (E1.2) */}
+                {state.status === AgentStatus.APPLY_BUTTON_FOUND && onOpenApplyForm && (
+                     <button onClick={onOpenApplyForm} className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-emerald-900/20">
+                        <FormInput size={18} />
+                        <span>OPEN & SCAN FORM</span>
                     </button>
                 )}
 

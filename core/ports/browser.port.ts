@@ -1,7 +1,7 @@
 // Layer: PORTS
 // Purpose: Define contracts for external services (secondary adapters).
 
-import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult, VacancySalary, ApplyControl } from '../domain/entities';
+import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult, VacancySalary, ApplyControl, ApplyFormProbeV1 } from '../domain/entities';
 
 // DTO for raw vacancy data from the browser (before normalization)
 export interface RawVacancyCard {
@@ -22,6 +22,16 @@ export interface ParsedVacancyPage {
     conditions: string[];
     salary?: VacancySalary;
     workMode?: 'remote' | 'hybrid' | 'office' | 'unknown';
+}
+
+export interface RawApplyFormSnapshot {
+    isModal: boolean;
+    hasCoverLetter: boolean;
+    hasResumeSelect: boolean;
+    hasSubmit: boolean;
+    hasQuestionnaire: boolean;
+    coverLetterSelector?: string;
+    submitSelector?: string;
 }
 
 export interface BrowserPort {
@@ -107,6 +117,16 @@ export interface BrowserPort {
    * Does NOT click.
    */
   scanApplyEntrypoints(): Promise<ApplyControl[]>;
+
+  /**
+   * Phase E1.2: Clicks a specific DOM element (Apply button).
+   */
+  clickElement(selector: string): Promise<boolean>;
+
+  /**
+   * Phase E1.2: Scans the currently open apply form/modal.
+   */
+  scanApplyForm(): Promise<RawApplyFormSnapshot>;
 
   /**
    * Closes the browser session.

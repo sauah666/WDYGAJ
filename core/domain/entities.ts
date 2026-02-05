@@ -397,6 +397,31 @@ export interface ApplyEntrypointProbeV1 {
     probedAt: number;
 }
 
+// --- Phase E1.2: Apply Form Probe ---
+
+export interface ApplyFormProbeV1 {
+    taskId: string;
+    vacancyUrl: string;
+    entrypointUsed: string; // label of clicked control
+    applyUiKind: 'MODAL' | 'PAGE' | 'INLINE' | 'UNKNOWN';
+    detectedFields: {
+        coverLetterTextarea: boolean;
+        resumeSelector: boolean;
+        submitButtonPresent: boolean;
+        extraQuestionnaireDetected: boolean;
+    };
+    safeLocators: {
+        coverLetterHint: string | null;
+        submitHint: string | null;
+    };
+    blockers: {
+        requiresLogin: boolean;
+        captchaOrAntibot: boolean;
+        applyNotAvailable: boolean;
+        unknownLayout: boolean;
+    };
+    scannedAt: number;
+}
 
 // --- Core State ---
 
@@ -423,6 +448,7 @@ export interface AgentState {
   activeEvalBatch?: LLMVacancyEvalBatchV1 | null; // Phase D2: Evaluated Vacancies
   activeApplyQueue?: ApplyQueueV1 | null; // Phase D2.2: Queue for Auto Apply
   activeApplyProbe?: ApplyEntrypointProbeV1 | null; // Phase E1.1: Transient Probe Result
+  activeApplyFormProbe?: ApplyFormProbeV1 | null; // Phase E1.2: Transient Form Probe
 }
 
 export interface ProfileSnapshot {
@@ -453,5 +479,6 @@ export const createInitialAgentState = (): AgentState => ({
   activeExtractionBatch: null,
   activeEvalBatch: null,
   activeApplyQueue: null,
-  activeApplyProbe: null
+  activeApplyProbe: null,
+  activeApplyFormProbe: null
 });

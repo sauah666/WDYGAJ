@@ -1,7 +1,7 @@
 // Layer: ADAPTERS
 // Purpose: Implementation of ports. External world details.
 
-import { BrowserPort, RawVacancyCard, ParsedVacancyPage } from '../../core/ports/browser.port';
+import { BrowserPort, RawVacancyCard, ParsedVacancyPage, RawApplyFormSnapshot } from '../../core/ports/browser.port';
 import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult, ApplyControl } from '../../core/domain/entities';
 
 export class MockBrowserAdapter implements BrowserPort {
@@ -9,6 +9,9 @@ export class MockBrowserAdapter implements BrowserPort {
   
   // Simulated State of the Page Forms
   private formState: Record<string, any> = {};
+
+  // Mock State for Apply Flow
+  private isApplyModalOpen: boolean = false;
 
   async launch(): Promise<void> {
     console.log('[BrowserAdapter] Launching virtual browser session...');
@@ -18,6 +21,7 @@ export class MockBrowserAdapter implements BrowserPort {
   async navigateTo(url: string): Promise<void> {
     console.log(`[BrowserAdapter] Navigating to ${url}...`);
     this.currentUrlVal = url;
+    this.isApplyModalOpen = false; // Reset on nav
     await new Promise(resolve => setTimeout(resolve, 1500));
   }
 
@@ -239,6 +243,44 @@ export class MockBrowserAdapter implements BrowserPort {
               type: 'BUTTON'
           }
       ];
+  }
+
+  async clickElement(selector: string): Promise<boolean> {
+      console.log(`[BrowserAdapter] CLICKING element: ${selector}`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Mock logic: If we click the response button, modal opens
+      if (selector.includes('vacancy-response-link-top')) {
+          this.isApplyModalOpen = true;
+          return true;
+      }
+      return false;
+  }
+
+  async scanApplyForm(): Promise<RawApplyFormSnapshot> {
+      console.log('[BrowserAdapter] Scanning Apply Form...');
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      if (this.isApplyModalOpen) {
+          return {
+              isModal: true,
+              hasCoverLetter: true,
+              hasResumeSelect: true,
+              hasSubmit: true,
+              hasQuestionnaire: false,
+              coverLetterSelector: 'textarea[data-qa="vacancy-response-popup-form-letter-input"]',
+              submitSelector: 'button[data-qa="vacancy-response-submit-popup"]'
+          };
+      }
+
+      // Fallback: Empty/Unknown
+      return {
+          isModal: false,
+          hasCoverLetter: false,
+          hasResumeSelect: false,
+          hasSubmit: false,
+          hasQuestionnaire: false
+      };
   }
 
   async close(): Promise<void> {

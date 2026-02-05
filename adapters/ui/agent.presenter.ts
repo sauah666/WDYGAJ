@@ -277,6 +277,18 @@ export class AgentPresenter implements UIPort {
           await this.useCase.failSession(currentState, "Probe Apply Entrypoint Error");
       }
   }
+  
+  // Phase E1.2: Open Apply Form
+  async openApplyForm(currentState: AgentState) {
+      if (!this.useCase) return;
+      try {
+          const site = this.currentConfig.targetSite || 'hh.ru';
+          await this.useCase.openAndScanApplyForm(currentState, site);
+      } catch (e) {
+          console.error(e);
+          await this.useCase.failSession(currentState, "Open Apply Form Error");
+      }
+  }
 
   async resetProfile(currentState: AgentState) {
       if (!this.useCase) return;
