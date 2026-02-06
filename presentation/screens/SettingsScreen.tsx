@@ -1,7 +1,9 @@
-import React from 'react';
-import { Save, FileText, Key, Shield } from 'lucide-react';
+
+import React, { useState, useEffect } from 'react';
+import { Save, FileText, Key, Shield, Globe, RotateCcw } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentConfig } from '../../types';
+import { listProviders, DEFAULT_LLM_PROVIDER, LLMProviderRegistry } from '../../core/domain/llm_registry';
 
 interface Props {
   config: Partial<AgentConfig>;
@@ -10,6 +12,19 @@ interface Props {
 }
 
 export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave }) => {
+  const providers = listProviders();
+  const currentProviderId = config.activeLLMProviderId || DEFAULT_LLM_PROVIDER;
+  const currentProviderDef = LLMProviderRegistry[currentProviderId];
+
+  // Derive which keys are needed for the active provider
+  const neededKeys = currentProviderDef?.envKeys || [];
+
+  const handleResetLLMConfig = () => {
+      // Logic handled by clearing the activeID in the parent
+      onChange('activeLLMProviderId', DEFAULT_LLM_PROVIDER);
+      onChange('apiKey', ''); // Clear key for safety on reset
+  };
+
   return (
     <Layout title="Agent Configuration" currentStep={3}>
       <div className="max-w-3xl mx-auto mt-6 bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
@@ -22,22 +37,34 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave }) =>
           
           {/* LLM Config */}
           <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-800">
-             <div className="flex items-center text-purple-400 mb-4">
-                 <Shield size={18} className="mr-2" />
-                 <span className="font-bold text-sm">LLM Governance</span>
+             <div className="flex items-center justify-between text-purple-400 mb-4">
+                 <div className="flex items-center">
+                    <Shield size={18} className="mr-2" />
+                    <span className="font-bold text-sm">LLM Governance (Phase G1)</span>
+                 </div>
+                 <button 
+                   onClick={handleResetLLMConfig}
+                   className="text-xs text-gray-500 hover:text-white flex items-center gap-1 transition-colors"
+                   title="Reset to Default"
+                 >
+                   <RotateCcw size={12} />
+                   Reset
+                 </button>
              </div>
              
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div>
-                     <label className="block text-xs font-mono text-gray-400 mb-2 uppercase">Provider</label>
+                     <label className="block text-xs font-mono text-gray-400 mb-2 uppercase">Provider Strategy</label>
                      <select 
-                        value={config.llmProvider || 'mock'}
-                        onChange={(e) => onChange('llmProvider', e.target.value)}
+                        value={currentProviderId}
+                        onChange={(e) => onChange('activeLLMProviderId', e.target.value)}
                         className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-purple-500 outline-none"
                      >
-                        <option value="mock">Mock (Free / Dev)</option>
-                        <option value="gemini">Google Gemini 2.0</option>
-                        <option value="openai">OpenAI GPT-4o</option>
+                        {providers.map(p => (
+                            <option key={p.id} value={p.id} disabled={!p.enabled}>
+                                {p.label} {p.enabled ? '' : '(Disabled)'}
+                            </option>
+                        ))}
                      </select>
                  </div>
                  <div>
@@ -48,11 +75,41 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave }) =>
                             type="password" 
                             value={config.apiKey || ''}
                             onChange={(e) => onChange('apiKey', e.target.value)}
-                            placeholder={config.llmProvider === 'mock' ? "Not required" : "sk-..."}
-                            disabled={config.llmProvider === 'mock'}
+                            placeholder={neededKeys.length === 0 ? "Not required" : `Enter ${neededKeys.join('/')}`}
+                            disabled={neededKeys.length === 0}
                             className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-9 pr-4 py-2 text-white focus:border-purple-500 outline-none disabled:opacity-50" 
                         />
                      </div>
+                 </div>
+             </div>
+             {neededKeys.length > 0 && !config.apiKey && (
+                 <p className="text-[10px] text-red-400 mt-2">
+                     * API Key is required for this provider.
+                 </p>
+             )}
+          </div>
+
+          {/* Browser Config */}
+          <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-800">
+             <div className="flex items-center text-blue-400 mb-4">
+                 <Globe size={18} className="mr-2" />
+                 <span className="font-bold text-sm">Browser Runtime</span>
+             </div>
+             
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div>
+                     <label className="block text-xs font-mono text-gray-400 mb-2 uppercase">Engine</label>
+                     <select 
+                        value={config.browserProvider || 'mock'}
+                        onChange={(e) => onChange('browserProvider', e.target.value)}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-blue-500 outline-none"
+                     >
+                        <option value="mock">Mock (Virtual)</option>
+                        <option value="real">Real (Playwright)</option>
+                     </select>
+                     {config.browserProvider === 'real' && (
+                       <p className="text-[10px] text-orange-400 mt-1">Requires Node.js environment</p>
+                     )}
                  </div>
              </div>
           </div>

@@ -1,6 +1,5 @@
-// Layer: ADAPTERS
-// Purpose: Connects React View to Use Cases. Implements UIPort (Output) and acts as Controller (Input).
 
+// ... (imports)
 import { UIPort } from '../../core/ports/ui.port';
 import { AgentState, UserSearchPrefsV1 } from '../../core/domain/entities';
 import { AgentUseCase } from '../../core/usecases/agent.usecase';
@@ -39,6 +38,23 @@ export class AgentPresenter implements UIPort {
 
   // --- Controller Actions ---
   
+  // Phase G1: Report Config Error
+  async reportLLMConfigError(currentState: AgentState, message: string) {
+      if (!this.useCase) return;
+      await this.useCase.signalLLMConfigError(currentState, message);
+  }
+
+  // Phase F2: Explicit Site Selection
+  async selectActiveSite(currentState: AgentState, siteId: string) {
+      if (!this.useCase) return;
+      try {
+          await this.useCase.selectActiveSite(currentState, siteId);
+      } catch (e) {
+          console.error(e);
+          await this.useCase.failSession(currentState, "Site Selection Error");
+      }
+  }
+
   // Step 1: Start -> Open URL -> Wait for Human
   async startLoginSequence(initialState: AgentState, config: Partial<AgentConfig>) {
     if (!this.useCase) return;

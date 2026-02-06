@@ -44,10 +44,14 @@ export interface SearchEntryStrategy {
   maxSteps: number;            // How many clicks to try before giving up
 }
 
+// FIX: Updated SiteDefinition to match Registry requirements (label, searchEntrypoint) and fix type errors in UseCase.
 export interface SiteDefinition {
   id: string;
-  name: string;
-  searchStrategy: SearchEntryStrategy;
+  label: string;
+  baseUrl: string;
+  enabled: boolean;
+  storageNamespace: string;
+  searchEntrypoint?: { kind: 'url'; url: string } | { kind: 'strategy'; name: string };
 }
 
 // --- Stage 5: Search Configuration Entities ---

@@ -1,3 +1,4 @@
+
 // Shared types that may traverse layers (e.g. DTOs or Enums)
 
 // Enums moved from llm_contracts to avoid circular deps
@@ -28,6 +29,11 @@ export enum RoleCategory {
 
 export enum AgentStatus {
   IDLE = 'IDLE',
+  // Phase F2: Site Selection
+  WAITING_FOR_SITE_SELECTION = 'WAITING_FOR_SITE_SELECTION',
+  // Phase G1: Config Error
+  LLM_CONFIG_ERROR = 'LLM_CONFIG_ERROR',
+
   STARTING = 'STARTING',
   NAVIGATING = 'NAVIGATING',
   WAITING_FOR_HUMAN = 'WAITING_FOR_HUMAN',
@@ -126,7 +132,13 @@ export enum AppRoute {
 
 export interface AgentConfig {
   mode: string;
-  targetSite: string;
+  targetSite: string; // Legacy/Display
+  activeSiteId?: string; // F2: Canonical Site ID
+  
+  // G1: LLM Configuration
+  activeLLMProviderId?: string;
+  llmProvider?: string; // Legacy fallback, prefer activeLLMProviderId
+
   // User Constraints for Targeting
   minSalary?: number;
   currency?: string;
@@ -136,6 +148,6 @@ export interface AgentConfig {
   // User Templates
   coverLetterTemplate?: string;
   // Security / LLM Governance
-  llmProvider?: 'mock' | 'gemini' | 'openai';
   apiKey?: string;
+  browserProvider?: 'mock' | 'real'; // real = Playwright
 }
