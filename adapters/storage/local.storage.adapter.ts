@@ -345,6 +345,17 @@ export class LocalStorageAdapter implements StoragePort {
   }
 
   // -----------------------------
+  
+  async removeByPrefix(keyPrefix: string): Promise<void> {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(keyPrefix)) {
+              keysToRemove.push(key);
+          }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+  }
 
   async saveDataStub(key: string, data: unknown): Promise<void> {
     console.log(`[StorageAdapter] Stub saving data to ${key}`, data);

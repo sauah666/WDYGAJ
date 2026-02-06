@@ -1,6 +1,30 @@
 // Shared types that may traverse layers (e.g. DTOs or Enums)
 
-import { WorkMode } from './core/domain/llm_contracts';
+// Enums moved from llm_contracts to avoid circular deps
+export enum WorkMode {
+  REMOTE = 'REMOTE',
+  HYBRID = 'HYBRID',
+  OFFICE = 'OFFICE',
+  ANY = 'ANY'
+}
+
+export enum SeniorityLevel {
+  INTERN = 'INTERN',
+  JUNIOR = 'JUNIOR',
+  MIDDLE = 'MIDDLE',
+  SENIOR = 'SENIOR',
+  LEAD = 'LEAD',
+  C_LEVEL = 'C_LEVEL'
+}
+
+export enum RoleCategory {
+  ENGINEERING = 'ENGINEERING',
+  PRODUCT = 'PRODUCT',
+  DESIGN = 'DESIGN',
+  ANALYTICS = 'ANALYTICS',
+  MANAGEMENT = 'MANAGEMENT',
+  OTHER = 'OTHER'
+}
 
 export enum AgentStatus {
   IDLE = 'IDLE',
@@ -108,4 +132,7 @@ export interface AgentConfig {
   targetLanguages?: string[];
   // User Templates
   coverLetterTemplate?: string;
+  // Security / LLM Governance
+  llmProvider?: 'mock' | 'gemini' | 'openai';
+  apiKey?: string;
 }

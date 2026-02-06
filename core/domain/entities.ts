@@ -3,8 +3,17 @@
 // Allowed: Pure TS classes/interfaces. No external dependencies.
 // Forbidden: Framework code, UI logic, Databases.
 
-import { AgentStatus } from '../../types';
-import { TargetingSpecV1, WorkMode } from './llm_contracts';
+import { AgentStatus, WorkMode } from '../../types';
+import { TargetingSpecV1 } from './llm_contracts';
+
+// --- Observability (Token Telemetry) ---
+export interface TokenLedger {
+  inputTokens: number;
+  outputTokens: number;
+  cacheHits: number;
+  cacheMisses: number;
+  totalCostEstimateUSD?: number;
+}
 
 // --- Stage 5: Site Definitions & Strategies ---
 
@@ -88,6 +97,7 @@ export interface SearchDOMSnapshotV1 {
   capturedAt: number;
   pageUrl: string;
   domVersion: number;
+  domHash: string; // For drift detection
   fields: RawFormField[];
 }
 
@@ -526,6 +536,7 @@ export interface AgentState {
   currentUrl: string | null;
   lastSnapshotTimestamp: number | null;
   logs: string[];
+  tokenLedger: TokenLedger; // Telemetry
   
   // Data Containers
   activeTargetingSpec?: TargetingSpecV1 | null; // Stage 4: Job Requirements
@@ -566,6 +577,7 @@ export const createInitialAgentState = (): AgentState => ({
   currentUrl: null,
   lastSnapshotTimestamp: null,
   logs: [],
+  tokenLedger: { inputTokens: 0, outputTokens: 0, cacheHits: 0, cacheMisses: 0 },
   activeTargetingSpec: null,
   activeSearchDOMSnapshot: null,
   activeSearchUISpec: null,

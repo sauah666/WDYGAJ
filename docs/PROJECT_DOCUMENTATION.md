@@ -1,4 +1,4 @@
-# 📘 PROJECT DOCUMENTATION — v1.24
+# 📘 PROJECT DOCUMENTATION — v1.25
 
 **Проект:** Agent-based Job Search Automation  
 **Аудитория:** LLM-агент-разработчик (Gemini / GPT / Claude)  
@@ -150,6 +150,10 @@ MASTER PLAN v1.0 — JobSearch Agent (Mode 1: HH.ru, затем мультиса
 - WHY: предотвращение зацикливаний и дублей действий.
 - CONSTRAINTS: max 3 retries, no new LLM, persistent state.
 - NOTES: Terminal states (HIDDEN/SKIPPED) and specific UI statuses.
+✅ Patch Fix: ResetProfile & UI Transparency
+- ResetProfile теперь удаляет `SearchUISpec`, `QuestionnaireAnswerSet` и связанные кэши.
+- UI отображает поле `facts_used` для ответов анкеты.
+- Добавлен метод `storage.removeByPrefix`.
 
 2) MASTER PLAN — от “сейчас” до “финиша”
 PHASE F — Memory, Resilience, DOM Drift
@@ -176,5 +180,14 @@ UI: выбор режима/сайта/настроек и reset’ов.
 Документация: позволяет новому агенту продолжить без истории.
 
 4) Текущая точка
-Последний завершённый этап: PHASE E3 — RETRY & FAILOVER
+Последний завершённый этап: PATCH FIX (ResetProfile semantics)
 Текущий этап: PHASE F1 — DOM DRIFT DETECTION (Resilience)
+
+## Reset Matrix
+
+| Action | Clears State | Clears Config | Clears Profile | Clears Cache (Targeting/UI/Answers) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Reset Session** | YES (Active*) | NO | NO | NO |
+| **Reset Profile** | YES | NO | YES | YES (All dependent artifacts) |
+| **Reset Config** | NO | YES | NO | NO |
+| **Full Wipe** | YES | YES | YES | YES |

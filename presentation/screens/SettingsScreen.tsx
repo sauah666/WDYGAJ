@@ -1,5 +1,5 @@
 import React from 'react';
-import { Save, FileText } from 'lucide-react';
+import { Save, FileText, Key, Shield } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentConfig } from '../../types';
 
@@ -14,13 +14,51 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave }) =>
     <Layout title="Agent Configuration" currentStep={3}>
       <div className="max-w-3xl mx-auto mt-6 bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
         <div className="p-6 border-b border-gray-700">
-           <h3 className="text-lg font-medium text-white">Search Parameters</h3>
-           <p className="text-sm text-gray-400">Configure filters and templates before running.</p>
+           <h3 className="text-lg font-medium text-white">Search Parameters & AI</h3>
+           <p className="text-sm text-gray-400">Configure filters, templates, and LLM credentials.</p>
         </div>
         
         <div className="p-6 space-y-6">
-          {/* Stub Inputs for Search Filters */}
-          <div className="grid grid-cols-2 gap-4">
+          
+          {/* LLM Config */}
+          <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-800">
+             <div className="flex items-center text-purple-400 mb-4">
+                 <Shield size={18} className="mr-2" />
+                 <span className="font-bold text-sm">LLM Governance</span>
+             </div>
+             
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div>
+                     <label className="block text-xs font-mono text-gray-400 mb-2 uppercase">Provider</label>
+                     <select 
+                        value={config.llmProvider || 'mock'}
+                        onChange={(e) => onChange('llmProvider', e.target.value)}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-purple-500 outline-none"
+                     >
+                        <option value="mock">Mock (Free / Dev)</option>
+                        <option value="gemini">Google Gemini 2.0</option>
+                        <option value="openai">OpenAI GPT-4o</option>
+                     </select>
+                 </div>
+                 <div>
+                     <label className="block text-xs font-mono text-gray-400 mb-2 uppercase">API Key</label>
+                     <div className="relative">
+                        <Key size={14} className="absolute left-3 top-3 text-gray-500" />
+                        <input 
+                            type="password" 
+                            value={config.apiKey || ''}
+                            onChange={(e) => onChange('apiKey', e.target.value)}
+                            placeholder={config.llmProvider === 'mock' ? "Not required" : "sk-..."}
+                            disabled={config.llmProvider === 'mock'}
+                            className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-9 pr-4 py-2 text-white focus:border-purple-500 outline-none disabled:opacity-50" 
+                        />
+                     </div>
+                 </div>
+             </div>
+          </div>
+
+          {/* Filters Stub */}
+          <div className="grid grid-cols-2 gap-4 opacity-50">
             <div>
               <label className="block text-xs font-mono text-gray-400 mb-2 uppercase">Job Title</label>
               <input disabled type="text" placeholder="Frontend Engineer" className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-gray-500 cursor-not-allowed" />
@@ -29,13 +67,6 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave }) =>
               <label className="block text-xs font-mono text-gray-400 mb-2 uppercase">Location</label>
               <input disabled type="text" placeholder="Remote / Moscow" className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-gray-500 cursor-not-allowed" />
             </div>
-          </div>
-
-          <div>
-             <label className="block text-xs font-mono text-gray-400 mb-2 uppercase">LLM Model</label>
-             <select disabled className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-gray-500 cursor-not-allowed">
-               <option>Gemini 2.0 Flash (Default)</option>
-             </select>
           </div>
 
           <div className="border-t border-gray-700 pt-6">

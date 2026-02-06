@@ -2,33 +2,9 @@
 // Purpose: Data Transfer Objects (DTOs) and Contracts for LLM interactions.
 
 import { RawFormField, VacancySalary, QuestionnaireField } from './entities';
+import { WorkMode, SeniorityLevel, RoleCategory } from '../../types';
 
-// --- Enums for Validation ---
-
-export enum WorkMode {
-  REMOTE = 'REMOTE',
-  HYBRID = 'HYBRID',
-  OFFICE = 'OFFICE',
-  ANY = 'ANY'
-}
-
-export enum SeniorityLevel {
-  INTERN = 'INTERN',
-  JUNIOR = 'JUNIOR',
-  MIDDLE = 'MIDDLE',
-  SENIOR = 'SENIOR',
-  LEAD = 'LEAD',
-  C_LEVEL = 'C_LEVEL'
-}
-
-export enum RoleCategory {
-  ENGINEERING = 'ENGINEERING',
-  PRODUCT = 'PRODUCT',
-  DESIGN = 'DESIGN',
-  ANALYTICS = 'ANALYTICS',
-  MANAGEMENT = 'MANAGEMENT',
-  OTHER = 'OTHER'
-}
+export { WorkMode, SeniorityLevel, RoleCategory };
 
 // --- Input Contract ---
 

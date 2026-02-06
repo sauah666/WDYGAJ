@@ -104,6 +104,9 @@ export interface StoragePort {
   saveApplySubmitReceipt(siteId: string, receipt: ApplySubmitReceiptV1): Promise<void>;
   getApplySubmitReceipt(siteId: string, vacancyId: string): Promise<ApplySubmitReceiptV1 | null>;
 
+  // Utility
+  removeByPrefix(keyPrefix: string): Promise<void>;
+
   // Data (Stub for future vacanies/profiles)
   saveDataStub(key: string, data: unknown): Promise<void>;
 }

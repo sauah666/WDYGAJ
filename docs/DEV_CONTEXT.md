@@ -1,33 +1,32 @@
 # Developer Context (Save Game)
 
-**Last Updated**: Phase E3 Verified (Retry & Failover)
+**Last Updated**: Patch Fix Verified (Reset & Transparency)
 **Role**: Senior Agent Architect
 **Manifesto**: See `docs/PROJECT_DOCUMENTATION.md` (Rule D-01)
 
 ## Где мы сейчас?
-Мы завершили **PHASE E3: RETRY & FAILOVER**.
-Система теперь умеет не только откликаться и заполнять анкеты, но и обрабатывать сбои, делать повторные попытки (до 3 раз) и скрывать вакансии при неудачах.
+Мы завершили **PHASE E3** и применили **PATCH FIX** (Reset Semantics).
+Система стабильна, поддерживает ретраи, failover, и корректно очищает данные при смене профиля.
 
 ### Что сделано:
-1.  **Drafting (E1.3)**: Агент открывает форму, находит поле CV, заполняет его (с учетом шаблона из конфига или сгенерированного текста).
+1.  **Drafting (E1.3)**: Агент открывает форму, находит поле CV, заполняет его.
 2.  **Submit & Verify (E1.4)**:
-    *   Реализован клик по Submit.
-    *   Внедрена логика верификации успеха через `BrowserPort.detectApplyOutcome` (поиск текста успеха или изменение URL).
-    *   Создание `ApplySubmitReceipt` для истории.
+    *   Клик по Submit + Верификация результата.
+    *   Создание `ApplySubmitReceipt`.
 3.  **Questionnaire Handling (E2)**:
-    *   Агент детектирует дополнительные вопросы (опыт, виза, ссылки).
-    *   LLM генерирует ответы на основе профиля (1 вызов на анкету).
-    *   Ответы кэшируются и переиспользуются при ретраях.
+    *   Детекция и заполнение анкет (LLM 1 call).
+    *   Кэширование ответов по хешу вопросов.
 4.  **Retry & Failover (E3)**:
-    *   Единая политика ретраев: 3 попытки с экспоненциальной паузой.
-    *   Failover: Если 3 раза не удалось — вакансия скрывается (`hideVacancy`) или пропускается.
-    *   Состояние `ApplyAttemptState` сохраняется в Storage, переживает перезагрузку.
-    *   Новые UI статусы: `APPLY_RETRYING`, `APPLY_FAILED_HIDDEN`, `APPLY_SUBMIT_SUCCESS`.
+    *   Политика 3-х попыток.
+    *   Failover (скрытие вакансии).
+5.  **Patch Fix (Reset & UI)**:
+    *   **ResetProfile**: Теперь удаляет не только `ProfileSnapshot`, но и `TargetingSpec`, `SearchUISpec`, `QuestionnaireAnswerSet`, `SearchApplyPlan`. Гарантия "Fresh Start".
+    *   **UI**: Отображение `facts_used` в статусе агента для прозрачности решений LLM.
 
 ### Текущее техническое состояние:
-*   State Machine: Полный цикл от поиска до финального статуса отклика (`APPLY_SUBMIT_SUCCESS` / `APPLY_FAILED_HIDDEN`).
-*   Storage: Сохраняет все промежуточные артефакты (Drafts, Receipts, Attempts, Questionnaire Answers).
-*   UI: Отображает статус попыток, ошибки и результаты.
+*   State Machine: Полный цикл, включая failover.
+*   Storage: `removeByPrefix` реализован для массовой очистки артефактов сайта.
+*   UI: Детальная визуализация (Status, Draft, Questionnaire Answers, Logs).
 
 ### Mock Fidelity & Testing Guide (E3 Specifics)
 Critical context for Phase F1 (Resilience):
