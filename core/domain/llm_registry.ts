@@ -10,6 +10,8 @@ export interface LLMProviderDefinition {
   kind: 'cloud' | 'local';
   enabled: boolean;
   envKeys: string[]; // required config keys (e.g. 'apiKey')
+  defaultBaseUrl?: string;
+  modelId?: string;
 }
 
 export const LLMProviderRegistry: Record<LLMProviderId, LLMProviderDefinition> = {
@@ -31,15 +33,27 @@ export const LLMProviderRegistry: Record<LLMProviderId, LLMProviderDefinition> =
     id: 'openai_cloud',
     label: 'OpenAI GPT-4 (Cloud)',
     kind: 'cloud',
-    enabled: false,
+    enabled: true,
     envKeys: ['apiKey']
+  },
+  'deepseek_cloud': {
+    id: 'deepseek_cloud',
+    label: 'DeepSeek Chat',
+    kind: 'cloud',
+    enabled: true,
+    envKeys: ['apiKey'],
+    defaultBaseUrl: 'https://api.deepseek.com',
+    modelId: 'deepseek-chat'
   },
   'local_llm': {
     id: 'local_llm',
-    label: 'Local LLM (Ollama/LM Studio)',
+    label: 'Local LLM (LM Studio / Ollama)',
     kind: 'local',
-    enabled: false,
-    envKeys: []
+    enabled: true,
+    // API Key is optional for local LLMs, so we remove it from required envKeys
+    // Gateway URL is the primary requirement, handled in validation logic
+    envKeys: [], 
+    defaultBaseUrl: 'http://localhost:1234/v1' // Standard LM Studio port
   }
 };
 

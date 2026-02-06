@@ -1,4 +1,5 @@
 
+
 // Layer: ADAPTERS
 // Purpose: Real Implementation of LLM Port using Google Gemini API.
 
@@ -92,6 +93,7 @@ export class GeminiLLMAdapter implements LLMProviderPort {
 
     const result = await this.callGemini(prompt, system);
     const spec = JSON.parse(result.text) as TargetingSpecV1;
+    spec.userConstraints = profile.userConstraints;
     // Phase G2: Telemetry
     spec.tokenUsage = result.usage;
     return spec;

@@ -33,6 +33,7 @@ export enum AgentStatus {
   WAITING_FOR_SITE_SELECTION = 'WAITING_FOR_SITE_SELECTION',
   // Phase G1: Config Error
   LLM_CONFIG_ERROR = 'LLM_CONFIG_ERROR',
+  RUNTIME_CONFIG_ERROR = 'RUNTIME_CONFIG_ERROR', // New in Fix Pack
 
   STARTING = 'STARTING',
   NAVIGATING = 'NAVIGATING',
@@ -120,7 +121,8 @@ export enum AgentStatus {
   APPLY_FAILED_SKIPPED = 'APPLY_FAILED_SKIPPED',
 
   COMPLETED = 'COMPLETED',
-  FAILED = 'FAILED'
+  FAILED = 'FAILED',
+  PAUSED = 'PAUSED' 
 }
 
 export enum HumanGateSignal {
@@ -131,6 +133,7 @@ export enum HumanGateSignal {
 export enum AppRoute {
   MODE_SELECTION = 'MODE_SELECTION',
   SITE_SELECTION = 'SITE_SELECTION',
+  JOB_PREFERENCES = 'JOB_PREFERENCES', // New Route
   SETTINGS = 'SETTINGS',
   AGENT_RUNNER = 'AGENT_RUNNER'
 }
@@ -143,16 +146,24 @@ export interface AgentConfig {
   // G1: LLM Configuration
   activeLLMProviderId?: string;
   llmProvider?: string; // Legacy fallback, prefer activeLLMProviderId
+  apiKey?: string;
+  
+  // Runtime Config (Fix Pack)
+  browserProvider?: 'mock' | 'remote_node' | 'playwright'; 
+  nodeRunnerUrl?: string; // e.g. http://localhost:3001
+  localGatewayUrl?: string; // e.g. http://localhost:11434
+  chromeExecutablePath?: string; // Path to Brave/Chrome
 
   // User Constraints for Targeting
   minSalary?: number;
   currency?: string;
   city?: string;
-  workMode?: WorkMode;
+  
+  // Work Mode Strategy
+  workMode?: WorkMode; // Deprecated in UI, kept for compat
+  targetWorkModes?: WorkMode[]; // Multi-select support
+  
   targetLanguages?: string[];
   // User Templates
   coverLetterTemplate?: string;
-  // Security / LLM Governance
-  apiKey?: string;
-  browserProvider?: 'mock' | 'real'; // real = Playwright
 }

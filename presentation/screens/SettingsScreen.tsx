@@ -1,156 +1,198 @@
 
-import React, { useState, useEffect } from 'react';
-import { Save, FileText, Key, Shield, Globe, RotateCcw } from 'lucide-react';
+import React from 'react';
+import { Save, Key, Shield, Globe, RotateCcw, Server, AlertTriangle, Command, Network, Wrench } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentConfig } from '../../types';
 import { listProviders, DEFAULT_LLM_PROVIDER, LLMProviderRegistry } from '../../core/domain/llm_registry';
+import { computeRuntimeCapabilities } from '../../core/domain/runtime';
 
 interface Props {
   config: Partial<AgentConfig>;
   onChange: (key: keyof AgentConfig, value: any) => void;
   onSave: () => void;
+  onBack?: () => void;
+  onNavigate?: (route: string) => void;
 }
 
-export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave }) => {
+export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBack, onNavigate }) => {
   const providers = listProviders();
   const currentProviderId = config.activeLLMProviderId || DEFAULT_LLM_PROVIDER;
-  const currentProviderDef = LLMProviderRegistry[currentProviderId];
-
-  // Derive which keys are needed for the active provider
-  const neededKeys = currentProviderDef?.envKeys || [];
+  
+  const runtime = computeRuntimeCapabilities();
+  const isBrowserEnv = runtime.kind === 'BROWSER_UI';
 
   const handleResetLLMConfig = () => {
-      // Logic handled by clearing the activeID in the parent
       onChange('activeLLMProviderId', DEFAULT_LLM_PROVIDER);
-      onChange('apiKey', ''); // Clear key for safety on reset
+      onChange('apiKey', '');
+      onChange('localGatewayUrl', '');
   };
 
   return (
-    <Layout title="Agent Configuration" currentStep={3}>
-      <div className="max-w-3xl mx-auto mt-6 bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-        <div className="p-6 border-b border-gray-700">
-           <h3 className="text-lg font-medium text-white">Search Parameters & AI</h3>
-           <p className="text-sm text-gray-400">Configure filters, templates, and LLM credentials.</p>
-        </div>
+    <Layout title="System Calibration" currentRoute="SETTINGS" onSettingsClick={() => {}} onNavigate={onNavigate}>
+      <div className="max-w-5xl mx-auto mt-6">
         
-        <div className="p-6 space-y-6">
-          
-          {/* LLM Config */}
-          <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-800">
-             <div className="flex items-center justify-between text-purple-400 mb-4">
-                 <div className="flex items-center">
-                    <Shield size={18} className="mr-2" />
-                    <span className="font-bold text-sm">LLM Governance (Phase G1)</span>
-                 </div>
-                 <button 
-                   onClick={handleResetLLMConfig}
-                   className="text-xs text-gray-500 hover:text-white flex items-center gap-1 transition-colors"
-                   title="Reset to Default"
-                 >
-                   <RotateCcw size={12} />
-                   Reset
-                 </button>
-             </div>
-             
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <div>
-                     <label className="block text-xs font-mono text-gray-400 mb-2 uppercase">Provider Strategy</label>
-                     <select 
-                        value={currentProviderId}
-                        onChange={(e) => onChange('activeLLMProviderId', e.target.value)}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-purple-500 outline-none"
-                     >
-                        {providers.map(p => (
-                            <option key={p.id} value={p.id} disabled={!p.enabled}>
-                                {p.label} {p.enabled ? '' : '(Disabled)'}
-                            </option>
-                        ))}
-                     </select>
-                 </div>
-                 <div>
-                     <label className="block text-xs font-mono text-gray-400 mb-2 uppercase">API Key</label>
-                     <div className="relative">
-                        <Key size={14} className="absolute left-3 top-3 text-gray-500" />
-                        <input 
-                            type="password" 
-                            value={config.apiKey || ''}
-                            onChange={(e) => onChange('apiKey', e.target.value)}
-                            placeholder={neededKeys.length === 0 ? "Not required" : `Enter ${neededKeys.join('/')}`}
-                            disabled={neededKeys.length === 0}
-                            className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-9 pr-4 py-2 text-white focus:border-purple-500 outline-none disabled:opacity-50" 
-                        />
-                     </div>
-                 </div>
-             </div>
-             {neededKeys.length > 0 && !config.apiKey && (
-                 <p className="text-[10px] text-red-400 mt-2">
-                     * API Key is required for this provider.
-                 </p>
-             )}
-          </div>
-
-          {/* Browser Config */}
-          <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-800">
-             <div className="flex items-center text-blue-400 mb-4">
-                 <Globe size={18} className="mr-2" />
-                 <span className="font-bold text-sm">Browser Runtime</span>
-             </div>
-             
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <div>
-                     <label className="block text-xs font-mono text-gray-400 mb-2 uppercase">Engine</label>
-                     <select 
-                        value={config.browserProvider || 'mock'}
-                        onChange={(e) => onChange('browserProvider', e.target.value)}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-blue-500 outline-none"
-                     >
-                        <option value="mock">Mock (Virtual)</option>
-                        <option value="real">Real (Playwright)</option>
-                     </select>
-                     {config.browserProvider === 'real' && (
-                       <p className="text-[10px] text-orange-400 mt-1">Requires Node.js environment</p>
-                     )}
-                 </div>
-             </div>
-          </div>
-
-          {/* Filters Stub */}
-          <div className="grid grid-cols-2 gap-4 opacity-50">
-            <div>
-              <label className="block text-xs font-mono text-gray-400 mb-2 uppercase">Job Title</label>
-              <input disabled type="text" placeholder="Frontend Engineer" className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-gray-500 cursor-not-allowed" />
+        {/* Main Panel */}
+        <div className="bg-[#1c1917] border-4 border-[#292524] shadow-[0_10px_30px_rgba(0,0,0,0.5)] relative">
+            {/* Screws */}
+            <div className="absolute top-2 left-2 w-2 h-2 rounded-full bg-[#0c0a08] border border-[#44403c]"></div>
+            <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#0c0a08] border border-[#44403c]"></div>
+            
+            <div className="p-8 border-b-2 border-[#292524] bg-[#151413] flex justify-between items-end">
+                <div className="flex items-center gap-4">
+                    <div className="p-3 bg-[#292524] rounded border border-[#44403c] text-amber-600 shadow-inner">
+                        <Wrench size={24} />
+                    </div>
+                    <div>
+                        <h3 className="text-xl font-serif font-bold text-[#d6d3d1] uppercase tracking-wide">Internal Mechanics</h3>
+                        <p className="text-xs text-[#78716c] mt-1 font-mono">Adjust execution parameters and neural links.</p>
+                    </div>
+                </div>
+                <div className="text-[10px] font-mono text-[#44403c] uppercase border border-[#292524] px-2 py-1 bg-[#0c0a08]">
+                    CONF_MOD_V1
+                </div>
             </div>
-             <div>
-              <label className="block text-xs font-mono text-gray-400 mb-2 uppercase">Location</label>
-              <input disabled type="text" placeholder="Remote / Moscow" className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-gray-500 cursor-not-allowed" />
+            
+            <div className="p-8 space-y-8 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]">
+            
+            {/* Browser Runtime Section */}
+            <div className="relative p-6 border-2 border-[#292524] bg-[#1c1917]">
+                <div className="absolute -top-3 left-4 bg-[#1c1917] px-2 text-xs font-bold text-amber-700 uppercase tracking-widest border-l border-r border-[#292524]">
+                    Navigation Engine
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                        <label className="block text-[10px] font-bold text-[#a8a29e] mb-2 uppercase font-mono">Execution Mode</label>
+                        <div className="relative">
+                            <select 
+                                value={config.browserProvider}
+                                onChange={(e) => onChange('browserProvider', e.target.value)}
+                                className="w-full bg-[#0c0a08] border border-[#44403c] text-[#d6d3d1] px-4 py-3 focus:border-amber-600 outline-none appearance-none font-mono text-sm shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]"
+                            >
+                                {runtime.supportsPlaywright && <option value="playwright">Local Playwright (Native)</option>}
+                                <option value="remote_node">Remote Node Runner</option>
+                            </select>
+                            <div className="absolute right-4 top-4 pointer-events-none text-[#57534e]">▼</div>
+                        </div>
+                    </div>
+
+                    {config.browserProvider === 'playwright' && !isBrowserEnv && (
+                        <div>
+                            <label className="block text-[10px] font-bold text-[#a8a29e] mb-2 uppercase font-mono">Binary Path</label>
+                            <input 
+                                type="text" 
+                                value={config.chromeExecutablePath || ''}
+                                onChange={(e) => onChange('chromeExecutablePath', e.target.value)}
+                                placeholder="Auto-detect"
+                                className="w-full bg-[#0c0a08] border border-[#44403c] text-amber-100 px-4 py-3 focus:border-amber-600 outline-none font-mono text-sm shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)] placeholder-[#44403c]" 
+                            />
+                        </div>
+                    )}
+
+                    {config.browserProvider === 'remote_node' && (
+                        <div>
+                            <label className="block text-[10px] font-bold text-[#a8a29e] mb-2 uppercase font-mono">Remote Uplink</label>
+                            <div className="relative">
+                                <Server size={14} className="absolute left-3 top-4 text-[#57534e]" />
+                                <input 
+                                    type="text" 
+                                    value={config.nodeRunnerUrl || ''}
+                                    onChange={(e) => onChange('nodeRunnerUrl', e.target.value)}
+                                    placeholder="http://localhost:3000"
+                                    className="w-full bg-[#0c0a08] border border-[#44403c] text-amber-100 pl-10 pr-4 py-3 focus:border-amber-600 outline-none font-mono text-sm shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]" 
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
-          </div>
 
-          <div className="border-t border-gray-700 pt-6">
-             <div className="flex items-center text-blue-400 mb-4">
-               <FileText size={18} className="mr-2" />
-               <span className="font-bold text-sm">Cover Letter Template</span>
-             </div>
-             <label className="block text-xs font-mono text-gray-500 mb-2">
-                Use this text to auto-fill application forms. If empty, a default generic text will be used.
-             </label>
-             <textarea 
-               value={config.coverLetterTemplate || ''}
-               onChange={(e) => onChange('coverLetterTemplate', e.target.value)}
-               className="w-full h-32 bg-gray-900 border border-gray-700 rounded-lg p-4 text-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all resize-y"
-               placeholder="Здравствуйте! Меня заинтересовала ваша вакансия..."
-             />
-          </div>
-        </div>
+            {/* AI Core Section */}
+            <div className="relative p-6 border-2 border-[#292524] bg-[#1c1917]">
+                <div className="absolute -top-3 left-4 bg-[#1c1917] px-2 text-xs font-bold text-amber-700 uppercase tracking-widest border-l border-r border-[#292524]">
+                    Cognitive Core
+                </div>
 
-        <div className="p-6 bg-gray-850 border-t border-gray-700 flex justify-end">
-          <button 
-            onClick={onSave}
-            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg transition-colors font-medium"
-          >
-            <Save size={18} />
-            <span>Confirm Configuration</span>
-          </button>
+                <div className="flex justify-end mb-4">
+                    <button 
+                        onClick={handleResetLLMConfig}
+                        className="text-[10px] text-[#78716c] hover:text-amber-500 flex items-center gap-2 uppercase tracking-wide border-b border-transparent hover:border-amber-500 transition-all"
+                    >
+                        <RotateCcw size={10} /> Factory Reset
+                    </button>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                        <label className="block text-[10px] font-bold text-[#a8a29e] mb-2 uppercase font-mono">Provider Module</label>
+                        <div className="relative">
+                            <select 
+                                value={currentProviderId}
+                                onChange={(e) => onChange('activeLLMProviderId', e.target.value)}
+                                className="w-full bg-[#0c0a08] border border-[#44403c] text-[#d6d3d1] px-4 py-3 focus:border-purple-600 outline-none appearance-none font-mono text-sm shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]"
+                            >
+                                {providers.map(p => (
+                                    <option key={p.id} value={p.id} disabled={!p.enabled}>
+                                        {p.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <div className="absolute right-4 top-4 pointer-events-none text-[#57534e]">▼</div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        {currentProviderId !== 'mock' && (
+                            <div>
+                                <label className="block text-[10px] font-bold text-[#a8a29e] mb-2 uppercase font-mono">Access Token</label>
+                                <div className="relative">
+                                    <Key size={14} className="absolute left-3 top-4 text-[#57534e]" />
+                                    <input 
+                                        type="password" 
+                                        value={config.apiKey || ''}
+                                        onChange={(e) => onChange('apiKey', e.target.value)}
+                                        placeholder={currentProviderId === 'local_llm' ? "Not required" : "sk-..."}
+                                        className="w-full bg-[#0c0a08] border border-[#44403c] text-amber-100 pl-10 pr-4 py-3 focus:border-purple-600 outline-none font-mono text-sm shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]" 
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {currentProviderId === 'local_llm' && (
+                            <div>
+                                <label className="block text-[10px] font-bold text-[#a8a29e] mb-2 uppercase font-mono">Local Gateway</label>
+                                <div className="relative">
+                                    <Network size={14} className="absolute left-3 top-4 text-[#57534e]" />
+                                    <input 
+                                        type="text" 
+                                        value={config.localGatewayUrl || ''}
+                                        onChange={(e) => onChange('localGatewayUrl', e.target.value)}
+                                        placeholder="http://localhost:1234/v1"
+                                        className="w-full bg-[#0c0a08] border border-[#44403c] text-amber-100 pl-10 pr-4 py-3 focus:border-orange-600 outline-none font-mono text-sm shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]" 
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+            </div>
+
+            {/* Actions Footer */}
+            <div className="p-6 bg-[#151413] border-t-2 border-[#292524] flex justify-end space-x-6">
+                {onBack && (
+                    <button onClick={onBack} className="text-[#78716c] hover:text-[#d6d3d1] px-6 py-3 text-sm font-bold uppercase tracking-wider transition-colors border-b-2 border-transparent hover:border-[#78716c]">
+                        Discard
+                    </button>
+                )}
+                <button 
+                    onClick={onSave}
+                    className="flex items-center space-x-3 bg-amber-800 hover:bg-amber-700 text-[#f5f5f4] px-8 py-3 font-bold uppercase tracking-wider shadow-[0_4px_0_#451a03] active:translate-y-[4px] active:shadow-none transition-all border border-amber-900"
+                >
+                    <Save size={18} />
+                    <span>Engage Settings</span>
+                </button>
+            </div>
         </div>
       </div>
     </Layout>

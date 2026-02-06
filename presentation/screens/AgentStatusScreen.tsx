@@ -1,427 +1,164 @@
 
-// ... (imports)
 import React, { useEffect, useState, useRef } from 'react';
-import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit, FileSearch, CheckSquare, Award, Send, MousePointerClick, FormInput, PenTool, HelpCircle, EyeOff, FastForward, Info, AlertTriangle, RefreshCw, Globe, Settings, Scale, BatteryWarning } from 'lucide-react';
+import { Terminal, Play, Pause, RotateCcw, AlertTriangle, ArrowLeft, Square, Maximize2, Zap, Gauge, Radio } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentStatus } from '../../types';
-import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep, ControlVerificationResult, VacancyCardV1, VacancyDecision, VacancyExtractV1, LLMVacancyEvalResult, ApplyQueueItem } from '../../core/domain/entities';
-// NEW: Import Site Registry
-import { listEnabledSites } from '../../core/domain/site_registry';
+import { AgentState } from '../../core/domain/entities';
+import { BrowserViewport } from '../components/BrowserViewport';
 
 interface Props {
   state: AgentState;
   onRun: () => void;
   onStop: () => void;
   onConfirmLogin: () => void;
-  onConfirmProfile?: () => void;
-  onResetProfile?: () => void;
   onReset: () => void;
-  // New props for Stage 5
-  onContinueToSearch?: () => void;
-  onScanSearchUI?: () => void;
-  onAnalyzeSearchUI?: () => void;
-  onSubmitSearchPrefs?: (prefs: UserSearchPrefsV1) => void;
-  onBuildPlan?: () => void;
-  onExecuteStep?: () => void;
-  onExecuteCycle?: () => void;
-  onVerifyFilters?: () => void;
-  onCollectBatch?: () => void;
-  onDedupBatch?: () => void;
-  onRunPrefilter?: () => void;
-  onRunLLMScreening?: () => void;
-  onRunExtraction?: () => void; // Phase D1
-  onRunLLMEvalBatch?: () => void; // Phase D2
-  onBuildApplyQueue?: () => void; // Phase D2.2
-  onProbeApplyEntrypoint?: () => void; // Phase E1.1
-  onOpenApplyForm?: () => void; // Phase E1.2
-  onFillApplyDraft?: () => void; // Phase E1.3
-  onSubmitApply?: () => void; // Phase E1.4
-  // Phase F1
-  onResolveDrift?: () => void;
-  // Phase F2
-  onSelectSite?: (siteId: string) => void;
+  onBackToSettings?: () => void; 
+  onSettingsClick?: () => void;
+  onPause?: () => void;
+  onResume?: () => void;
+  onNavigate?: (route: string) => void;
 }
 
 export const AgentStatusScreen: React.FC<Props> = ({ 
   state, 
-  onRun, 
   onStop, 
   onConfirmLogin, 
-  onConfirmProfile,
-  onResetProfile,
   onReset,
-  onContinueToSearch,
-  onScanSearchUI,
-  onAnalyzeSearchUI,
-  onSubmitSearchPrefs,
-  onBuildPlan,
-  onExecuteStep,
-  onExecuteCycle,
-  onVerifyFilters,
-  onCollectBatch,
-  onDedupBatch,
-  onRunPrefilter,
-  onRunLLMScreening,
-  onRunExtraction,
-  onRunLLMEvalBatch,
-  onBuildApplyQueue,
-  onProbeApplyEntrypoint,
-  onOpenApplyForm,
-  onFillApplyDraft,
-  onSubmitApply,
-  onResolveDrift,
-  onSelectSite
+  onSettingsClick,
+  onPause,
+  onResume,
+  onNavigate
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [localPrefs, setLocalPrefs] = useState<UserSearchPrefsV1 | null>(null);
-  const enabledSites = listEnabledSites();
 
-  // Auto-scroll logs
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [state.logs]);
 
-  // Sync state prefs to local prefs for editing
-  useEffect(() => {
-    if (state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS && state.activeSearchPrefs && !localPrefs) {
-      setLocalPrefs(state.activeSearchPrefs);
-    }
-  }, [state.status, state.activeSearchPrefs]);
-
-  const handlePrefChange = (key: string, value: any) => {
-    if (!localPrefs) return;
-    setLocalPrefs({
-      ...localPrefs,
-      additionalFilters: {
-        ...localPrefs.additionalFilters,
-        [key]: value
-      }
-    });
-  };
-
-  const handleSubmitPrefs = () => {
-    if (localPrefs && onSubmitSearchPrefs) {
-      onSubmitSearchPrefs(localPrefs);
-    }
+  const handleViewportLogin = (u: string, p: string) => {
+      onConfirmLogin();
   };
 
   const getStatusColor = (status: AgentStatus) => {
-    switch (status) {
-      case AgentStatus.IDLE: return 'text-gray-400';
-      case AgentStatus.WAITING_FOR_SITE_SELECTION: return 'text-orange-300'; // F2
-      case AgentStatus.LLM_CONFIG_ERROR: return 'text-red-500'; // G1
-      case AgentStatus.STARTING: return 'text-blue-400';
-      case AgentStatus.NAVIGATING: return 'text-yellow-400';
-      case AgentStatus.NAVIGATING_TO_SEARCH: return 'text-yellow-400';
-      case AgentStatus.WAITING_FOR_HUMAN: return 'text-orange-500';
-      case AgentStatus.LOGGED_IN_CONFIRMED: return 'text-green-400';
-      case AgentStatus.WAITING_FOR_PROFILE_PAGE: return 'text-pink-500';
-      case AgentStatus.EXTRACTING: return 'text-purple-400';
-      case AgentStatus.EXTRACTING_SEARCH_UI: return 'text-purple-400';
-      case AgentStatus.PROFILE_CAPTURED: return 'text-emerald-400';
-      case AgentStatus.TARGETING_PENDING: return 'text-cyan-400';
-      case AgentStatus.TARGETING_READY: return 'text-cyan-400';
-      case AgentStatus.TARGETING_ERROR: return 'text-red-500';
-      case AgentStatus.SEARCH_PAGE_READY: return 'text-indigo-400';
-      case AgentStatus.SEARCH_DOM_READY: return 'text-indigo-500';
-      case AgentStatus.ANALYZING_SEARCH_UI: return 'text-purple-500';
-      case AgentStatus.WAITING_FOR_SEARCH_PREFS: return 'text-emerald-500';
-      case AgentStatus.SEARCH_PREFS_SAVED: return 'text-green-500';
-      case AgentStatus.APPLY_PLAN_READY: return 'text-blue-300';
-      case AgentStatus.APPLYING_FILTERS: return 'text-blue-400';
-      case AgentStatus.APPLY_STEP_DONE: return 'text-blue-500';
-      case AgentStatus.APPLY_STEP_FAILED: return 'text-red-400';
-      case AgentStatus.SEARCH_READY: return 'text-indigo-400';
-      case AgentStatus.VACANCIES_CAPTURED: return 'text-teal-400';
-      case AgentStatus.VACANCIES_DEDUPED: return 'text-cyan-500';
-      case AgentStatus.PREFILTER_DONE: return 'text-orange-400';
-      case AgentStatus.LLM_SCREENING_DONE: return 'text-purple-400';
-      case AgentStatus.EXTRACTING_VACANCIES: return 'text-pink-400';
-      case AgentStatus.VACANCIES_EXTRACTED: return 'text-pink-500';
-      case AgentStatus.EVALUATION_DONE: return 'text-yellow-300';
-      case AgentStatus.APPLY_QUEUE_READY: return 'text-green-300';
-      case AgentStatus.FINDING_APPLY_BUTTON: return 'text-blue-300';
-      case AgentStatus.APPLY_BUTTON_FOUND: return 'text-green-400';
-      case AgentStatus.APPLY_FORM_OPENED: return 'text-emerald-300';
-      case AgentStatus.FILLING_QUESTIONNAIRE: return 'text-purple-300';
-      case AgentStatus.APPLY_DRAFT_FILLED: return 'text-emerald-400';
-      case AgentStatus.SUBMITTING_APPLICATION: return 'text-purple-400';
-      case AgentStatus.APPLY_RETRYING: return 'text-orange-400'; // New
-      case AgentStatus.APPLY_SUBMIT_SUCCESS: return 'text-green-500';
-      case AgentStatus.APPLY_SUBMIT_FAILED: return 'text-red-500';
-      case AgentStatus.APPLY_FAILED_HIDDEN: return 'text-gray-500'; // New
-      case AgentStatus.APPLY_FAILED_SKIPPED: return 'text-gray-500'; // New
-      case AgentStatus.DOM_DRIFT_DETECTED: return 'text-amber-500'; // F1
-      case AgentStatus.CONTEXT_NEAR_LIMIT: return 'text-orange-400'; // G3
-      case AgentStatus.CONTEXT_OVER_LIMIT: return 'text-red-600'; // G3
-      case AgentStatus.PRUNING_VIOLATION: return 'text-red-600'; // G3
-      case AgentStatus.COMPLETED: return 'text-green-500';
-      case AgentStatus.FAILED: return 'text-red-500';
-      default: return 'text-gray-100';
-    }
-  };
-
-  const getStatusIcon = (status: AgentStatus) => {
-    if (status === AgentStatus.WAITING_FOR_SITE_SELECTION) return <Globe />;
-    if (status === AgentStatus.LLM_CONFIG_ERROR) return <Settings />;
-    if (status === AgentStatus.CONTEXT_NEAR_LIMIT) return <BatteryWarning />;
-    if (status === AgentStatus.CONTEXT_OVER_LIMIT) return <XCircle />;
-    if (status === AgentStatus.PRUNING_VIOLATION) return <AlertTriangle />;
-    if (status === AgentStatus.NAVIGATING || status === AgentStatus.EXTRACTING || status === AgentStatus.STARTING || status === AgentStatus.TARGETING_PENDING || status === AgentStatus.NAVIGATING_TO_SEARCH || status === AgentStatus.EXTRACTING_SEARCH_UI || status === AgentStatus.ANALYZING_SEARCH_UI || status === AgentStatus.APPLYING_FILTERS || status === AgentStatus.EXTRACTING_VACANCIES || status === AgentStatus.FINDING_APPLY_BUTTON || status === AgentStatus.SUBMITTING_APPLICATION || status === AgentStatus.FILLING_QUESTIONNAIRE || status === AgentStatus.APPLY_RETRYING) return <Loader2 className="animate-spin" />;
-    if (status === AgentStatus.WAITING_FOR_HUMAN) return <AlertCircle />;
-    if (status === AgentStatus.WAITING_FOR_PROFILE_PAGE) return <FileText />;
-    if (status === AgentStatus.LOGGED_IN_CONFIRMED) return <UserCheck />;
-    if (status === AgentStatus.PROFILE_CAPTURED) return <CheckCircle />;
-    if (status === AgentStatus.TARGETING_READY) return <Lock />;
-    if (status === AgentStatus.SEARCH_PAGE_READY) return <Compass />;
-    if (status === AgentStatus.SEARCH_DOM_READY) return <Eye />;
-    if (status === AgentStatus.WAITING_FOR_SEARCH_PREFS) return <Filter />;
-    if (status === AgentStatus.SEARCH_PREFS_SAVED) return <CheckCircle />;
-    if (status === AgentStatus.APPLY_PLAN_READY) return <List />;
-    if (status === AgentStatus.APPLY_STEP_DONE) return <CheckCircle />;
-    if (status === AgentStatus.APPLY_STEP_FAILED) return <AlertCircle />;
-    if (status === AgentStatus.SEARCH_READY) return <ShieldCheck />;
-    if (status === AgentStatus.VACANCIES_CAPTURED) return <DownloadCloud />;
-    if (status === AgentStatus.VACANCIES_DEDUPED) return <Layers />;
-    if (status === AgentStatus.PREFILTER_DONE) return <FilterX />;
-    if (status === AgentStatus.LLM_SCREENING_DONE) return <BrainCircuit />;
-    if (status === AgentStatus.VACANCIES_EXTRACTED) return <FileSearch />;
-    if (status === AgentStatus.EVALUATION_DONE) return <Award />;
-    if (status === AgentStatus.APPLY_QUEUE_READY) return <Send />;
-    if (status === AgentStatus.APPLY_BUTTON_FOUND) return <MousePointerClick />;
-    if (status === AgentStatus.APPLY_FORM_OPENED) return <FormInput />;
-    if (status === AgentStatus.APPLY_DRAFT_FILLED) return <PenTool />;
-    if (status === AgentStatus.APPLY_SUBMIT_SUCCESS) return <CheckCircle />;
-    if (status === AgentStatus.APPLY_SUBMIT_FAILED) return <XCircle />;
-    if (status === AgentStatus.APPLY_FAILED_HIDDEN) return <EyeOff />;
-    if (status === AgentStatus.APPLY_FAILED_SKIPPED) return <FastForward />;
-    if (status === AgentStatus.DOM_DRIFT_DETECTED) return <AlertTriangle />;
-    if (status === AgentStatus.COMPLETED) return <CheckCircle />;
-    return <Terminal />;
-  };
-
-  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.WAITING_FOR_SITE_SELECTION && state.status !== AgentStatus.LLM_CONFIG_ERROR && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY && state.status !== AgentStatus.APPLY_BUTTON_FOUND && state.status !== AgentStatus.APPLY_FORM_OPENED && state.status !== AgentStatus.APPLY_DRAFT_FILLED && state.status !== AgentStatus.APPLY_SUBMIT_SUCCESS && state.status !== AgentStatus.APPLY_SUBMIT_FAILED && state.status !== AgentStatus.FILLING_QUESTIONNAIRE && state.status !== AgentStatus.APPLY_RETRYING && state.status !== AgentStatus.APPLY_FAILED_HIDDEN && state.status !== AgentStatus.APPLY_FAILED_SKIPPED && state.status !== AgentStatus.DOM_DRIFT_DETECTED && state.status !== AgentStatus.CONTEXT_NEAR_LIMIT && state.status !== AgentStatus.CONTEXT_OVER_LIMIT;
-  const isFinished = state.status === AgentStatus.COMPLETED || state.status === AgentStatus.FAILED;
-  // Can reset profile if captured OR targeting ready OR dom ready OR waiting prefs OR plan ready
-  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY || state.status === AgentStatus.APPLY_BUTTON_FOUND || state.status === AgentStatus.APPLY_FORM_OPENED || state.status === AgentStatus.APPLY_DRAFT_FILLED || state.status === AgentStatus.APPLY_SUBMIT_SUCCESS || state.status === AgentStatus.APPLY_SUBMIT_FAILED || state.status === AgentStatus.FILLING_QUESTIONNAIRE || state.status === AgentStatus.APPLY_RETRYING || state.status === AgentStatus.APPLY_FAILED_HIDDEN || state.status === AgentStatus.APPLY_FAILED_SKIPPED || state.status === AgentStatus.DOM_DRIFT_DETECTED || state.status === AgentStatus.CONTEXT_NEAR_LIMIT || state.status === AgentStatus.CONTEXT_OVER_LIMIT;
-
-  // ... (render helpers)
-  const renderFieldInput = (field: SearchFieldDefinition, currentValue: any) => {
-      // (omitted for brevity, assume unchanged)
-      return null;
-  };
-  const renderQueueItem = (item: ApplyQueueItem) => {
-      // (omitted for brevity)
-      return null;
+      if (status === AgentStatus.FAILED || status === AgentStatus.LLM_CONFIG_ERROR) return 'text-red-500 border-red-900 bg-red-900/20';
+      if (status === AgentStatus.COMPLETED) return 'text-green-500 border-green-900 bg-green-900/20';
+      if (status === AgentStatus.WAITING_FOR_HUMAN) return 'text-yellow-500 border-yellow-900 bg-yellow-900/20';
+      return 'text-amber-500 border-amber-900 bg-amber-900/20';
   };
 
   return (
-    <Layout title="Live Agent Monitor" currentStep={2}>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-180px)]">
+    <Layout title="Engine Room" activeProductName="JobSearch Agent" onSettingsClick={onSettingsClick} onNavigate={onNavigate}>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[calc(100vh-140px)]">
         
-        {/* Left Col: Visual Status */}
+        {/* Left Col: Visual Browser Monitor */}
         <div className="lg:col-span-2 flex flex-col space-y-6">
-          {/* Main Monitor */}
-          <div className="flex-1 bg-black rounded-xl border border-gray-800 p-1 flex flex-col relative overflow-hidden">
-             <div className="absolute top-4 left-4 z-10 flex space-x-2">
-                <span className={`px-3 py-1 rounded-full bg-gray-900 border border-gray-700 text-xs font-mono flex items-center gap-2 ${getStatusColor(state.status)}`}>
-                  {getStatusIcon(state.status)}
-                  {state.status}
-                </span>
-                
-                {/* Context Health Indicator */}
-                {state.contextHealth && (
-                    <span className={`px-3 py-1 rounded-full bg-gray-900 border border-gray-700 text-xs font-mono flex items-center gap-2 ${
-                        state.contextHealth.status === 'OK' ? 'text-gray-400' :
-                        state.contextHealth.status === 'NEAR_LIMIT' ? 'text-orange-400 border-orange-500/50' : 'text-red-400 border-red-500/50'
-                    }`}>
-                        <Scale size={14} />
-                        MEM: {Math.round(state.contextHealth.estimatedTokens / 1000)}k
-                    </span>
-                )}
+          
+          {/* Main Viewport Frame - Heavy Metal */}
+          <div className="flex-1 bg-[#1c1917] p-4 flex flex-col relative shadow-[0_10px_30px_rgba(0,0,0,0.8)] border-4 border-[#292524] rounded-sm">
+             
+             {/* Status Gauge */}
+             <div className="absolute -top-5 left-10 z-20">
+                <div className={`px-6 py-2 border-2 text-xs font-mono font-bold flex items-center gap-3 shadow-lg bg-[#0c0a08] uppercase tracking-widest ${getStatusColor(state.status)}`}>
+                   <div className={`w-3 h-3 rounded-full border border-black ${state.isPaused ? 'bg-yellow-600' : 'bg-green-500 shadow-[0_0_8px_#22c55e]'}`}></div>
+                   <span>{state.status.replace(/_/g, ' ')}</span>
+                </div>
+                {/* Screws */}
+                <div className="absolute top-1/2 -left-2 -translate-y-1/2 w-1.5 h-1.5 bg-[#44403c] rounded-full"></div>
+                <div className="absolute top-1/2 -right-2 -translate-y-1/2 w-1.5 h-1.5 bg-[#44403c] rounded-full"></div>
              </div>
 
-             {/* Mock Viewport */}
-             <div className="flex-1 bg-gray-900/50 m-1 rounded-lg flex items-center justify-center border border-gray-800/50 border-dashed relative overflow-auto">
-                {state.status === AgentStatus.IDLE && (
-                   <div className="text-center"><Terminal size={48} className="mx-auto text-gray-700 mb-4" /><p className="text-gray-600 font-mono">Waiting for initialization...</p></div>
-                )}
-                
-                {/* Phase G3: Context Warning */}
-                {state.status === AgentStatus.CONTEXT_NEAR_LIMIT && (
-                    <div className="bg-orange-900/30 border border-orange-500/50 rounded-lg p-6 max-w-md text-center">
-                        <BatteryWarning className="mx-auto text-orange-500 mb-4" size={48} />
-                        <h3 className="text-xl font-bold text-orange-100 mb-2">Memory Soft Limit Reached</h3>
-                        <p className="text-gray-300 mb-4 text-sm">
-                            Session history is getting large ({state.contextHealth?.estimatedTokens} tokens).
-                            Logs have been auto-compacted.
-                            It is recommended to Reset Session soon to prevent errors.
-                        </p>
-                        <div className="flex gap-2">
-                           <button onClick={onReset} className="flex-1 bg-red-900/50 hover:bg-red-900 text-red-200 px-4 py-2 rounded-lg font-bold transition-colors">
-                              RESET NOW
-                           </button>
-                        </div>
-                    </div>
-                )}
-
-                {state.status === AgentStatus.CONTEXT_OVER_LIMIT && (
-                    <div className="bg-red-900/30 border border-red-500/50 rounded-lg p-6 max-w-md text-center">
-                        <XCircle className="mx-auto text-red-500 mb-4" size={48} />
-                        <h3 className="text-xl font-bold text-red-100 mb-2">Memory Hard Limit Exceeded</h3>
-                        <p className="text-gray-300 mb-4 text-sm">
-                            Session history is too large ({state.contextHealth?.estimatedTokens} tokens).
-                            Execution blocked to prevent context overflow.
-                        </p>
-                         <button onClick={onReset} className="w-full bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-bold transition-colors">
-                              RESET SESSION
-                           </button>
-                    </div>
-                )}
-                
-                {/* ... (Existing Views) ... */}
-                {state.status === AgentStatus.WAITING_FOR_SITE_SELECTION && (
-                   <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 max-w-md w-full text-center">
-                      <Globe className="mx-auto text-blue-400 mb-4" size={48} />
-                      <h3 className="text-xl font-bold text-white mb-2">Select Target Site</h3>
-                      <p className="text-gray-400 mb-6 text-sm">Please choose a supported platform to begin.</p>
-                      
-                      <div className="space-y-3">
-                         {enabledSites.map(site => (
-                            <button 
-                                key={site.id}
-                                onClick={() => onSelectSite && onSelectSite(site.id)}
-                                className="w-full flex items-center justify-between p-4 bg-gray-900 border border-gray-800 hover:border-blue-500 rounded-lg group transition-all"
-                            >
-                                <span className="font-bold text-gray-200 group-hover:text-white">{site.label}</span>
-                                <ChevronRight size={16} className="text-gray-600 group-hover:text-blue-500" />
-                            </button>
-                         ))}
-                      </div>
-                   </div>
-                )}
-                
-                {/* G1: LLM Config Error UI */}
-                {state.status === AgentStatus.LLM_CONFIG_ERROR && (
-                    <div className="bg-red-900/30 border border-red-500/50 rounded-lg p-6 max-w-md text-center">
-                        <Settings className="mx-auto text-red-500 mb-4" size={48} />
-                        <h3 className="text-xl font-bold text-red-100 mb-2">LLM Configuration Error</h3>
-                        <p className="text-gray-300 mb-4 text-sm">
-                            The selected LLM provider is missing required credentials or is misconfigured.
-                        </p>
-                        <div className="bg-black/40 rounded p-2 mb-4 text-left font-mono text-xs text-red-200">
-                             See logs for details.
-                        </div>
-                    </div>
-                )}
-                
-                {/* DOM DRIFT WARNING */}
-                {state.status === AgentStatus.DOM_DRIFT_DETECTED && (
-                    <div className="bg-amber-900/30 border border-amber-500/50 rounded-lg p-6 max-w-md text-center">
-                        <AlertTriangle className="mx-auto text-amber-500 mb-4" size={48} />
-                        <h3 className="text-xl font-bold text-amber-100 mb-2">DOM Drift Detected</h3>
-                        <p className="text-gray-300 mb-4 text-sm">
-                            The structure of the current page has changed significantly since the last scan.
-                            Existing selectors may fail.
-                        </p>
-                        <div className="bg-black/40 rounded p-2 mb-4 text-left font-mono text-xs text-amber-200">
-                             <div>Page: {state.activeDriftEvent?.pageType}</div>
-                             <div>Severity: {state.activeDriftEvent?.severity}</div>
-                             <div>Action: {state.activeDriftEvent?.actionRequired}</div>
-                        </div>
-                        {onResolveDrift && (
-                            <button 
-                                onClick={onResolveDrift}
-                                className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center w-full gap-2 transition-colors"
-                            >
-                                <RefreshCw size={18} />
-                                ACKNOWLEDGE & RE-ANALYZE
-                            </button>
-                        )}
-                    </div>
-                )}
-                
-                {/* DRAFT PREVIEW (unchanged) */}
-                {state.status === AgentStatus.APPLY_DRAFT_FILLED && state.activeApplyDraft && (
-                    <div className="w-full h-full p-6 text-left overflow-auto bg-gray-900">
-                       {/* ... existing draft preview code ... */}
-                       {/* (Assuming same as before for brevity) */}
-                       <div className="mb-6 border-b border-gray-800 pb-4">
-                            <div className="flex items-center text-emerald-400 mb-2">
-                                <PenTool size={24} className="mr-3" />
-                                <h3 className="font-bold text-xl text-white">Application Draft</h3>
-                            </div>
-                            <p className="text-gray-400 text-sm">
-                                Cover Letter filled. Questionnaire {state.activeApplyDraft.questionnaireFilled ? 'answered' : 'not present'}. Ready to submit.
-                            </p>
-                        </div>
-                        {state.activeQuestionnaireAnswers && (
-                            <div className="bg-purple-900/10 border border-purple-500/30 rounded p-4">
-                                <div className="text-sm text-purple-400 font-bold mb-4 flex items-center gap-2">
-                                    <Sparkles size={16} />
-                                    AI Generated Answers
-                                </div>
-                                <div className="space-y-2">
-                                    {state.activeQuestionnaireAnswers.answers.map(ans => (
-                                        <div key={ans.fieldId} className="border-b border-gray-800 last:border-0 pb-2 mb-2">
-                                            <div className="grid grid-cols-2 gap-4 text-xs">
-                                                <div className="text-gray-400 font-mono">{ans.fieldId}</div>
-                                                <div>
-                                                    <div className="text-white font-bold">{String(ans.value)}</div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
+             <div className="w-full h-full border-2 border-[#0c0a08] bg-black relative overflow-hidden">
+                 <BrowserViewport 
+                    url={state.currentUrl || 'about:blank'}
+                    status={state.status}
+                    isMock={false} 
+                    onLoginSubmit={handleViewportLogin}
+                 />
+                 {/* Dirty Glass Overlay */}
+                 <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/dirty-old-shirt.png')] opacity-10 pointer-events-none"></div>
+                 {/* Vignette */}
+                 <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_50%,rgba(0,0,0,0.6)_100%)] pointer-events-none"></div>
              </div>
           </div>
           
-          {/* Controls (Same as before) */}
-          <div className="h-20 bg-gray-800 rounded-xl border border-gray-700 flex items-center justify-between px-6">
-             {/* ... existing controls ... */}
-             <div className="flex space-x-3">
-                {state.status === AgentStatus.IDLE && (
-                   <button onClick={onRun} className="flex items-center space-x-2 bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold transition-all">
-                    <Play size={18} fill="currentColor" />
-                    <span>INITIATE LOGIN</span>
-                  </button>
-                )}
-                 {(state.status === AgentStatus.APPLY_DRAFT_FILLED || state.status === AgentStatus.APPLY_RETRYING || state.status === AgentStatus.APPLY_FAILED_HIDDEN) && onSubmitApply && (
-                    <button onClick={onSubmitApply} className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-purple-900/20">
-                        <Send size={18} />
-                        <span>SUBMIT APPLICATION</span>
-                    </button>
-                )}
+          {/* Control Deck */}
+          <div className="h-28 bg-[#1c1917] border-t-4 border-[#44403c] flex items-center justify-between px-8 shadow-inner relative bg-[url('https://www.transparenttextures.com/patterns/dark-leather.png')]">
+             {/* Rivets */}
+             <div className="absolute top-2 left-2 w-2 h-2 rounded-full bg-[#292524] shadow-inner"></div>
+             <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#292524] shadow-inner"></div>
+             <div className="absolute bottom-2 left-2 w-2 h-2 rounded-full bg-[#292524] shadow-inner"></div>
+             <div className="absolute bottom-2 right-2 w-2 h-2 rounded-full bg-[#292524] shadow-inner"></div>
+
+             <div className="flex items-center gap-6 relative z-10">
+                 {/* Industrial Buttons */}
+                 {state.isPaused ? (
+                     <button onClick={onResume} className="flex flex-col items-center justify-center w-20 h-20 bg-[#14532d] border-b-4 border-[#052e16] rounded-full active:border-b-0 active:translate-y-1 transition-all shadow-xl group">
+                        <Play size={24} fill="currentColor" className="text-green-200 group-hover:text-white" />
+                        <span className="text-[10px] font-bold text-green-300 mt-1">RESUME</span>
+                     </button>
+                 ) : (
+                     <button onClick={onPause} disabled={state.status === AgentStatus.IDLE} className="flex flex-col items-center justify-center w-20 h-20 bg-[#78350f] border-b-4 border-[#451a03] rounded-full active:border-b-0 active:translate-y-1 transition-all shadow-xl disabled:opacity-50 disabled:grayscale group">
+                        <Pause size={24} fill="currentColor" className="text-amber-200 group-hover:text-white" />
+                        <span className="text-[10px] font-bold text-amber-300 mt-1">HALT</span>
+                     </button>
+                 )}
+
+                 <button onClick={onStop} disabled={state.status === AgentStatus.IDLE} className="w-14 h-14 bg-[#7f1d1d] border-2 border-[#450a0a] rounded flex items-center justify-center text-red-200 hover:text-white hover:bg-[#991b1b] shadow-[0_0_10px_rgba(220,38,38,0.3)] disabled:opacity-50 transition-all active:scale-95">
+                    <Square size={20} fill="currentColor" />
+                 </button>
+             </div>
+             
+             {/* Meters */}
+             <div className="flex items-center gap-6 relative z-10">
+                <div className="text-right hidden xl:block bg-black/40 p-2 border border-[#44403c] rounded">
+                    <div className="text-[9px] text-amber-700 uppercase tracking-widest font-mono mb-1">Runtime Clock</div>
+                    <div className="text-2xl font-mono text-amber-500 text-shadow-glow">00:12:45</div>
+                </div>
+                
+                {/* Reset Lever */}
+                <button onClick={onReset} className="flex flex-col items-center group">
+                    <div className="w-1 h-8 bg-[#44403c] mb-1 group-hover:bg-amber-600 transition-colors"></div>
+                    <div className="w-12 h-12 rounded-full border-2 border-[#44403c] flex items-center justify-center text-[#78716c] group-hover:text-amber-500 group-hover:border-amber-500 transition-all bg-[#0c0a08]">
+                        <RotateCcw size={20} />
+                    </div>
+                    <span className="text-[9px] font-bold text-[#57534e] mt-1 uppercase">Reset</span>
+                </button>
              </div>
           </div>
         </div>
 
-        {/* Right Col: Logs & Telemetry */}
-        <div className="bg-gray-950 rounded-xl border border-gray-800 flex flex-col font-mono text-sm">
-          {/* ... existing log UI ... */}
-          <div className="p-3 border-b border-gray-800 bg-gray-900/50 flex justify-between items-center">
-            <span className="text-gray-400 text-xs">SYSTEM LOGS</span>
-            <div className="flex items-center gap-3 text-xs">
-                <span className="text-yellow-400">CALLS: {state.tokenLedger.calls}</span>
-                <span className="text-blue-400">IN: {state.tokenLedger.inputTokens}</span>
-                <span className="text-purple-400">OUT: {state.tokenLedger.outputTokens}</span>
-                <span className="text-green-400">HIT: {state.tokenLedger.cacheHits}</span>
-            </div>
-          </div>
-          <div className="flex-1 overflow-auto p-4 space-y-2 text-gray-300" ref={scrollRef}>
+        {/* Right Col: Logs (Ticker Tape Style) */}
+        <div className="bg-[#0c0a08] border-4 border-[#292524] flex flex-col font-mono text-sm shadow-2xl relative">
+           {/* Header */}
+           <div className="p-4 border-b-2 border-[#292524] bg-[#1c1917] flex justify-between items-center">
+             <div className="flex items-center gap-2">
+                <Terminal size={14} className="text-green-600" />
+                <span className="text-green-700 text-xs font-bold tracking-widest uppercase">Telemetry Feed</span>
+             </div>
+             <div className="w-2 h-2 bg-green-900 rounded-full animate-ping"></div>
+           </div>
+           
+           <div className="flex-1 overflow-auto p-6 space-y-2 custom-scrollbar bg-[repeating-linear-gradient(0deg,transparent,transparent_1px,#111_2px)]" ref={scrollRef}>
+            {state.logs.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-full text-[#292524] space-y-2">
+                    <Radio size={32} className="opacity-20 animate-pulse" />
+                    <span className="text-xs uppercase tracking-widest opacity-50">Awaiting Data Stream...</span>
+                </div>
+            )}
             {state.logs.map((log, i) => (
-              <div key={i} className="break-words">
-                <span className="text-gray-600 mr-2">[{i}]</span>
-                {log}
+              <div key={i} className="flex gap-3 text-xs leading-relaxed border-b border-[#1c1917] pb-1">
+                <span className="text-amber-900 font-bold shrink-0 select-none opacity-50">{(i+1).toString().padStart(3, '0')}</span>
+                <span className="text-green-500/80 font-mono break-words shadow-black text-shadow-sm">{log}</span>
               </div>
             ))}
-          </div>
+            {/* Blinking Cursor */}
+            <div className="w-2 h-4 bg-green-700 animate-pulse mt-2"></div>
+           </div>
+           
+           {/* Bottom Bolt */}
+           <div className="absolute bottom-2 right-2 w-2 h-2 rounded-full bg-[#292524] border border-[#44403c]"></div>
         </div>
       </div>
     </Layout>

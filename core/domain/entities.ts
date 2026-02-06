@@ -1,6 +1,9 @@
 
+
 import { AgentStatus, WorkMode } from '../../types';
 import { TargetingSpecV1 } from './llm_contracts';
+
+// ... (previous interfaces remain unchanged until AgentState)
 
 // --- Shared Value Objects ---
 
@@ -31,6 +34,7 @@ export interface RawFormField {
   label: string;
   attributes: Record<string, string>;
   isVisible: boolean;
+  options?: { label: string; value: string }[];
 }
 
 export interface ApplyControl {
@@ -525,6 +529,7 @@ export interface AgentState {
   status: AgentStatus;
   currentUrl: string;
   logs: string[];
+  isPaused: boolean; // New Flag for Pause Control
   
   // Observability
   tokenLedger: TokenLedger;
@@ -583,6 +588,7 @@ export const createInitialAgentState = (): AgentState => ({
   status: AgentStatus.IDLE,
   currentUrl: '',
   logs: [],
+  isPaused: false,
   tokenLedger: { inputTokens: 0, outputTokens: 0, cacheHits: 0, cacheMisses: 0, calls: 0 },
   activeDriftEvent: null
 });

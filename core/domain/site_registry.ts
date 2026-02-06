@@ -1,4 +1,5 @@
 
+
 // Layer: DOMAIN
 // Purpose: Registry of supported target sites for multi-site architecture.
 
@@ -24,7 +25,8 @@ export const SiteRegistry: Record<SiteId, SiteDefinition> = {
     label: 'LinkedIn',
     baseUrl: 'https://www.linkedin.com',
     enabled: false,
-    storageNamespace: 'linkedin'
+    storageNamespace: 'linkedin',
+    searchEntrypoint: { kind: 'url', url: 'https://www.linkedin.com/jobs/search' }
   }
 };
 

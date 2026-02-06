@@ -1,4 +1,5 @@
 
+
 // Layer: ADAPTERS
 // Purpose: Mock implementation of LLM Port for development.
 
@@ -32,13 +33,15 @@ export class MockLLMAdapter implements LLMProviderPort {
         minThresholdStrategy: 'STRICT'
       },
       workModeRules: {
-        strictMode: profile.userConstraints.preferredWorkMode !== WorkMode.ANY
+        strictMode: !profile.userConstraints.preferredWorkModes.includes(WorkMode.ANY),
+        allowedModes: profile.userConstraints.preferredWorkModes
       },
       confidenceThresholds: {
         autoRead: 0.85,
         autoIgnore: 0.4
       },
       assumptions: ['Assuming focus on Web Development based on "React" keyword.'],
+      userConstraints: profile.userConstraints,
       // Phase G2: Telemetry
       tokenUsage: {
         input: 1000,

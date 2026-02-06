@@ -1,4 +1,5 @@
 
+
 // Layer: DOMAIN
 // Purpose: Data Transfer Objects (DTOs) and Contracts for LLM interactions.
 
@@ -10,7 +11,7 @@ export { WorkMode, SeniorityLevel, RoleCategory };
 // --- Input Contract ---
 
 export interface UserConstraints {
-  preferredWorkMode: WorkMode;
+  preferredWorkModes: WorkMode[]; // Changed from single to array
   minSalary: number | null; // in currency units
   currency: string; // 'RUB', 'USD', etc.
   city: string | null;
@@ -34,7 +35,7 @@ export interface SearchUIAnalysisInputV1 {
   };
   targetingContext: {
     targetRoles: string[]; // merged ru/en titles
-    workModeRules: { strictMode: boolean };
+    workModeRules: { strictMode: boolean; allowedModes: WorkMode[] };
     salaryRules: { minThresholdStrategy: string };
   };
 }
@@ -93,7 +94,7 @@ export interface EvaluateExtractsInputV1 {
   profileSummary: string; // from ProfileSnapshot
   targetingRules: {
     targetRoles: string[];
-    workModeRules: { strictMode: boolean };
+    workModeRules: { strictMode: boolean; allowedModes: WorkMode[] };
     minSalary?: number | null;
   };
   candidates: EvalCandidate[];
@@ -174,11 +175,15 @@ export interface TargetingSpecV1 {
   salaryRules: SalaryRules;
   workModeRules: {
     strictMode: boolean; // If true, discard non-matching work modes immediately
+    allowedModes: WorkMode[];
   };
   
   confidenceThresholds: ConfidenceThresholds;
   
   assumptions: string[]; // List of assumptions LLM made if profile data was ambiguous
+  
+  // Persisted constraints used to generate this spec
+  userConstraints: UserConstraints;
 
   // Phase G2: Telemetry
   tokenUsage?: {
