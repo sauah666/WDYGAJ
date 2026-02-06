@@ -1,9 +1,12 @@
+
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import Atropos from 'atropos/react';
 import { Layout } from '../components/Layout';
-import { Phone, ChevronDown, Settings, ArrowLeft } from 'lucide-react';
+import { Phone, ChevronDown, Settings, Archive, Sliders, Power } from 'lucide-react';
 import { AgentConfig, WorkMode } from '../../types';
 import { JokeService } from '../services/JokeService';
+import { AppliedVacancyRecord } from '../../core/domain/entities';
+import { VacancyHistoryOverlay } from '../components/VacancyHistoryOverlay';
 
 interface Props {
   config: Partial<AgentConfig>;
@@ -11,9 +14,11 @@ interface Props {
   onSiteSelect?: (site: string) => void;
   onConfigChange: (key: keyof AgentConfig, value: any) => void;
   onRun: () => void;
-  onSelect: (mode: string) => void;
+  onSelect: (mode: string) => void; // Used for "Advanced Setup" now
   onSettingsClick?: () => void;
   onNavigate?: (route: string) => void;
+  appliedHistory?: AppliedVacancyRecord[]; 
+  onWipeMemory?: () => void; 
 }
 
 const INTRO_VIDEO = "https://raw.githubusercontent.com/sauah666/WDYGAJ/9adbbc991fa9b9c12d54d6d435407de65c428635/valera_merged.mp4";
@@ -29,13 +34,13 @@ const LOCATIONS = [
 
 export const ModeSelectionScreen: React.FC<Props> = ({ 
     config, 
-    activeSite, 
-    onSiteSelect, 
     onConfigChange, 
     onRun, 
     onSelect, 
     onSettingsClick, 
-    onNavigate 
+    onNavigate,
+    appliedHistory = [],
+    onWipeMemory
 }) => {
   const [videoPhase, setVideoPhase] = useState<VideoPhase>('IDLE');
   const [isRelocated, setIsRelocated] = useState(false);
@@ -43,6 +48,8 @@ export const ModeSelectionScreen: React.FC<Props> = ({
   const [loopStarted, setLoopStarted] = useState(false);
   const [isReady, setIsReady] = useState(false);
   
+  const [showArchive, setShowArchive] = useState(false);
+
   // Orb Positioning
   const avatarRef = useRef<HTMLDivElement>(null);
   const [orbDest, setOrbDest] = useState<{top: number, left: number, width: number, height: number} | null>(null);
@@ -144,7 +151,7 @@ export const ModeSelectionScreen: React.FC<Props> = ({
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     if (isRelocated) {
-        timer = setTimeout(() => setShowPanel(true), 1200); // Accelerated from 1500
+        timer = setTimeout(() => setShowPanel(true), 1200); 
     } else {
         setShowPanel(false);
     }
@@ -159,7 +166,7 @@ export const ModeSelectionScreen: React.FC<Props> = ({
       setVideoPhase('INTRO');
       if (introVideoRef.current) {
           introVideoRef.current.currentTime = 0;
-          introVideoRef.current.playbackRate = 1.2; // 20% Faster
+          introVideoRef.current.playbackRate = 1.2; 
           introVideoRef.current.play().catch(console.error);
       }
       if (loopVideoRef.current) {
@@ -173,8 +180,6 @@ export const ModeSelectionScreen: React.FC<Props> = ({
       setIsRelocated(false);
       setVideoPhase('IDLE');
       setLoopStarted(false);
-      // Optional: Reset message
-      // setAgentMessage("Система готова.");
   };
 
   const handleIntroEnd = () => {
@@ -192,6 +197,16 @@ export const ModeSelectionScreen: React.FC<Props> = ({
               setIsRelocated(true);
           }
       }
+  };
+
+  const handleAdvancedSetup = () => {
+      // Directs to JobPreferencesScreen via App.tsx callback
+      onSelect('JOB_SEARCH');
+  };
+
+  const handleWipeWrapper = () => {
+      if(onWipeMemory) onWipeMemory();
+      setShowArchive(false);
   };
 
   const isPlaying = videoPhase !== 'IDLE';
@@ -225,11 +240,23 @@ export const ModeSelectionScreen: React.FC<Props> = ({
         @keyframes blink { 50% { opacity: 0; } }
       `}</style>
 
+      {/* ARCHIVE OVERLAY */}
+      {showArchive && (
+          <VacancyHistoryOverlay 
+              title="Архив Откликов"
+              items={appliedHistory}
+              onClose={() => setShowArchive(false)}
+              onClear={handleWipeWrapper}
+              onVisit={(url) => window.open(url, '_blank')}
+              mode="ARCHIVE"
+          />
+      )}
+
       <div className="flex flex-col items-center justify-center h-full w-full relative pt-0 pb-0 overflow-hidden bg-[#0a0503]">
         
         {/* --- MAIN PANEL --- */}
         <div className={`absolute inset-0 z-20 flex items-center justify-center pointer-events-none`}>
-            {/* FULL SCREEN CONTAINER: w-[98%] h-[98%] on mobile, limited on desktop */}
+            {/* FULL SCREEN CONTAINER */}
             <div 
                 className={`relative w-[98%] h-[98%] md:w-[600px] md:h-auto md:max-h-[95vh] bg-[#2a2420] border-[3px] border-[#4a3b32] shadow-[0_0_100px_rgba(0,0,0,0.8)] rounded-xl md:rounded-3xl overflow-hidden flex flex-col font-serif ${showPanel ? 'pointer-events-auto animate-switch-on' : 'opacity-0'}`}
                 style={{ 
@@ -237,29 +264,47 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                     boxShadow: 'inset 0 0 50px rgba(0,0,0,0.8), 0 20px 50px rgba(0,0,0,1)'
                 }}
             >
+                {/* Decorative Bolts */}
+                <div className="absolute top-2 left-2 w-3 h-3 bg-[#1c1917] rounded-full shadow-[inset_1px_1px_2px_rgba(0,0,0,0.5)] border border-[#4a3b32] z-40"></div>
+                <div className="absolute top-2 right-2 w-3 h-3 bg-[#1c1917] rounded-full shadow-[inset_1px_1px_2px_rgba(0,0,0,0.5)] border border-[#4a3b32] z-40"></div>
+                <div className="absolute bottom-2 left-2 w-3 h-3 bg-[#1c1917] rounded-full shadow-[inset_1px_1px_2px_rgba(0,0,0,0.5)] border border-[#4a3b32] z-40"></div>
+                <div className="absolute bottom-2 right-2 w-3 h-3 bg-[#1c1917] rounded-full shadow-[inset_1px_1px_2px_rgba(0,0,0,0.5)] border border-[#4a3b32] z-40"></div>
+
                 {/* 1. HEADER (Fixed) */}
                 <div className="shrink-0 relative h-14 bg-[#1a120e] border-b-4 border-[#3a2d25] flex items-center justify-between px-4 shadow-md z-30">
-                    <button 
-                        onClick={handleBackToIdle}
-                        className="text-[#78716c] hover:text-[#d97706] transition-colors p-2 rounded-full hover:bg-[#2a2018]"
-                    >
-                        <ArrowLeft size={24} />
-                    </button>
+                    <div className="flex gap-2">
+                        {/* Archive Button */}
+                        <button 
+                            onClick={() => setShowArchive(true)}
+                            className="text-[#78716c] hover:text-[#fcd34d] transition-colors p-2 rounded-full hover:bg-[#2a2018] relative group"
+                            title="Архив"
+                        >
+                            <Archive size={22} />
+                            {appliedHistory.length > 0 && (
+                                <div className="absolute top-1 right-1 w-2 h-2 bg-[#d97706] rounded-full"></div>
+                            )}
+                        </button>
+                    </div>
                     
                     <h2 className="relative z-10 font-serif font-bold text-xl text-[#cdbba7] tracking-widest uppercase text-shadow-md">
-                        Задача Агенту
+                        Параметры Поиска
                     </h2>
                     
-                    <div className="w-10"></div> {/* Spacer for balance */}
+                    {/* Advanced Params Button (Sliders) */}
+                    <button 
+                        onClick={handleAdvancedSetup}
+                        className="text-[#78716c] hover:text-[#fbbf24] transition-colors p-2 rounded-full hover:bg-[#2a2018] relative group"
+                        title="Расширенные Настройки"
+                    >
+                        <Sliders size={20} />
+                    </button>
                 </div>
 
-                {/* 2. ORB ROW (Fixed or Shrinkable) */}
+                {/* 2. ORB ROW */}
                 <div className="shrink-0 p-4 pb-2 bg-[#2a2420] z-20 relative">
                     <div className="flex gap-4 items-stretch h-28">
                         {/* Avatar Placeholder (Target) */}
-                        <div ref={avatarRef} className="w-28 shrink-0 relative opacity-0">
-                            {/* Target for Orb */}
-                        </div>
+                        <div ref={avatarRef} className="w-28 shrink-0 relative opacity-0"></div>
 
                         {/* Message Screen */}
                         <div className="flex-1 bg-[#1a1512] rounded-xl border-2 border-[#3a2d25] shadow-[inset_0_2px_10px_black] relative overflow-hidden p-3 flex flex-col justify-center">
@@ -273,13 +318,13 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                     </div>
                 </div>
 
-                {/* 3. SPACIOUS INPUTS AREA (Flex-1 to fill space) */}
+                {/* 3. INPUTS AREA */}
                 <div className="flex-1 overflow-y-auto px-6 pb-4 custom-scrollbar relative z-10 flex flex-col justify-evenly">
                      {/* Divider */}
                     <div className="relative flex items-center justify-center py-2 opacity-50 shrink-0">
                         <div className="h-px bg-[#4a3b32] flex-1"></div>
                         <div className="px-3 text-[#8c7b70] font-serif text-[10px] font-bold tracking-widest uppercase">
-                            Параметры Поиска
+                            Быстрый Старт ({config.targetSite || 'hh.ru'})
                         </div>
                         <div className="h-px bg-[#4a3b32] flex-1"></div>
                     </div>
@@ -366,9 +411,6 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                          <div className="h-[2px] w-6 bg-[#d97706]/50"></div>
                     </button>
                 </div>
-                
-                <div className="absolute -bottom-2 left-8 right-8 h-2 bg-[#1a120e] border-l border-r border-b border-[#3a2d25] rounded-b-xl shadow-lg"></div>
-
             </div>
         </div>
 
@@ -427,29 +469,45 @@ export const ModeSelectionScreen: React.FC<Props> = ({
         </div>
 
         {/* --- BUTTONS --- */}
+        {/* Settings: Top Right */}
         <div 
-            className={`fixed bottom-10 left-1/2 -translate-x-1/2 z-30 ease-out flex items-center gap-6 ${isReady ? 'transition-all duration-[1200ms]' : ''} ${
-                isRelocated ? 'opacity-0 translate-y-20 pointer-events-none scale-50' : 'opacity-100 translate-y-0 scale-100'
+            className={`fixed top-6 right-6 z-50 ease-out flex items-center justify-center ${isReady ? 'transition-all duration-[1200ms]' : ''} ${
+                isRelocated ? 'opacity-0 -translate-y-20 pointer-events-none' : 'opacity-100 translate-y-0'
             }`}
         >
             <button 
                 onClick={onSettingsClick}
                 disabled={isPlaying}
-                className={`group relative w-16 h-16 transition-all duration-200 ease-out flex items-center justify-center ${isPlaying ? 'scale-95 opacity-50' : 'active:scale-95'}`}
+                className={`group relative w-14 h-14 transition-all duration-200 ease-out flex items-center justify-center active:scale-95 ${isPlaying ? 'opacity-50' : ''}`}
             >
                  <div className="absolute inset-0 rounded-full bg-[#0c0a08] shadow-md border-2 border-[#44403c] group-hover:border-[#d97706] transition-colors"></div>
-                 <Settings size={26} className="relative z-10 text-[#a8a29e] group-hover:text-[#d97706] group-hover:rotate-90 transition-all duration-500" />
+                 <Settings size={22} className="relative z-10 text-[#a8a29e] group-hover:text-[#d97706] group-hover:rotate-90 transition-all duration-500" />
             </button>
+        </div>
 
+        {/* Call Button: Bottom Center */}
+        <div 
+            className={`fixed bottom-10 left-1/2 -translate-x-1/2 z-30 ease-out flex items-center justify-center ${isReady ? 'transition-all duration-[1200ms]' : ''} ${
+                isRelocated ? 'opacity-0 translate-y-20 pointer-events-none scale-50' : 'opacity-100 translate-y-0 scale-100'
+            }`}
+        >
             <button 
                 onClick={handleCall}
                 disabled={isPlaying}
                 className={`group relative w-24 h-24 transition-all duration-200 ease-out flex items-center justify-center ${isPlaying ? 'scale-95' : 'active:scale-95'}`}
             >
-                <div className={`absolute inset-0 rounded-full bg-gradient-to-br from-[#57534e] to-[#292524] shadow-[0_5px_20px_rgba(0,0,0,0.6)] transition-all ${isPlaying ? 'translate-y-1' : ''}`}></div>
-                <div className={`absolute inset-2 rounded-full bg-gradient-to-t from-[#292524] to-[#57534e] flex items-center justify-center border border-[#1c1917]`}>
-                    <div className={`relative z-10 p-4 rounded-full border border-[#44403c] bg-[#1c1917] shadow-lg transition-all duration-500 ${isPlaying ? 'bg-[#291810] border-red-900 shadow-[0_0_15px_red]' : ''}`}>
-                        <Phone size={30} className={`transition-colors opacity-80 ${isPlaying ? 'text-red-500' : 'text-[#a8a29e] group-hover:text-[#d6d3d1]'}`} />
+                <div className={`absolute inset-0 rounded-full bg-gradient-to-br from-[#1a120e] to-[#0c0a08] shadow-[0_5px_20px_rgba(0,0,0,0.6)] transition-all ${isPlaying ? 'translate-y-1' : ''}`}></div>
+                <div className={`absolute inset-2 rounded-full bg-gradient-to-t from-[#292524] to-[#1a120e] flex items-center justify-center border border-[#3e2f26]`}>
+                    <div className={`relative z-10 p-4 rounded-full border-2 bg-[#1c1917] shadow-lg transition-all duration-500 ${
+                        isPlaying 
+                        ? 'border-green-600 bg-[#064e3b] shadow-[0_0_20px_rgba(22,163,74,0.6)]' 
+                        : 'border-[#44403c] hover:border-[#d97706]'
+                    }`}>
+                        {isPlaying ? (
+                            <Power size={30} className="text-white animate-pulse" />
+                        ) : (
+                            <Phone size={30} className="text-[#a8a29e] group-hover:text-[#d6d3d1]" />
+                        )}
                     </div>
                 </div>
             </button>

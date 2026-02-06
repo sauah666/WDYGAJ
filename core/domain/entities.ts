@@ -166,6 +166,7 @@ export interface VacancyCardV1 {
   city: string | null;
   workMode: string; // raw string
   salary: VacancySalary | null;
+  salaryText?: string; 
   publishedAt: string | null;
   cardHash: string;
 }
@@ -529,6 +530,7 @@ export interface AppliedVacancyRecord {
     id: string;
     title: string;
     company: string;
+    url: string; // Added for navigation
     timestamp: number;
     status: 'APPLIED' | 'SKIPPED' | 'FAILED';
     reason: string;

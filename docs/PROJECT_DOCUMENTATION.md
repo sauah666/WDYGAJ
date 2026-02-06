@@ -1,17 +1,57 @@
 
-## Phase G3.0.1: Fix Pack (Smoke & Batching)
-- **Smoke Tests**: Updated to rely on functional state (status codes, button presence) rather than visual CSS classes.
-- **Batch Enforcement**: 
-  - Strict 10-15 item window.
-  - Exception: Batches < 10 are permitted **only** if `endOfResults` signal is present from the source.
-  - Otherwise, execution is deferred (blocked) to accumulate more items.
-- **Compaction**: Uses deterministic policy constants (`DEFAULT_COMPACTION_POLICY`) instead of magic numbers.
+# Project Documentation
 
-## Runtime Governance (Manual Fix Pack)
-- **Adapter Safety**: Browser bundles no longer crash due to Node.js-only imports (Playwright).
+## Phases & Progress
+
+### Phase A: Foundation (DONE)
+- [x] State Management (Redux-like immutable state).
+- [x] DI System (Ports & Adapters).
+- [x] Basic UI Shell.
+
+### Phase B: Browser Interface (DONE)
+- [x] Browser Port Definition.
+- [x] Mock Adapter Implementation.
+- [x] Vacancy Extraction Logic.
+
+### Phase C: Intelligence (DONE)
+- [x] LLM Port Definition.
+- [x] Mock LLM Adapter.
+- [x] Targeting Spec Generation.
+- [x] Vacancy Screening Logic.
+
+### Phase D: Automation Pipeline (DONE)
+- [x] Search Page Navigation.
+- [x] DOM Analysis & Filter Application.
+- [x] Vacancy Collection Batching.
+- [x] Apply Queue & Execution.
+
+### Phase E: Application Execution (DONE)
+- [x] Apply Entrypoint Probing.
+- [x] Form Filling (Drafts).
+- [x] Questionnaire Handling.
+- [x] Submit & Receipt.
+
+### Phase F: Resilience & Ops (DONE)
+- [x] DOM Drift Detection.
+- [x] Site Selection Logic.
+- [x] Retry Policies.
+
+### Phase G: Governance & Limits (DONE)
+- [x] G1: LLM Configuration & Safety.
+- [x] G2: Token Ledger & Telemetry.
+- [x] G3: Context Pruning & Compaction.
+- [x] G3.0.1: Fix Pack (Runtime Safety).
+
+### Phase H: Polish & UX (DONE)
+- [x] H1: Design System Update (Industrial/Cyberpunk).
+- [x] H2: User Feedback (Joke Service, Logs).
+- [x] H3: Advanced Flow Control (Pause, Stop, Amnesia).
+- [x] H4: Documentation Audit.
+
+## Runtime Governance
+- **Adapter Safety**: Browser bundles use Mock/Remote adapters. Playwright is Node-only.
 - **Env Detection**: `RuntimeCapabilities` logic automatically detects Browser vs Node Runner environment.
-- **Fail-Safe UI**:
-  - Impossible options (e.g. Playwright in pure browser) are disabled in Settings.
-  - Error screens include "Back to Settings" and "Force Reset" buttons to prevent dead-ends.
-  - "Job Title" and "Location" fields are clearly marked as derived/read-only to avoid user confusion.
-- **Remote Runner Architecture**: Added infrastructure for `RemoteBrowserAdapter` to communicate with a separate Node process (future proofing).
+
+## Batch Enforcement Policy
+- Strict 10-15 item window for LLM batches.
+- Execution blocked if batch size < 10, unless `endOfResults` is flagged.

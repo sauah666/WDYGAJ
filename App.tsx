@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppRoute, AgentConfig, AgentStatus } from './types';
 import { AgentState, createInitialAgentState, UserSearchPrefsV1 } from './core/domain/entities';
 import { computeRuntimeCapabilities, validateConfigAgainstRuntime, ConfigIssueV1 } from './core/domain/runtime';
@@ -15,9 +15,8 @@ import { DEFAULT_LLM_PROVIDER, LLMProviderRegistry } from './core/domain/llm_reg
 
 // Screens
 import { ModeSelectionScreen } from './presentation/screens/ModeSelectionScreen';
-import { SiteSelectionScreen } from './presentation/screens/SiteSelectionScreen';
 import { SettingsScreen } from './presentation/screens/SettingsScreen';
-import { JobPreferencesScreen } from './presentation/screens/JobPreferencesScreen'; // NEW
+import { JobPreferencesScreen } from './presentation/screens/JobPreferencesScreen'; 
 import { AgentStatusScreen } from './presentation/screens/AgentStatusScreen';
 
 // Core singleton for storage (always local)
@@ -53,7 +52,7 @@ const buildAdapters = (config: Partial<AgentConfig>) => {
       activeBrowserProvider = 'mock';
   }
 
-  // LLM Adapter Selection (Updated for DeepSeek & Local)
+  // LLM Adapter Selection
   let llmAdapter;
   const providerId = config.activeLLMProviderId || DEFAULT_LLM_PROVIDER;
   const providerDef = LLMProviderRegistry[providerId] || LLMProviderRegistry[DEFAULT_LLM_PROVIDER];
@@ -98,56 +97,68 @@ export default function App() {
     mode: 'JOB_SEARCH',
     targetSite: 'hh.ru',
     activeLLMProviderId: DEFAULT_LLM_PROVIDER,
-    browserProvider: 'mock', // Default to Mock to fix "Connection Failed" error
+    browserProvider: 'mock', // Default to Mock
     localGatewayUrl: 'http://localhost:1234/v1',
     minSalary: 100000,
     currency: 'RUB'
   });
   const [agentState, setAgentState] = useState<AgentState>(createInitialAgentState());
+  
+  // Ref to track state for Event Listeners without causing re-renders/re-binds
+  const agentStateRef = useRef(agentState);
+  useEffect(() => { agentStateRef.current = agentState; }, [agentState]);
 
-  // Bind View to Presenter
+  // 1. INITIALIZATION (Run Once)
   useEffect(() => {
-    storageAdapter.getConfig().then(c => {
-      if (c) {
-        // Merge defaults with saved config
-        const merged = { ...config, ...c };
+    const initAsync = async () => {
+        const c = await storageAdapter.getConfig();
+        const savedState = await storageAdapter.getAgentState();
         
-        // Remove forced override. Allow 'mock' to persist if saved or default.
-        if (!merged.browserProvider) {
-             merged.browserProvider = 'mock';
+        if (savedState) setAgentState(savedState);
+
+        let mergedConfig = config;
+        if (c) {
+            mergedConfig = { ...config, ...c };
+            if (!mergedConfig.browserProvider) {
+                 mergedConfig.browserProvider = 'mock';
+            }
+            setConfig(mergedConfig);
         }
         
-        setConfig(merged);
-        const { browserAdapter, llmAdapter } = buildAdapters(merged);
+        const { browserAdapter, llmAdapter } = buildAdapters(mergedConfig);
         agentUseCase = new AgentUseCase(browserAdapter, storageAdapter, agentPresenter, llmAdapter);
         agentPresenter.setUseCase(agentUseCase);
-        agentPresenter.setConfig(merged);
-      }
-    });
-    
-    storageAdapter.getAgentState().then(s => {
-      if (s) setAgentState(s);
-    });
+        agentPresenter.setConfig(mergedConfig);
+    };
 
+    initAsync();
+  }, []); 
+
+  // 2. BIND PRESENTER
+  useEffect(() => {
     agentPresenter.bind((newState) => {
       setAgentState(newState);
     });
+    return () => agentPresenter.unbind();
+  }, []);
 
-    // Listen for custom Amnesia event from Screen
+  // 3. EVENT LISTENERS
+  useEffect(() => {
     const handleWipe = () => {
-        agentPresenter.wipeMemory(agentState);
+        agentPresenter.wipeMemory(agentStateRef.current);
     };
     window.addEventListener('AGENT_WIPE_MEMORY', handleWipe);
-
     return () => {
-        agentPresenter.unbind();
         window.removeEventListener('AGENT_WIPE_MEMORY', handleWipe);
     };
-  }, [agentState]); // Add agentState dep to capture latest state for wipe
+  }, []);
 
   // --- Actions ---
 
-  // Central Navigation Handler for Sidebar
+  const handleWipeWrapper = () => {
+      agentPresenter.wipeMemory(agentStateRef.current);
+  };
+
   const handleNavigate = (target: string) => {
       if (target === 'MODE_SELECTION') {
           setRoute(AppRoute.MODE_SELECTION);
@@ -164,17 +175,8 @@ export default function App() {
       setRoute(AppRoute.SETTINGS);
   };
 
-  const handleModeSelect = (mode: string) => {
-    setConfig(prev => ({ ...prev, mode }));
-    setRoute(AppRoute.SITE_SELECTION);
-  };
-  
-  const handleSiteSelectFromMode = (site: string) => {
-    setConfig(prev => ({ ...prev, targetSite: site }));
-  };
-
-  const handleSiteSelect = (site: string) => {
-    setConfig(prev => ({ ...prev, targetSite: site }));
+  // Navigates directly to Job Preferences (Advanced Setup)
+  const handleAdvancedSetup = () => {
     setRoute(AppRoute.JOB_PREFERENCES);
   };
 
@@ -185,6 +187,7 @@ export default function App() {
           const { browserAdapter, llmAdapter } = buildAdapters(config);
           agentUseCase = new AgentUseCase(browserAdapter, storageAdapter, agentPresenter, llmAdapter);
           agentPresenter.setUseCase(agentUseCase);
+          agentPresenter.setConfig(config); 
           
           alert("Configuration Saved."); 
           setRoute(AppRoute.MODE_SELECTION); 
@@ -208,10 +211,9 @@ export default function App() {
   const handleConfirmLogin = () => agentPresenter.confirmLogin(agentState);
   const handleReset = async () => {
       await agentPresenter.resetSession(agentState);
-      setRoute(AppRoute.JOB_PREFERENCES); // Go back to Salary Page as requested
+      setRoute(AppRoute.JOB_PREFERENCES);
   };
   
-  // Pause Logic
   const handlePause = () => {
       agentUseCase.setPauseState(agentState, true);
   };
@@ -228,18 +230,11 @@ export default function App() {
                   config={config}
                   onConfigChange={(k, v) => setConfig(prev => ({ ...prev, [k]: v }))}
                   onRun={handleLaunchAgent}
-                  onSiteSelect={handleSiteSelectFromMode}
-                  onSelect={handleModeSelect} 
-                  onSettingsClick={handleGlobalSettingsOpen}
-                  onNavigate={handleNavigate}
-               />;
-      break;
-    case AppRoute.SITE_SELECTION:
-      screen = <SiteSelectionScreen 
-                  onSelect={handleSiteSelect} 
-                  onBack={() => setRoute(AppRoute.MODE_SELECTION)} 
+                  onSelect={handleAdvancedSetup} 
                   onSettingsClick={handleGlobalSettingsOpen} 
                   onNavigate={handleNavigate}
+                  appliedHistory={agentState.appliedHistory}
+                  onWipeMemory={handleWipeWrapper}
                />;
       break;
     case AppRoute.JOB_PREFERENCES:
@@ -283,9 +278,11 @@ export default function App() {
                   config={config}
                   onConfigChange={(k, v) => setConfig(prev => ({ ...prev, [k]: v }))}
                   onRun={handleLaunchAgent}
-                  onSelect={handleModeSelect} 
+                  onSelect={handleAdvancedSetup} 
                   onSettingsClick={handleGlobalSettingsOpen} 
                   onNavigate={handleNavigate}
+                  appliedHistory={agentState.appliedHistory}
+                  onWipeMemory={handleWipeWrapper}
                />;
   }
 

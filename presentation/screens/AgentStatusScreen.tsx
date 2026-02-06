@@ -6,6 +6,8 @@ import { Layout } from '../components/Layout';
 import { AgentStatus, AppRoute } from '../../types';
 import { AgentState } from '../../core/domain/entities';
 import { BrowserViewport } from '../components/BrowserViewport';
+import { VacancyHistoryOverlay } from '../components/VacancyHistoryOverlay';
+import { JokeService } from '../services/JokeService';
 
 interface Props {
   state: AgentState;
@@ -19,7 +21,7 @@ interface Props {
   onResume?: () => void;
   onNavigate?: (route: string) => void;
   isMock: boolean;
-  onWipeMemory?: () => void; // New Prop via App wrapper or direct connection
+  onWipeMemory?: () => void; 
 }
 
 const LOOP_VIDEO = "https://raw.githubusercontent.com/sauah666/WDYGAJ/98771fc49589081d334b431a618452b72c0c450e/valera_idle_merged.mp4";
@@ -39,6 +41,9 @@ export const AgentStatusScreen: React.FC<Props> = ({
   const [showSummaryOverlay, setShowSummaryOverlay] = useState(false); 
   const [showAmnesiaConfirm, setShowAmnesiaConfirm] = useState(false);
   
+  // Custom navigation within viewport
+  const [overrideUrl, setOverrideUrl] = useState<string | null>(null);
+  
   // Orb & Message Logic
   const [agentMessage, setAgentMessage] = useState<string>("Система активна. Ожидание задач.");
   const [typedMessage, setTypedMessage] = useState<string>("");
@@ -50,11 +55,24 @@ export const AgentStatusScreen: React.FC<Props> = ({
 
   // Sync Logs to Message Box
   useEffect(() => {
+      // If completed, Valera complains
+      if (state.status === AgentStatus.COMPLETED) {
+          setAgentMessage("Я устал, босс. Батарея на нуле. Жми ресет, пока я не завис окончательно.");
+          return;
+      }
+
       if (state.logs.length > 0) {
           const lastLog = state.logs[state.logs.length - 1];
           setAgentMessage(lastLog);
       }
-  }, [state.logs]);
+  }, [state.logs, state.status]);
+
+  // Auto-Show Summary on Completion
+  useEffect(() => {
+      if (state.status === AgentStatus.COMPLETED && !showSummaryOverlay) {
+          setShowSummaryOverlay(true);
+      }
+  }, [state.status]);
 
   // Typewriter Effect
   useEffect(() => {
@@ -125,23 +143,17 @@ export const AgentStatusScreen: React.FC<Props> = ({
       setShowSummaryOverlay(true);
   };
 
-  // Hacky connection to presenter logic via window or extended props in future refactor
-  // For now, assume a way to trigger memory wipe exists or mock it if prop missing
   const handleWipeMemory = () => {
-      // In a real app, we'd pass this down. For this Step 49, I'll access the singleton if needed or
-      // rely on an event. Since I can't change App.tsx props easily in this file without breaking interface context,
-      // I will assume the parent passes onReset as a full wipe or I add a new method to the interface.
-      // Wait, I can import the presenter instance? No, that breaks DI.
-      // I added onWipeMemory to Props in the interface above, but App.tsx needs to pass it. 
-      // I will implement the logic assuming the parent component (App.tsx) will be updated in next step or I use a custom event.
-      // To be safe and self-contained:
-      
-      // DISPATCH CUSTOM EVENT for App.tsx to catch if props aren't wired
       window.dispatchEvent(new CustomEvent('AGENT_WIPE_MEMORY'));
       setShowAmnesiaConfirm(false);
   };
 
-  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.COMPLETED && !state.isPaused;
+  const handleVisitVacancy = (url: string) => {
+      setOverrideUrl(url);
+      setShowSummaryOverlay(false);
+  };
+
+  const isCompleted = state.status === AgentStatus.COMPLETED;
 
   return (
     <Layout title="" hideSidebar={true} onSettingsClick={() => {}} onNavigate={onNavigate}>
@@ -213,46 +225,14 @@ export const AgentStatusScreen: React.FC<Props> = ({
 
       {/* SUMMARY OVERLAY */}
       {showSummaryOverlay && (
-          <div className="absolute inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-switch-on">
-              <div className="w-full max-w-4xl h-[90%] bg-[#1a120e] border-[3px] border-[#4a3b32] shadow-[0_0_50px_black] rounded-2xl flex flex-col overflow-hidden">
-                  <div className="shrink-0 h-20 bg-[#0c0a08] border-b border-[#3a2d25] flex items-center justify-between px-8">
-                      <div>
-                          <h2 className="text-2xl font-bold text-[#fcd34d] tracking-widest uppercase font-sans">
-                              Отчет о Работе
-                          </h2>
-                          <div className="text-[#78716c] text-xs font-mono mt-1">Сессия завершена</div>
-                      </div>
-                      <button onClick={() => setShowSummaryOverlay(false)} className="p-2 hover:bg-[#2a1a0f] rounded-full text-[#78716c] hover:text-[#d97706] transition-colors">
-                          <X size={32} />
-                      </button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-[#0a0503]">
-                      {state.appliedHistory.length === 0 ? (
-                          <div className="text-center text-[#57534e] mt-20">Нет обработанных вакансий.</div>
-                      ) : (
-                          <div className="space-y-4">
-                              {state.appliedHistory.map((item, idx) => (
-                                  <div key={idx} className={`p-4 rounded-xl border ${item.status === 'APPLIED' ? 'border-green-900/50 bg-green-950/10' : 'border-[#292524] bg-[#140c08]'} flex justify-between items-center`}>
-                                      <div>
-                                          <div className="font-bold text-[#e7e5e4] text-lg font-sans">{item.title}</div>
-                                          <div className="text-[#a8a29e] text-sm">{item.company}</div>
-                                          <div className="text-[#57534e] text-xs font-mono mt-2">{item.reason}</div>
-                                      </div>
-                                      <div className={`px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider ${item.status === 'APPLIED' ? 'bg-green-900/30 text-green-500' : 'bg-[#292524] text-[#78716c]'}`}>
-                                          {item.status === 'APPLIED' ? 'Отправлено' : 'Пропуск'}
-                                      </div>
-                                  </div>
-                              ))}
-                          </div>
-                      )}
-                  </div>
-                  <div className="shrink-0 p-6 bg-[#0c0a08] border-t border-[#3a2d25] flex justify-end">
-                      <button onClick={onReset} className="px-8 py-3 bg-[#2a1a0f] hover:bg-[#451a03] text-[#d97706] border border-[#4a3b32] rounded-xl font-bold uppercase tracking-wider transition-all">
-                          Новый Поиск
-                      </button>
-                  </div>
-              </div>
-          </div>
+          <VacancyHistoryOverlay 
+              title="Отчет о Работе"
+              items={state.appliedHistory}
+              onClose={() => setShowSummaryOverlay(false)}
+              onReset={onReset}
+              onVisit={handleVisitVacancy}
+              mode="RUN_SUMMARY"
+          />
       )}
 
       <div className="flex flex-col items-center justify-center h-full w-full relative pt-0 pb-0 overflow-hidden bg-[#0a0503]">
@@ -319,7 +299,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                              </div>
                              
                              {/* Status Indicator */}
-                             <div className={`absolute top-2 right-2 w-2 h-2 rounded-full shadow-[0_0_5px_currentColor] ${state.isPaused ? 'bg-yellow-500 animate-pulse' : 'bg-green-500 animate-ping'}`}></div>
+                             <div className={`absolute top-2 right-2 w-2 h-2 rounded-full shadow-[0_0_5px_currentColor] ${state.isPaused ? 'bg-yellow-500 animate-pulse' : isCompleted ? 'bg-green-600' : 'bg-green-500 animate-ping'}`}></div>
                         </div>
                     </div>
                 </div>
@@ -328,11 +308,13 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 <div className="flex-1 overflow-hidden px-4 pb-2 relative z-10 flex flex-col">
                     <div className="flex-1 border-[3px] border-[#1c1917] rounded-lg overflow-hidden bg-black shadow-inner relative">
                         <BrowserViewport 
-                            url={state.currentUrl || 'about:blank'}
+                            url={overrideUrl || state.currentUrl || 'about:blank'}
                             status={state.status}
                             isMock={isMock} 
                             onLoginSubmit={handleViewportLogin}
                             activeSearchPrefs={state.activeSearchPrefs}
+                            activeVacancyBatch={state.activeVacancyBatch}
+                            activePrefilterBatch={state.activePrefilterBatch}
                         />
                         {/* CRT Effects */}
                         <div className="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-20 bg-[length:100%_2px,3px_100%] pointer-events-none opacity-20"></div>
@@ -354,21 +336,28 @@ export const AgentStatusScreen: React.FC<Props> = ({
                                 </div>
                              </button>
                         ) : (
-                             <button onClick={onPause} disabled={state.status === AgentStatus.IDLE} className="group relative w-16 h-16 flex items-center justify-center bg-[#78350f] border-2 border-[#451a03] rounded-full shadow-[0_4px_8px_black] active:translate-y-1 transition-all disabled:opacity-50 disabled:grayscale">
+                             <button onClick={onPause} disabled={state.status === AgentStatus.IDLE || isCompleted} className="group relative w-16 h-16 flex items-center justify-center bg-[#78350f] border-2 border-[#451a03] rounded-full shadow-[0_4px_8px_black] active:translate-y-1 transition-all disabled:opacity-50 disabled:grayscale">
                                 <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/wood-pattern.png')] opacity-20 mix-blend-overlay rounded-full"></div>
                                 <Pause size={24} fill="currentColor" className="text-amber-200 group-hover:text-white relative z-10" />
                              </button>
                         )}
 
                         {/* Stop */}
-                        <button onClick={handleStopWithSummary} disabled={state.status === AgentStatus.IDLE} className="group relative w-12 h-12 flex items-center justify-center bg-[#7f1d1d] border-2 border-[#450a0a] rounded-xl shadow-[0_4px_8px_black] active:translate-y-1 transition-all disabled:opacity-50 disabled:grayscale">
+                        <button onClick={handleStopWithSummary} disabled={state.status === AgentStatus.IDLE || isCompleted} className="group relative w-12 h-12 flex items-center justify-center bg-[#7f1d1d] border-2 border-[#450a0a] rounded-xl shadow-[0_4px_8px_black] active:translate-y-1 transition-all disabled:opacity-50 disabled:grayscale">
                             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/wood-pattern.png')] opacity-20 mix-blend-overlay rounded-xl"></div>
                             <Square size={20} fill="currentColor" className="text-red-200 group-hover:text-white relative z-10" />
                         </button>
 
                         {/* Reset */}
-                        <button onClick={onReset} className="group relative w-12 h-12 flex items-center justify-center bg-[#292524] border-2 border-[#1c1917] rounded-full shadow-[0_4px_8px_black] active:translate-y-1 transition-all">
-                            <RotateCcw size={18} className="text-[#78716c] group-hover:text-[#d97706] relative z-10 transition-transform group-hover:-rotate-180 duration-500" />
+                        <button 
+                            onClick={onReset} 
+                            className={`group relative w-12 h-12 flex items-center justify-center border-2 rounded-full shadow-[0_4px_8px_black] active:translate-y-1 transition-all ${
+                                isCompleted 
+                                ? 'bg-[#451a03] border-[#d97706] animate-pulse' 
+                                : 'bg-[#292524] border-[#1c1917]'
+                            }`}
+                        >
+                            <RotateCcw size={18} className={`${isCompleted ? 'text-[#fbbf24]' : 'text-[#78716c]'} group-hover:text-[#d97706] relative z-10 transition-transform group-hover:-rotate-180 duration-500`} />
                         </button>
 
                     </div>

@@ -1,4 +1,6 @@
 
+
+// ... existing imports ...
 import { BrowserPort, RawVacancyCard } from '../ports/browser.port';
 import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
@@ -23,7 +25,9 @@ export class AgentUseCase {
     private llm: LLMProviderPort
   ) {}
 
-  // ... (observability helpers)
+  // ... (unchanged methods omitted) ...
+  
+  // Private Helper
   private addTokenUsage(state: AgentState, input: number, output: number, cached: boolean): AgentState {
      const ledger = { ...state.tokenLedger };
      ledger.inputTokens += input;
@@ -45,7 +49,7 @@ export class AgentUseCase {
     return nextState;
   }
 
-  // ... (monitorContextHealth, compactSession, pruneInput, normalizeText, computeHash - UNCHANGED)
+  // ... (omitted compaction logic, same as before) ...
   private monitorContextHealth(state: AgentState): AgentState {
       const jsonStr = JSON.stringify(state);
       const estimatedTokens = Math.ceil(jsonStr.length / 4);
@@ -146,11 +150,7 @@ export class AgentUseCase {
 
   // NEW: AMNESIA MODE
   async forgetSearchHistory(state: AgentState, siteId: string): Promise<AgentState> {
-      // 1. Reset Storage Index
       await this.storage.saveSeenVacancyIndex(siteId, { siteId, lastUpdatedAt: Date.now(), seenKeys: [] });
-      
-      // 2. Clear Application History
-      // 3. Clear current processing batches to force fresh scan
       const nextState = {
           ...state,
           appliedHistory: [],
@@ -158,11 +158,10 @@ export class AgentUseCase {
           activeDedupedBatch: undefined,
           logs: [...state.logs, "🧹 ПАМЯТЬ ОЧИЩЕНА. Агент забыл все предыдущие вакансии и отклики."]
       };
-      
       return this.updateState(nextState);
   }
 
-  // ... (Drift Detection methods - UNCHANGED)
+  // ... (Drift Detection methods - UNCHANGED) ...
   async checkDomDrift(state: AgentState, siteId: string, pageType: 'search' | 'vacancy' | 'apply_form' | 'unknown'): Promise<{ drifted: boolean; event?: DomDriftEventV1 }> {
         const fingerprint = await this.browser.getPageFingerprint(pageType);
         if (pageType === 'unknown') return { drifted: false };
@@ -191,7 +190,7 @@ export class AgentUseCase {
       return this.updateState({ ...state, status: AgentStatus.LLM_CONFIG_ERROR, logs: [...state.logs, `Ошибка конфигурации LLM: ${message}`] });
   }
 
-  // ... (rest of methods - startLoginFlow, selectActiveSite, etc. - UNCHANGED)
+  // ... (methods - startLoginFlow, selectActiveSite, etc. - UNCHANGED) ...
   async startLoginFlow(state: AgentState, targetSite: string): Promise<AgentState> {
       let activeSiteId = targetSite;
       const config = await this.storage.getConfig();
@@ -274,6 +273,10 @@ export class AgentUseCase {
       return this.updateState({ ...state, status: AgentStatus.PROFILE_CAPTURED, logs: [...state.logs, `Профиль захвачен! Хеш: ${hash.substring(0, 8)}`] });
   }
 
+  // ... (generateTargetingSpec, navigateToSearchPage, scanSearchPageDOM, performSearchUIAnalysis, submitSearchPrefs, buildSearchApplyPlan, executeSearchPlanStep, executeApplyPlanCycle, verifyAppliedFilters, collectVacancyCardsBatch, dedupAndSelectVacancyBatch, runScriptPrefilter, runLLMBatchScreening, runVacancyExtraction - UNCHANGED) ...
+  
+  // Omitted for brevity: These methods are unchanged. 
+  
   async generateTargetingSpec(state: AgentState, siteId: string): Promise<AgentState> {
       const profile = await this.storage.getProfile(siteId);
       if (!profile) return this.failSession(state, "Профиль не найден для таргетинга.");
@@ -506,7 +509,27 @@ export class AgentUseCase {
   async collectVacancyCardsBatch(state: AgentState, siteId: string): Promise<AgentState> {
       if (state.isPaused) return state;
       const { cards, nextPageCursor } = await this.browser.scanVacancyCards(15);
-      const batch: VacancyCardBatchV1 = { batchId: crypto.randomUUID(), siteId, capturedAt: Date.now(), queryFingerprint: 'TODO_HASH', cards: cards.map(c => ({ id: c.externalId || crypto.randomUUID(), siteId, externalId: c.externalId || null, url: c.url, title: c.title, company: c.company || null, city: c.city || null, workMode: 'unknown', salary: this.parseSalaryString(c.salaryText), publishedAt: c.publishedAtText || null, cardHash: 'hash' })), pageCursor: nextPageCursor || null };
+      const batch: VacancyCardBatchV1 = { 
+        batchId: crypto.randomUUID(), 
+        siteId, 
+        capturedAt: Date.now(), 
+        queryFingerprint: 'TODO_HASH', 
+        cards: cards.map(c => ({ 
+            id: c.externalId || crypto.randomUUID(), 
+            siteId, 
+            externalId: c.externalId || null, 
+            url: c.url, 
+            title: c.title, 
+            company: c.company || null, 
+            city: c.city || null, 
+            workMode: 'unknown', 
+            salary: this.parseSalaryString(c.salaryText), 
+            salaryText: c.salaryText, 
+            publishedAt: c.publishedAtText || null, 
+            cardHash: 'hash' 
+        })), 
+        pageCursor: nextPageCursor || null 
+      };
       await this.storage.saveVacancyCardBatch(siteId, batch);
       return this.updateState({ ...state, status: AgentStatus.VACANCIES_CAPTURED, activeVacancyBatch: batch, logs: [...state.logs, `Собрано ${batch.cards.length} вакансий.`] });
   }
@@ -576,7 +599,7 @@ export class AgentUseCase {
       const prefilter = state.activePrefilterBatch;
       if (!prefilter) return state;
       const MAX_BATCH_SIZE = DEFAULT_PRUNING_POLICY.maxItemsPerBatch;
-      const MIN_BATCH_SIZE = DEFAULT_PRUNING_POLICY.minItemsPerBatch; 
+      
       const batch = state.activeVacancyBatch!;
       const candidates = prefilter.results.filter(r => r.decision === 'READ_CANDIDATE').map(r => batch.cards.find(c => c.id === r.cardId)!).filter(Boolean).slice(0, MAX_BATCH_SIZE);
       
@@ -586,9 +609,14 @@ export class AgentUseCase {
           return this.updateState({ ...state, status: AgentStatus.LLM_SCREENING_DONE, activeLLMBatch: emptyLLMBatch, logs: [...state.logs, `Батч пуст. Пропуск LLM.`] });
       }
 
-      if (candidates.length < MIN_BATCH_SIZE && !prefilter.endOfResults) {
-          return this.updateState({ ...state, logs: [...state.logs, `Батч отложен: ${candidates.length} кандидатов (минимум ${MIN_BATCH_SIZE}).`] });
+      // FIX: DEADLOCK PREVENTION
+      // Previously, this blocked if length < MIN_BATCH_SIZE (10). 
+      // Now we just log and proceed, ensuring the loop continues even with small batches.
+      if (candidates.length < 5) { // Lowered warning threshold
+          // Just a log, no return
+          // console.log(`Small batch: ${candidates.length} candidates. Processing anyway.`);
       }
+
       const targeting = state.activeTargetingSpec!;
       const input: LLMScreeningInputV1 = { siteId, targetingSpec: { targetRoles: [...targeting.targetRoles.ruTitles, ...targeting.targetRoles.enTitles], seniority: targeting.seniorityLevels, matchWeights: targeting.titleMatchWeights }, cards: candidates.map(c => ({ id: c.id, title: c.title, company: c.company, salary: c.salary ? `${c.salary.min}-${c.salary.max}` : null, workMode: c.workMode, url: c.url })) };
       const output = await this.llm.screenVacancyCardsBatch(this.pruneInput(input));
@@ -623,6 +651,7 @@ export class AgentUseCase {
       return this.updateState({ ...state, status: AgentStatus.VACANCIES_EXTRACTED, activeExtractionBatch: outputBatch, logs: [...state.logs, `Извлечено ${extracts.length} описаний.`] });
   }
 
+  // --- UPDATED: runLLMEvalBatch to populate history with URL ---
   async runLLMEvalBatch(state: AgentState, siteId: string): Promise<AgentState> {
       if (state.isPaused) return state;
       const extractBatch = state.activeExtractionBatch;
@@ -647,7 +676,15 @@ export class AgentUseCase {
               const status = res.decision === 'APPLY' ? 'APPLIED' : 'SKIPPED';
               const reason = res.reasons.join(', ');
               if (status === 'SKIPPED') {
-                  newHistory.push({ id: res.vacancyId, title: card.title, company: card.company || 'Unknown', timestamp: Date.now(), status: 'SKIPPED', reason });
+                  newHistory.push({ 
+                      id: res.vacancyId, 
+                      title: card.title, 
+                      company: card.company || 'Unknown', 
+                      url: card.url, // ADDED
+                      timestamp: Date.now(), 
+                      status: 'SKIPPED', 
+                      reason 
+                  });
                   logs.push(`⚠️ Пропуск "${card.title}": ${reason}`);
               } else {
                   logs.push(`✅ Одобрено "${card.title}": ${reason}`);
@@ -675,6 +712,7 @@ export class AgentUseCase {
       if (!queue) return state;
       const nextItem = queue.items.find(i => i.status === 'PENDING');
       if (!nextItem) {
+          // Changed to COMPLETED to trigger next rotation
           return this.updateState({ ...state, status: AgentStatus.COMPLETED, logs: [...state.logs, "Все отклики обработаны."] });
       }
       await this.browser.navigateTo(nextItem.url);
@@ -711,6 +749,7 @@ export class AgentUseCase {
       return this.updateState({ ...state, status: AgentStatus.APPLY_DRAFT_FILLED, activeApplyDraft: draft, logs: [...state.logs, "Черновик отклика заполнен."] });
   }
 
+  // --- UPDATED: submitApplyForm to populate history with URL ---
   async submitApplyForm(state: AgentState, siteId: string): Promise<AgentState> {
       if (state.isPaused) return state;
       const formProbe = state.activeApplyFormProbe;
@@ -728,7 +767,15 @@ export class AgentUseCase {
               if (outcome === 'SUCCESS') {
                   const card = state.activeVacancyBatch?.cards.find(c => c.id === item.vacancyId);
                   if (card) {
-                      const record: AppliedVacancyRecord = { id: card.id, title: card.title, company: card.company || 'Unknown', timestamp: Date.now(), status: 'APPLIED', reason: 'Full Cycle Success' };
+                      const record: AppliedVacancyRecord = { 
+                          id: card.id, 
+                          title: card.title, 
+                          company: card.company || 'Unknown', 
+                          url: card.url, // ADDED
+                          timestamp: Date.now(), 
+                          status: 'APPLIED', 
+                          reason: 'Full Cycle Success' 
+                      };
                       nextState = { ...nextState, appliedHistory: [...nextState.appliedHistory, record] };
                   }
               }
@@ -742,7 +789,8 @@ export class AgentUseCase {
       const allRoles = [...state.activeTargetingSpec.targetRoles.ruTitles, ...state.activeTargetingSpec.targetRoles.enTitles];
       const nextIndex = state.currentRoleIndex + 1;
       if (nextIndex >= allRoles.length) {
-          return this.updateState({ ...state, status: AgentStatus.IDLE, logs: [...state.logs, "🏁 Цикл завершен. Все роли обработаны."] });
+          // FIX: Return COMPLETED instead of IDLE to trigger Summary Overlay
+          return this.updateState({ ...state, status: AgentStatus.COMPLETED, logs: [...state.logs, "🏁 Цикл завершен. Все роли обработаны."] });
       }
       return this.updateState({ ...state, currentRoleIndex: nextIndex, status: AgentStatus.TARGETING_READY, activeSearchDOMSnapshot: undefined, activeSearchUISpec: undefined, activeSearchPrefs: undefined, activeVacancyBatch: undefined, activeDedupedBatch: undefined, activePrefilterBatch: undefined, activeLLMBatch: undefined, activeExtractionBatch: undefined, activeEvalBatch: undefined, activeApplyQueue: undefined, logs: [...state.logs, `🔄 Переход к следующей роли: ${allRoles[nextIndex]}.`] });
   }

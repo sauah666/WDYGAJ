@@ -1,31 +1,66 @@
 
-import React, { useState } from 'react';
-import { Globe, Lock, ArrowLeft, ArrowRight, RotateCw, User, LogIn, Search, MapPin, Briefcase, FileText, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Globe, Lock, ArrowLeft, ArrowRight, RotateCw, User, LogIn, Search, MapPin, Briefcase, FileText, CheckCircle2, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import { AgentStatus } from '../../types';
-import { UserSearchPrefsV1 } from '../../core/domain/entities';
+import { UserSearchPrefsV1, VacancyCardBatchV1, PreFilterResultBatchV1 } from '../../core/domain/entities';
 
 interface BrowserViewportProps {
   url: string;
   status: AgentStatus;
   isMock: boolean;
   onLoginSubmit: (u: string, p: string) => void;
-  activeSearchPrefs?: UserSearchPrefsV1; // Prop to show typing
+  activeSearchPrefs?: UserSearchPrefsV1;
+  activeVacancyBatch?: VacancyCardBatchV1; // Added for visual
+  activePrefilterBatch?: PreFilterResultBatchV1; // Added for visual
 }
 
-export const BrowserViewport: React.FC<BrowserViewportProps> = ({ url, status, isMock, onLoginSubmit, activeSearchPrefs }) => {
+export const BrowserViewport: React.FC<BrowserViewportProps> = ({ 
+    url, 
+    status, 
+    isMock, 
+    onLoginSubmit, 
+    activeSearchPrefs,
+    activeVacancyBatch,
+    activePrefilterBatch
+}) => {
   const [fakeUser, setFakeUser] = useState("user@example.com");
   const [fakePass, setFakePass] = useState("");
+  
+  // Auto-scroll logic
+  const listRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+      // Auto-scroll when batch is active
+      if (activeVacancyBatch && listRef.current) {
+          const scrollInterval = setInterval(() => {
+              if (listRef.current) {
+                  listRef.current.scrollTop += 2; // Slow scroll down
+                  // Loop back for effect if needed, or just stop at bottom
+                  if (listRef.current.scrollTop >= listRef.current.scrollHeight - listRef.current.clientHeight) {
+                      // listRef.current.scrollTop = 0; 
+                  }
+              }
+          }, 50);
+          return () => clearInterval(scrollInterval);
+      }
+  }, [activeVacancyBatch, status]);
 
   const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
       onLoginSubmit(fakeUser, fakePass);
   };
 
-  // Helper to extract values from prefs safely
   const getPrefValue = (keyMatch: string) => {
       if (!activeSearchPrefs?.additionalFilters) return "";
       const key = Object.keys(activeSearchPrefs.additionalFilters).find(k => k.toLowerCase().includes(keyMatch));
-      return key ? activeSearchPrefs.additionalFilters[key] : "";
+      if (!key) return "";
+      const val = activeSearchPrefs.additionalFilters[key];
+      if (keyMatch === 'region' || keyMatch === 'area') {
+          if (val === '1' || val === 'Москва') return 'Москва';
+          if (val === '2' || val === 'Spb' || val === 'Санкт-Петербург') return 'Санкт-Петербург';
+          if (val === 'Global') return 'Весь Мир';
+      }
+      return val;
   };
 
   const renderMockContent = () => {
@@ -43,7 +78,7 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({ url, status, i
                                 type="text" 
                                 value={fakeUser}
                                 onChange={e => setFakeUser(e.target.value)}
-                                className="mt-1 block w-full border border-gray-400 p-2 text-gray-900 focus:border-red-500 outline-none font-mono" 
+                                className="mt-1 block w-full border border-gray-400 p-2 text-gray-900 focus:border-red-500 outline-none font-mono bg-white" 
                             />
                         </div>
                         <div>
@@ -52,7 +87,7 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({ url, status, i
                                 type="password" 
                                 value={fakePass}
                                 onChange={e => setFakePass(e.target.value)}
-                                className="mt-1 block w-full border border-gray-400 p-2 text-gray-900 focus:border-red-500 outline-none font-mono" 
+                                className="mt-1 block w-full border border-gray-400 p-2 text-gray-900 focus:border-red-500 outline-none font-mono bg-white" 
                             />
                         </div>
                         <button type="submit" className="w-full bg-red-600 text-white py-3 font-bold hover:bg-red-700 uppercase tracking-widest shadow-md active:translate-y-px transition-all font-sans">
@@ -111,7 +146,8 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({ url, status, i
           
           const keywordVal = getPrefValue('keyword') || "Frontend Developer";
           const salaryVal = getPrefValue('salary') || "150000";
-          const areaVal = getPrefValue('region') || "Москва";
+          const areaVal = getPrefValue('area') || getPrefValue('region') || "Москва";
+          const remoteVal = getPrefValue('schedule') || getPrefValue('remote');
 
           return (
               <div className="p-6 bg-white h-full flex flex-col items-center pt-10 text-gray-800">
@@ -124,7 +160,7 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({ url, status, i
                               <input 
                                   type="text" 
                                   placeholder="Профессия, должность..." 
-                                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded focus:border-red-500 outline-none text-gray-900" 
+                                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded focus:border-red-500 outline-none text-gray-900 bg-white" 
                                   value={keywordVal}
                                   readOnly
                               />
@@ -137,13 +173,13 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({ url, status, i
                               <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Зарплата</label>
                               <div className="flex gap-2 items-center">
                                   <span className="text-gray-600">от</span>
-                                  <input type="text" className="w-24 border p-1 bg-white" value={salaryVal} readOnly />
+                                  <input type="text" className="w-24 border p-1 bg-white text-black font-bold" value={salaryVal} readOnly />
                                   <span className="text-gray-600">RUB</span>
                               </div>
                           </div>
                           <div className="border p-4 rounded bg-gray-50">
                               <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Регион</label>
-                              <div className="flex items-center gap-2 text-gray-700">
+                              <div className="flex items-center gap-2 text-gray-700 font-bold">
                                   <MapPin size={16} />
                                   <span>{areaVal}</span>
                               </div>
@@ -152,7 +188,7 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({ url, status, i
                       
                       <div className="flex gap-4 mt-2">
                            <label className="flex items-center gap-2 cursor-pointer">
-                               <input type="checkbox" checked={true} readOnly className="w-4 h-4 text-red-600" />
+                               <input type="checkbox" checked={!!remoteVal} readOnly className="w-4 h-4 text-red-600" />
                                <span className="text-sm text-gray-700">Удаленная работа</span>
                            </label>
                       </div>
@@ -167,35 +203,94 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({ url, status, i
           );
       }
 
-      // 4. RESULTS / PROCESSING
-      if ([AgentStatus.VACANCIES_CAPTURED, AgentStatus.VACANCIES_DEDUPED, AgentStatus.PREFILTER_DONE, AgentStatus.LLM_SCREENING_DONE, AgentStatus.EXTRACTING_VACANCIES, AgentStatus.VACANCIES_EXTRACTED].includes(status)) {
+      // 4. RESULTS / PROCESSING (VISUAL SCANNER MODE)
+      if ([AgentStatus.VACANCIES_CAPTURED, AgentStatus.VACANCIES_DEDUPED, AgentStatus.PREFILTER_DONE, AgentStatus.LLM_SCREENING_DONE, AgentStatus.EXTRACTING_VACANCIES, AgentStatus.VACANCIES_EXTRACTED, AgentStatus.SEARCH_READY].includes(status)) {
+          
+          const cards = activeVacancyBatch?.cards || [];
+          // If no batch yet, show mock skeleton
+          if (cards.length === 0) {
+              return (
+                  <div className="bg-gray-100 min-h-full p-4 text-gray-800 flex flex-col items-center justify-center">
+                      <RefreshCw size={48} className="text-gray-400 animate-spin mb-4" />
+                      <div className="text-gray-500 font-mono">Сбор данных...</div>
+                  </div>
+              );
+          }
+
           return (
-              <div className="bg-gray-100 min-h-full p-4 text-gray-800">
-                  <div className="max-w-3xl mx-auto space-y-4">
-                      {[1, 2, 3].map(i => (
-                          <div key={i} className="bg-white p-4 rounded shadow-sm border border-gray-200 flex justify-between group relative overflow-hidden">
-                              <div>
-                                  <h3 className="text-lg font-bold text-blue-600 hover:underline">Senior Frontend Developer</h3>
-                                  <div className="text-gray-900 font-bold mt-1">250 000 - 350 000 руб.</div>
-                                  <div className="text-gray-500 text-sm mt-1">TechCorp • Москва • Можно удаленно</div>
-                                  <div className="text-xs text-gray-400 mt-2">React • TypeScript • CI/CD</div>
-                              </div>
-                              <div className="flex flex-col items-end justify-between">
-                                  <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${i}`} className="w-10 h-10 rounded" alt="logo" />
-                                  <button className="text-sm border border-green-600 text-green-600 px-4 py-1 rounded hover:bg-green-50">Откликнуться</button>
-                              </div>
-                              
-                              {/* Analysis Overlay Effect */}
-                              {(status === AgentStatus.LLM_SCREENING_DONE || status === AgentStatus.EXTRACTING_VACANCIES) && i === 1 && (
-                                  <div className="absolute inset-0 bg-green-500/10 flex items-center justify-center backdrop-blur-[1px]">
-                                      <div className="bg-white border border-green-500 px-3 py-1 rounded-full text-green-700 text-xs font-bold flex items-center shadow-lg">
-                                          <CheckCircle2 size={12} className="mr-1" /> Анализ...
+              <div className="bg-[#f0f2f5] min-h-full flex flex-col relative overflow-hidden">
+                  {/* Sticky Header */}
+                  <div className="bg-white border-b border-gray-300 p-4 shadow-sm z-10 flex justify-between items-center">
+                      <div className="font-bold text-gray-800 flex items-center gap-2">
+                          <Briefcase size={18} />
+                          <span>Результаты Поиска: {cards.length}</span>
+                      </div>
+                      <div className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                          STATUS: {status}
+                      </div>
+                  </div>
+
+                  {/* Scanning List */}
+                  <div 
+                      ref={listRef}
+                      className="flex-1 overflow-y-auto p-4 space-y-3 scroll-smooth relative"
+                  >
+                      {/* Scanning Line Effect */}
+                      <div className="fixed top-[120px] left-0 right-0 h-1 bg-red-500/50 shadow-[0_0_15px_red] z-20 pointer-events-none animate-scan-vertical"></div>
+
+                      {cards.map((card) => {
+                          // Determine status color
+                          let borderColor = 'border-gray-200';
+                          let bgColor = 'bg-white';
+                          let statusIcon = null;
+
+                          // Check Prefilter Decision
+                          const prefilterRes = activePrefilterBatch?.results.find(r => r.cardId === card.id);
+                          
+                          if (prefilterRes) {
+                              if (prefilterRes.decision === 'REJECT') {
+                                  borderColor = 'border-red-300';
+                                  bgColor = 'bg-red-50 opacity-60 grayscale';
+                                  statusIcon = <XCircle size={18} className="text-red-500" />;
+                              } else if (prefilterRes.decision === 'READ_CANDIDATE') {
+                                  borderColor = 'border-green-400';
+                                  bgColor = 'bg-green-50';
+                                  statusIcon = <CheckCircle2 size={18} className="text-green-600" />;
+                              }
+                          }
+
+                          return (
+                              <div key={card.id} className={`p-4 rounded-lg border ${borderColor} ${bgColor} shadow-sm transition-all duration-300 flex justify-between items-start group`}>
+                                  <div className="flex-1 min-w-0">
+                                      <h3 className="font-bold text-blue-700 truncate font-sans text-base group-hover:underline cursor-pointer">{card.title}</h3>
+                                      <div className="text-sm font-bold text-gray-900 mt-1">{card.salary ? `${card.salary.min || ''} - ${card.salary.max || ''} ${card.salary.currency}` : card.salaryText || 'Зарплата не указана'}</div>
+                                      <div className="text-xs text-gray-500 mt-1 flex gap-2">
+                                          <span>{card.company || 'Unknown Co'}</span>
+                                          <span>•</span>
+                                          <span>{card.city || 'Город не указан'}</span>
                                       </div>
                                   </div>
-                              )}
-                          </div>
-                      ))}
+                                  <div className="ml-4 shrink-0 flex flex-col items-end gap-2">
+                                      {statusIcon || <div className="w-4 h-4 rounded-full border-2 border-gray-300 border-t-blue-500 animate-spin"></div>}
+                                      <div className="text-[10px] font-mono text-gray-400">{card.publishedAt || 'now'}</div>
+                                  </div>
+                              </div>
+                          );
+                      })}
+                      <div className="h-20"></div> {/* Spacer */}
                   </div>
+                  
+                  <style>{`
+                    @keyframes scan-vertical {
+                        0% { top: 0%; opacity: 0; }
+                        10% { opacity: 1; }
+                        90% { opacity: 1; }
+                        100% { top: 100%; opacity: 0; }
+                    }
+                    .animate-scan-vertical {
+                        animation: scan-vertical 3s linear infinite;
+                    }
+                  `}</style>
               </div>
           );
       }
