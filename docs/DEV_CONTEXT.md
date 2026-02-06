@@ -1,46 +1,47 @@
 # Developer Context (Save Game)
 
-**Last Updated**: Phase E1.3 Verified (with UI/Logic Patches for P1.1 - P1.11)
+**Last Updated**: Phase E3 Verified (Retry & Failover)
 **Role**: Senior Agent Architect
 **Manifesto**: See `docs/PROJECT_DOCUMENTATION.md` (Rule D-01)
 
 ## Где мы сейчас?
-Мы находимся в **PHASE E1.3: DRAFT APPLICATION FILL (NO SUBMIT)**.
-Параллельно закрыты критические пробелы в UI и логике (Patches E1.2-P1.x).
+Мы завершили **PHASE E3: RETRY & FAILOVER**.
+Система теперь умеет не только откликаться и заполнять анкеты, но и обрабатывать сбои, делать повторные попытки (до 3 раз) и скрывать вакансии при неудачах.
 
 ### Что сделано:
-1.  **Drafting**: Агент научился открывать форму отклика, находить поле сопроводительного письма и заполнять его текстом.
-2.  **Configuration**: В UI (Settings) добавлено поле для редактирования шаблона сопроводительного письма.
-3.  **Safety**: Реализован механизм "Read-Back" — проверка, что текст реально попал в поле ввода.
-4.  **UI Fixes (Patches)**:
-    *   Все "тупиковые" состояния (`WAITING_FOR_...`) теперь имеют кнопки управления в `AgentStatusScreen`.
-    *   В `WAITING_FOR_SEARCH_PREFS` реализована полноценная форма настройки фильтров.
-5.  **Logic Fixes (Patch P1.6)**:
-    *   `AgentUseCase.fillApplyFormDraft` теперь подключен к конфигу. Если пользователь задал шаблон сопроводительного письма в Settings, агент использует его вместо заглушки.
-6.  **Reliability (Patch P1.7)**:
-    *   `AgentPresenter` восстанавливает конфиг (`rehydration`) при старте приложения. Это позволяет продолжать работу после F5 без потери контекста (targetSite, template).
-7.  **Priority Logic (Patch P1.8)**:
-    *   `AgentUseCase.fillApplyFormDraft` теперь проверяет наличие `generatedCoverLetter` в очереди. Если оно есть, оно имеет приоритет над глобальным шаблоном.
-8.  **Mock Fidelity (Patch P1.9)**:
-    *   `MockBrowserAdapter` отвязан от реальных селекторов hh.ru. Теперь он использует сценарное состояние (`isApplyModalOpen`) и абстрактные идентификаторы (`mock://apply-form/submit`).
-9.  **E1.4 Readiness (Patch P1.11)**:
-    *   **Mock Submit**: `MockBrowserAdapter` при клике на submit теперь закрывает модалку и переводит состояние страницы в "Success", инжектируя текст успеха в `getPageTextMinimal`.
-    *   **Queue Status**: При обработке элемента очереди (`probeNextApplyEntrypoint`) его статус меняется с `PENDING` на `IN_PROGRESS` (визуализируется в UI).
-    *   **Success Hints**: В `ApplyFormProbeV1` добавлены текстовые маркеры (например, "Отклик отправлен") для будущей проверки успеха без привязки к селекторам.
+1.  **Drafting (E1.3)**: Агент открывает форму, находит поле CV, заполняет его (с учетом шаблона из конфига или сгенерированного текста).
+2.  **Submit & Verify (E1.4)**:
+    *   Реализован клик по Submit.
+    *   Внедрена логика верификации успеха через `BrowserPort.detectApplyOutcome` (поиск текста успеха или изменение URL).
+    *   Создание `ApplySubmitReceipt` для истории.
+3.  **Questionnaire Handling (E2)**:
+    *   Агент детектирует дополнительные вопросы (опыт, виза, ссылки).
+    *   LLM генерирует ответы на основе профиля (1 вызов на анкету).
+    *   Ответы кэшируются и переиспользуются при ретраях.
+4.  **Retry & Failover (E3)**:
+    *   Единая политика ретраев: 3 попытки с экспоненциальной паузой.
+    *   Failover: Если 3 раза не удалось — вакансия скрывается (`hideVacancy`) или пропускается.
+    *   Состояние `ApplyAttemptState` сохраняется в Storage, переживает перезагрузку.
+    *   Новые UI статусы: `APPLY_RETRYING`, `APPLY_FAILED_HIDDEN`, `APPLY_SUBMIT_SUCCESS`.
 
 ### Текущее техническое состояние:
-*   State Machine теперь полностью проходима в ручном режиме от старта до драфта отклика.
-*   Данные конфига (Settings) корректно влияют на поведение агента (Drafting).
-*   В стейте доступен `activeApplyDraft`.
-*   Активный элемент очереди имеет статус `IN_PROGRESS`.
+*   State Machine: Полный цикл от поиска до финального статуса отклика (`APPLY_SUBMIT_SUCCESS` / `APPLY_FAILED_HIDDEN`).
+*   Storage: Сохраняет все промежуточные артефакты (Drafts, Receipts, Attempts, Questionnaire Answers).
+*   UI: Отображает статус попыток, ошибки и результаты.
+
+### Mock Fidelity & Testing Guide (E3 Specifics)
+Critical context for Phase F1 (Resilience):
+*   **Questionnaire Trigger**: The Mock Adapter simulates a questionnaire *only* if the "Apply" modal is open.
+*   **Submit Success**: Triggered by clicking `mock://apply-form/submit`. Sets internal flag `isSuccessState`.
+*   **Retry Loop Test**: To test retries, you must modify `MockBrowserAdapter.clickElement` to return `false` or throw an error for the submit selector conditionally.
+*   **Failover Test**: `hideVacancy` currently always returns `true`.
+*   **DOM Static Nature**: The mock returns *static* HTML snapshots. For Phase F1 (Drift Detection), you must manually alter the string returned by `getDomSnapshot` to simulate layout changes.
 
 ### Следующий шаг (IMMEDIATE NEXT):
-**PHASE E1.4 — SUBMIT APPLICATION & VERIFY**:
-1.  Выполнить клик по кнопке Submit (используя `submitHint` из `ApplyFormProbeV1`).
-2.  Ожидать (wait loop) появления подтверждения успеха (используя `successTextHints`).
-3.  Обновить статус элемента в `ApplyQueueV1` (`APPLIED` или `FAILED`).
-4.  Зафиксировать результат отклика.
-5.  Вернуться к очереди (цикл).
+**PHASE F1 — DOM DRIFT DETECTION (Resilience)**:
+1.  Реализовать механизм сравнения DOM-снимков (`SearchDOMSnapshotV1`).
+2.  Детектировать изменения верстки (Drift) по сравнению с сохраненным `SearchUISpec`.
+3.  Если Drift обнаружен -> инвалидировать `SearchUISpec` и запустить реанализ (Stage 5.3).
 
 ## Правила разработки (Strict)
 См. `docs/PROJECT_DOCUMENTATION.md`
@@ -48,4 +49,5 @@
 ## Token Policy (D2)
 *   **Input**: ~300-500 токенов на вакансию (Clean Text).
 *   **Batch**: 15 вакансий.
+*   **Questionnaire**: 1 call per vacancy (if questionnaire detected).
 *   **Constraint**: Не скармливать полный HTML. Только JSON из D1.

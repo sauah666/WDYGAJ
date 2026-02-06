@@ -2,7 +2,7 @@
 
 import { StoragePort } from '../../core/ports/storage.port';
 import { AgentConfig } from '../../types';
-import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1, LLMVacancyEvalBatchV1, ApplyQueueV1, ApplyDraftSnapshotV1, ApplySubmitReceiptV1, QuestionnaireSnapshotV1, QuestionnaireAnswerSetV1 } from '../../core/domain/entities';
+import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1, LLMVacancyEvalBatchV1, ApplyQueueV1, ApplyDraftSnapshotV1, ApplySubmitReceiptV1, QuestionnaireSnapshotV1, QuestionnaireAnswerSetV1, ApplyAttemptState } from '../../core/domain/entities';
 import { TargetingSpecV1 } from '../../core/domain/llm_contracts';
 
 const KEY_CONFIG = 'as_config';
@@ -27,6 +27,7 @@ const KEY_APPLY_DRAFT_PREFIX = 'as_apply_draft_';
 const KEY_APPLY_RECEIPT_PREFIX = 'as_apply_receipt_';
 const KEY_QUESTIONNAIRE_SNAP_PREFIX = 'as_quest_snap_';
 const KEY_QUESTIONNAIRE_ANS_PREFIX = 'as_quest_ans_';
+const KEY_APPLY_ATTEMPT_PREFIX = 'as_apply_attempt_';
 
 export class LocalStorageAdapter implements StoragePort {
   async saveConfig(config: AgentConfig): Promise<void> {
@@ -313,6 +314,19 @@ export class LocalStorageAdapter implements StoragePort {
   
   async getQuestionnaireAnswerSet(siteId: string, questionnaireHash: string): Promise<QuestionnaireAnswerSetV1 | null> {
       const key = `${KEY_QUESTIONNAIRE_ANS_PREFIX}${siteId}_${questionnaireHash}`;
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+  }
+
+  // --- Phase E3: Retry & Failover ---
+
+  async saveApplyAttemptState(siteId: string, attempt: ApplyAttemptState): Promise<void> {
+      const key = `${KEY_APPLY_ATTEMPT_PREFIX}${siteId}_${attempt.vacancyId}`;
+      localStorage.setItem(key, JSON.stringify(attempt));
+  }
+
+  async getApplyAttemptState(siteId: string, vacancyId: string): Promise<ApplyAttemptState | null> {
+      const key = `${KEY_APPLY_ATTEMPT_PREFIX}${siteId}_${vacancyId}`;
       const raw = localStorage.getItem(key);
       return raw ? JSON.parse(raw) : null;
   }

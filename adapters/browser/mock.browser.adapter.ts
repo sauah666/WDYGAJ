@@ -380,6 +380,14 @@ export class MockBrowserAdapter implements BrowserPort {
       return 'UNKNOWN';
   }
 
+  // --- Phase E3: Failover ---
+
+  async hideVacancy(vacancyId: string): Promise<boolean> {
+      console.log(`[BrowserAdapter] HIDING vacancy ${vacancyId} (Failover)...`);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      return true; // Mock success
+  }
+
   // -------------------------------------
 
   async inputText(selector: string, text: string): Promise<boolean> {

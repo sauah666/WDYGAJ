@@ -149,6 +149,11 @@ export interface BrowserPort {
   detectApplyOutcome(): Promise<'SUCCESS' | 'QUESTIONNAIRE' | 'UNKNOWN' | 'ERROR'>;
 
   /**
+   * Phase E3: Hides the vacancy if possible (Failover).
+   */
+  hideVacancy(vacancyId: string): Promise<boolean>;
+
+  /**
    * Phase E1.3: Enters text into a specific element.
    */
   inputText(selector: string, text: string): Promise<boolean>;

@@ -1,4 +1,4 @@
-# 📘 PROJECT DOCUMENTATION — v1.23
+# 📘 PROJECT DOCUMENTATION — v1.24
 
 **Проект:** Agent-based Job Search Automation  
 **Аудитория:** LLM-агент-разработчик (Gemini / GPT / Claude)  
@@ -145,14 +145,13 @@ MASTER PLAN v1.0 — JobSearch Agent (Mode 1: HH.ru, затем мультиса
   - 1 LLM call на всю анкету.
   - Reuse answers при повторной попытке.
 - KNOWN RISKS: Unsupported controls (file uploads).
+✅ Done-E3: Retry & Failover
+- WHAT ADDED: unified retry/failover policy, `ApplyAttemptState`, `hideVacancy` usage/addition.
+- WHY: предотвращение зацикливаний и дублей действий.
+- CONSTRAINTS: max 3 retries, no new LLM, persistent state.
+- NOTES: Terminal states (HIDDEN/SKIPPED) and specific UI statuses.
 
 2) MASTER PLAN — от “сейчас” до “финиша”
-PHASE E — Auto Apply (отклики)
-E1. Apply With Cover Letter (script)
-- E1.4: Submit & Verify (Click Submit -> Check Confirmation UI)
-E3. Retry & Failover
-- 3 ретрая, иначе hide vacancy
-
 PHASE F — Memory, Resilience, DOM Drift
 F1. DOM Drift Detection (diff snapshots) + обновление mappings
 F2. Site Memory (multi-site ready) + UI выбор сайта
@@ -177,5 +176,5 @@ UI: выбор режима/сайта/настроек и reset’ов.
 Документация: позволяет новому агенту продолжить без истории.
 
 4) Текущая точка
-Последний завершённый этап: PHASE E2 — QUESTIONNAIRE HANDLING
-Текущий этап: PHASE E1.4 — SUBMIT APPLICATION & VERIFY (Re-verify required due to overlaps) + E3
+Последний завершённый этап: PHASE E3 — RETRY & FAILOVER
+Текущий этап: PHASE F1 — DOM DRIFT DETECTION (Resilience)

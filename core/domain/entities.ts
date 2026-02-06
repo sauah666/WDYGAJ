@@ -461,6 +461,22 @@ export interface QuestionnaireAnswerSetV1 {
     globalRisks: string[];
 }
 
+// --- Phase E3: Retry & Failover ---
+
+export type ApplyStage = 'STARTED' | 'QUESTIONNAIRE' | 'SUBMITTING' | 'CONFIRMING' | 'DONE' | 'FAILED';
+export type TerminalAction = 'NONE' | 'HIDDEN' | 'SKIPPED';
+
+export interface ApplyAttemptState {
+    vacancyId: string;
+    siteId: string;
+    applyStage: ApplyStage;
+    retryCount: number; // 0, 1, 2, 3
+    lastErrorCode: string | null;
+    lastErrorMessage: string | null;
+    lastAttemptAt: number;
+    terminalAction: TerminalAction;
+}
+
 // --- Phase E1.3: Apply Draft Snapshot ---
 
 export type ApplyBlockedReason = 'VACANCY_NOT_OPENED' | 'APPLY_ENTRYPOINT_NOT_FOUND' | 'FORM_NOT_REACHED' | 'FIELD_NOT_FOUND' | 'READBACK_FAILED' | null;
@@ -530,9 +546,10 @@ export interface AgentState {
   activeApplyFormProbe?: ApplyFormProbeV1 | null; // Phase E1.2: Transient Form Probe
   activeApplyDraft?: ApplyDraftSnapshotV1 | null; // Phase E1.3: Transient Draft Result
   
-  // Phase E2
+  // Phase E2 & E3
   activeQuestionnaireSnapshot?: QuestionnaireSnapshotV1 | null;
   activeQuestionnaireAnswers?: QuestionnaireAnswerSetV1 | null;
+  activeApplyAttempt?: ApplyAttemptState | null;
 }
 
 export interface ProfileSnapshot {
@@ -567,5 +584,6 @@ export const createInitialAgentState = (): AgentState => ({
   activeApplyFormProbe: null,
   activeApplyDraft: null,
   activeQuestionnaireSnapshot: null,
-  activeQuestionnaireAnswers: null
+  activeQuestionnaireAnswers: null,
+  activeApplyAttempt: null
 });
