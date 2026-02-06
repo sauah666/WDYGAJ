@@ -1,139 +1,92 @@
 
-// Layer: DOMAIN
-// Purpose: Enterprise business rules and core entities.
-// Allowed: Pure TS classes/interfaces. No external dependencies.
-// Forbidden: Framework code, UI logic, Databases.
-
 import { AgentStatus, WorkMode } from '../../types';
 import { TargetingSpecV1 } from './llm_contracts';
 
-// --- Observability (Token Telemetry) ---
+// --- Shared Value Objects ---
+
 export interface TokenLedger {
   inputTokens: number;
   outputTokens: number;
   cacheHits: number;
   cacheMisses: number;
-  calls: number; // New in G2
+  calls: number;
   totalCostEstimateUSD?: number;
 }
 
-// --- Phase F1: Resilience & Drift Detection ---
-
-export interface DOMFingerprintV1 {
-  siteId: string;
-  pageType: 'search' | 'vacancy' | 'apply_form' | 'unknown';
-  capturedAt: number;
-  domVersion: number;
-  structuralHash: string; // Hash of DOM structure (tags + ids + classes)
-  salientNodesHash?: string; // Hash of critical interactive elements
-}
-
-export interface DomDriftEventV1 {
-  siteId: string;
-  pageType: string;
-  detectedAt: number;
-  expectedHash: string;
-  observedHash: string;
-  severity: 'LOW' | 'MEDIUM' | 'HIGH';
-  actionRequired: 'REPROBE' | 'REANALYZE_UI' | 'HUMAN_CHECK';
-}
-
-// --- Stage 5: Site Definitions & Strategies ---
-
-export interface SearchEntryStrategy {
-  knownUrls: string[];         // e.g. ["https://hh.ru/search/vacancy/advanced"]
-  keywords: string[];          // e.g. ["расширенный поиск", "advanced search"]
-  maxSteps: number;            // How many clicks to try before giving up
-}
-
-// FIX: Updated SiteDefinition to match Registry requirements (label, searchEntrypoint) and fix type errors in UseCase.
 export interface SiteDefinition {
   id: string;
   label: string;
   baseUrl: string;
   enabled: boolean;
   storageNamespace: string;
-  searchEntrypoint?: { kind: 'url'; url: string } | { kind: 'strategy'; name: string };
+  searchEntrypoint: { kind: 'url', url: string } | { kind: 'click', selector: string };
 }
 
-// --- Stage 5: Search Configuration Entities ---
+// --- Browser / Raw DOM Types ---
 
-export type SearchFieldType = 'CHECKBOX' | 'SELECT' | 'RANGE' | 'TEXT' | 'BUTTON' | 'UNKNOWN';
-export type SemanticFieldType = 'LOCATION' | 'SALARY' | 'WORK_MODE' | 'SCHEDULE' | 'KEYWORD' | 'EXPERIENCE' | 'SUBMIT' | 'OTHER';
-
-export interface SearchFieldOption {
-  value: string;
+export interface RawFormField {
+  id: string;
+  tag: string;
+  inputType?: string;
   label: string;
+  attributes: Record<string, string>;
+  isVisible: boolean;
 }
+
+export interface ApplyControl {
+  label: string;
+  selector: string;
+  type: 'BUTTON' | 'LINK';
+}
+
+export interface VacancySalary {
+  min: number | null;
+  max: number | null;
+  currency: string;
+  gross: boolean;
+}
+
+// --- Search Configuration (Stage 5) ---
+
+export interface SearchDOMSnapshotV1 {
+  siteId: string;
+  capturedAt: number;
+  pageUrl: string;
+  domVersion: number; // e.g. 1
+  domHash: string; // quick comparison
+  fields: RawFormField[];
+}
+
+export type SearchFieldType = 'KEYWORD' | 'SALARY' | 'LOCATION' | 'WORK_MODE' | 'SUBMIT' | 'UNKNOWN';
+export type SemanticFieldType = SearchFieldType;
 
 export interface SearchFieldDefinition {
-  key: string;        // Unique internal ID for the field (e.g. "salary_input")
-  label: string;      // Visual label
-  
-  // Technical Type
-  uiControlType: SearchFieldType;
-  
-  // Semantic Analysis Results
-  semanticType: SemanticFieldType;
-  options?: SearchFieldOption[]; // For SELECT type
-  
-  // Behavior rules derived by LLM
-  defaultBehavior: 'IGNORE' | 'INCLUDE' | 'EXCLUDE' | 'RANGE' | 'CLICK'; 
-  
-  // Implementation detail (data-qa, name, etc.) - handled by Adapters later
-  domHint?: string;   
-  confidence: number; // 0.0 - 1.0
+  key: string;
+  label: string;
+  uiControlType: 'TEXT' | 'SELECT' | 'CHECKBOX' | 'RADIO' | 'BUTTON' | 'RANGE';
+  semanticType: SearchFieldType;
+  defaultBehavior: 'INCLUDE' | 'EXCLUDE' | 'RANGE' | 'CLICK';
+  domHint?: string; // e.g. "name=text"
+  confidence: number;
+  options?: { label: string; value: string }[];
 }
 
 export interface SearchUISpecV1 {
   siteId: string;
   derivedAt: number;
   sourceUrl: string;
+  version: string; // "v1"
   fields: SearchFieldDefinition[];
-  unsupportedFields: string[]; // List of field IDs that couldn't be mapped
+  unsupportedFields: string[]; // IDs of ignored fields
   assumptions: string[];
-  version: string; // 'v1'
-  // Phase G2: Telemetry
-  tokenUsage?: {
-    input: number;
-    output: number;
-  };
+  tokenUsage?: { input: number; output: number };
 }
 
 export interface UserSearchPrefsV1 {
   siteId: string;
   updatedAt: number;
-  // Core overrides (normalized)
-  workMode?: WorkMode;
-  city?: string;
-  minSalary?: number;
-  // Dynamic overrides mapped to SearchUISpec keys
-  additionalFilters: Record<string, string | number | boolean | string[]>;
+  additionalFilters: Record<string, any>; // key (from Spec) -> value
 }
-
-// --- Stage 5.2.3: DOM Snapshot (Raw) ---
-
-export interface RawFormField {
-  id: string; // generated UUID or stable hash
-  tag: 'input' | 'select' | 'textarea' | 'button' | 'unknown';
-  inputType?: string; // for input tag
-  label?: string; // Associated label text
-  placeholder?: string;
-  attributes: Record<string, string>; // name, id, class, data-*
-  options?: { value: string; label: string }[]; // for select
-  isVisible: boolean;
-}
-
-export interface SearchDOMSnapshotV1 {
-  siteId: string;
-  capturedAt: number;
-  pageUrl: string;
-  domVersion: number;
-  domHash: string; // For drift detection
-  fields: RawFormField[];
-}
-
-// --- Stage 5.4: Apply Plan ---
 
 export type ApplyActionType = 'FILL_TEXT' | 'SELECT_OPTION' | 'TOGGLE_CHECKBOX' | 'CLICK' | 'UNKNOWN';
 
@@ -141,9 +94,9 @@ export interface SearchApplyStep {
   stepId: string;
   fieldKey: string;
   actionType: ApplyActionType;
-  value: string | number | boolean | string[];
+  value: any;
   rationale: string;
-  priority: number; // Internal for sorting
+  priority: number;
 }
 
 export interface SearchApplyPlanV1 {
@@ -152,13 +105,15 @@ export interface SearchApplyPlanV1 {
   steps: SearchApplyStep[];
 }
 
-// --- Phase A1.1: Execution Tracking ---
+// --- Execution & Verification Types (Phase A) ---
 
 export interface ExecutionResult {
-    success: boolean;
-    observedValue?: any;
-    error?: string;
+  success: boolean;
+  observedValue?: any;
+  error?: string;
 }
+
+export type ExecutionStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
 
 export interface AppliedStepResult extends ExecutionResult {
   stepId: string;
@@ -168,8 +123,6 @@ export interface AppliedStepResult extends ExecutionResult {
   intendedValue: any;
 }
 
-export type ExecutionStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
-
 export interface AppliedFiltersSnapshotV1 {
   siteId: string;
   createdAt: number;
@@ -177,8 +130,6 @@ export interface AppliedFiltersSnapshotV1 {
   overallStatus: ExecutionStatus;
   results: AppliedStepResult[];
 }
-
-// --- Phase A2.1: Verification ---
 
 export type VerificationStatus = 'MATCH' | 'MISMATCH' | 'UNKNOWN';
 export type VerificationSource = 'CONTROL_VALUE' | 'URL_PARAMS' | 'UNKNOWN';
@@ -194,55 +145,46 @@ export interface ControlVerificationResult {
 export interface FiltersAppliedVerificationV1 {
   siteId: string;
   verifiedAt: number;
-  verified: boolean; // true if NO mismatches (UNKNOWN is tolerated)
+  verified: boolean; // True if all criticals match
   results: ControlVerificationResult[];
   mismatches: ControlVerificationResult[];
 }
 
-// --- Phase B1: Vacancy Card Collection ---
-
-export interface VacancySalary {
-  min: number | null;
-  max: number | null;
-  currency: string | null;
-  gross?: boolean;
-}
+// --- Vacancy & Processing Types (Phase B) ---
 
 export interface VacancyCardV1 {
-  id: string; // Internal UUID
+  id: string; // Internal ID
   siteId: string;
-  externalId: string | null; // e.g. from data-qa or url
+  externalId: string | null;
   url: string;
   title: string;
   company: string | null;
   city: string | null;
-  workMode: 'remote' | 'hybrid' | 'office' | 'unknown';
+  workMode: string; // raw string
   salary: VacancySalary | null;
-  publishedAt: string | null; // human string, e.g. "2 hours ago"
-  cardHash: string; // SHA-256 of url+title+company
+  publishedAt: string | null;
+  cardHash: string;
 }
 
 export interface VacancyCardBatchV1 {
   batchId: string;
   siteId: string;
   capturedAt: number;
-  queryFingerprint: string; // Hash of current filters/URL
+  queryFingerprint: string; // Hash of search URL/params
   cards: VacancyCardV1[];
-  pageCursor: string | null; // Next page URL or offset
+  pageCursor: string | null;
 }
-
-// --- Phase B2: Dedup & City Preference ---
 
 export enum VacancyDecision {
   SELECTED = 'SELECTED',
-  DUPLICATE = 'DUPLICATE',
-  SKIP_SEEN = 'SKIP_SEEN'
+  SKIP_SEEN = 'SKIP_SEEN',
+  SKIP_FILTERED = 'SKIP_FILTERED'
 }
 
 export interface DedupedCardResult {
-  cardId: string; // Ref to VacancyCardV1.id
+  cardId: string;
   decision: VacancyDecision;
-  dedupKey: string; // key used for grouping
+  dedupKey: string;
 }
 
 export interface DedupedVacancyBatchV1 {
@@ -250,7 +192,7 @@ export interface DedupedVacancyBatchV1 {
   batchId: string; // Parent batch
   siteId: string;
   processedAt: number;
-  userCity: string | null; // Context used for filtering
+  userCity: string | null;
   results: DedupedCardResult[];
   summary: {
     total: number;
@@ -258,22 +200,23 @@ export interface DedupedVacancyBatchV1 {
     duplicates: number;
     seen: number;
   };
+  endOfResults?: boolean;
 }
 
 export interface SeenVacancyIndexV1 {
   siteId: string;
   lastUpdatedAt: number;
-  seenKeys: string[]; // List of dedupKeys that have been SELECTED previously
+  seenKeys: string[];
 }
 
-// --- Phase C1: Script Prefilter ---
+// --- Prefilter Types (Phase C) ---
 
 export type PrefilterDecisionType = 'READ_CANDIDATE' | 'DEFER' | 'REJECT';
 
 export interface PreFilterDecisionV1 {
   cardId: string;
   decision: PrefilterDecisionType;
-  reasons: string[]; // e.g., ["salary_too_low", "exact_title_match"]
+  reasons: string[];
   score: number;
   gates: {
     salary: 'PASS' | 'FAIL' | 'UNKNOWN';
@@ -284,7 +227,7 @@ export interface PreFilterDecisionV1 {
 export interface PreFilterResultBatchV1 {
   id: string;
   siteId: string;
-  inputBatchId: string; // Ref to DedupedBatch
+  inputBatchId: string;
   processedAt: number;
   thresholds: { read: number; defer: number };
   results: PreFilterDecisionV1[];
@@ -293,59 +236,49 @@ export interface PreFilterResultBatchV1 {
     defer: number;
     reject: number;
   };
+  endOfResults?: boolean;
 }
-
-// --- Phase C2: LLM Batch Screening ---
-
-export type LLMDecisionType = 'READ' | 'DEFER' | 'IGNORE';
 
 export interface LLMDecisionV1 {
   cardId: string;
-  decision: LLMDecisionType;
-  confidence: number; // 0.0 - 1.0
-  reasons: string[]; // short codes or phrases
+  decision: 'READ' | 'DEFER' | 'IGNORE';
+  confidence: number;
+  reasons: string[];
 }
 
 export interface LLMDecisionBatchV1 {
   id: string;
   siteId: string;
-  inputPrefilterBatchId: string; // Link to C1
+  inputPrefilterBatchId: string;
   decidedAt: number;
-  modelId: string; // e.g. "mock-llm", "gemini-2.0-flash"
+  modelId: string;
   decisions: LLMDecisionV1[];
   summary: {
     read: number;
     defer: number;
     ignore: number;
   };
-  tokenUsage: {
-    input: number;
-    output: number;
-  };
-  // Phase D1 queues
-  read_queue?: string[]; // cardIds
-  defer_queue?: string[];
-  ignore_queue?: string[];
+  tokenUsage: { input: number; output: number };
 }
 
-// --- Phase D1: Extraction ---
-
-export type VacancyExtractionStatus = 'COMPLETE' | 'PARTIAL' | 'FAILED';
+// --- Extraction & Eval Types (Phase D) ---
 
 export interface VacancyExtractV1 {
-  vacancyId: string; // ref to VacancyCardV1
+  vacancyId: string;
   siteId: string;
   url: string;
   extractedAt: number;
   sections: {
-    requirements: string[]; // extracted bullets/paragraphs
-    responsibilities: string[]; // extracted bullets
-    conditions: string[]; // extracted bullets
-    salary?: VacancySalary; // refined salary from page
-    workMode?: 'remote' | 'hybrid' | 'office' | 'unknown'; // confirmed from page
+    requirements: string[];
+    responsibilities: string[];
+    conditions: string[];
+    salary?: VacancySalary;
+    workMode?: string;
   };
   extractionStatus: VacancyExtractionStatus;
 }
+
+export type VacancyExtractionStatus = 'COMPLETE' | 'PARTIAL' | 'FAILED';
 
 export interface VacancyExtractionBatchV1 {
   id: string;
@@ -353,24 +286,16 @@ export interface VacancyExtractionBatchV1 {
   inputLLMBatchId: string;
   processedAt: number;
   results: VacancyExtractV1[];
-  summary: {
-    total: number;
-    success: number;
-    failed: number;
-  };
+  summary: { total: number; success: number; failed: number };
 }
-
-// --- Phase D2: LLM Eval Batch ---
-
-export type VacancyEvalDecision = 'APPLY' | 'SKIP' | 'NEEDS_HUMAN';
 
 export interface LLMVacancyEvalResult {
   vacancyId: string;
-  decision: VacancyEvalDecision;
+  decision: 'APPLY' | 'SKIP' | 'NEEDS_HUMAN';
   confidence: number;
-  reasons: string[]; // e.g. "strong_stack_match", "salary_fit"
-  risks: string[]; // e.g. "questionnaire_detected", "salary_missing"
-  factsUsed: string[]; // e.g. "requirements", "conditions"
+  reasons: string[];
+  risks: string[];
+  factsUsed: string[];
 }
 
 export interface LLMVacancyEvalBatchV1 {
@@ -385,24 +310,18 @@ export interface LLMVacancyEvalBatchV1 {
     skip: number;
     needsHuman: number;
   };
-  tokenUsage: {
-    input: number;
-    output: number;
-  };
-  status: 'OK' | 'FAILED_SCHEMA' | 'FAILED_CALL';
+  tokenUsage: { input: number; output: number };
+  status: 'OK' | 'FAILED';
 }
 
-// --- Phase D2.2: Apply Queue ---
-
-export type ApplyQueueStatus = 'PENDING' | 'IN_PROGRESS' | 'APPLIED' | 'FAILED' | 'SKIPPED';
+// --- Apply Queue & Execution (Phase E) ---
 
 export interface ApplyQueueItem {
   vacancyId: string;
   url: string;
-  decision: VacancyEvalDecision; // Should be 'APPLY' mostly
-  status: ApplyQueueStatus;
-  generatedCoverLetter?: string; // Phase E1 will populate this
-  applicationResult?: string; // timestamp or result ID
+  decision: 'APPLY' | 'NEEDS_HUMAN';
+  status: 'PENDING' | 'APPLYING' | 'APPLIED' | 'FAILED' | 'SKIPPED';
+  generatedCoverLetter?: string;
 }
 
 export interface ApplyQueueV1 {
@@ -411,70 +330,61 @@ export interface ApplyQueueV1 {
   inputEvalBatchId: string;
   createdAt: number;
   items: ApplyQueueItem[];
-  summary: {
-    total: number;
-    pending: number;
-    applied: number;
-    failed: number;
-  };
-}
-
-// --- Phase E1.1: Apply Entrypoint Probe ---
-
-export interface ApplyControl {
-    label: string;
-    selector: string; // hint
-    type: 'BUTTON' | 'LINK' | 'MENU' | 'UNKNOWN';
+  summary: { total: number; pending: number; applied: number; failed: number };
 }
 
 export interface ApplyEntrypointProbeV1 {
-    taskId: string; // vacancyId
-    vacancyUrl: string;
-    foundControls: ApplyControl[];
-    blockers: {
-        requiresLogin: boolean;
-        applyNotAvailable: boolean;
-        unknownLayout: boolean;
-    };
-    probedAt: number;
+  taskId: string;
+  vacancyUrl: string;
+  foundControls: ApplyControl[];
+  blockers: {
+    requiresLogin: boolean;
+    applyNotAvailable: boolean;
+    unknownLayout: boolean;
+  };
+  probedAt: number;
 }
-
-// --- Phase E1.2: Apply Form Probe ---
 
 export interface ApplyFormProbeV1 {
-    taskId: string;
-    vacancyUrl: string;
-    entrypointUsed: string; // label of clicked control
-    applyUiKind: 'MODAL' | 'PAGE' | 'INLINE' | 'UNKNOWN';
-    detectedFields: {
-        coverLetterTextarea: boolean;
-        resumeSelector: boolean;
-        submitButtonPresent: boolean;
-        extraQuestionnaireDetected: boolean;
-    };
-    safeLocators: {
-        coverLetterHint: string | null;
-        submitHint: string | null;
-    };
-    successTextHints?: string[]; // Markers to check for after submit
-    blockers: {
-        requiresLogin: boolean;
-        captchaOrAntibot: boolean;
-        applyNotAvailable: boolean;
-        unknownLayout: boolean;
-    };
-    scannedAt: number;
+  taskId: string;
+  vacancyUrl: string;
+  entrypointUsed: string;
+  applyUiKind: 'MODAL' | 'PAGE' | 'UNKNOWN';
+  detectedFields: {
+    coverLetterTextarea: boolean;
+    resumeSelector: boolean;
+    submitButtonPresent: boolean;
+    extraQuestionnaireDetected: boolean;
+  };
+  safeLocators: {
+    coverLetterHint: string | null;
+    submitHint: string | null;
+  };
+  successTextHints: string[];
+  blockers: {
+    requiresLogin: boolean;
+    captchaOrAntibot: boolean;
+    applyNotAvailable: boolean;
+    unknownLayout: boolean;
+  };
+  scannedAt: number;
 }
 
-// --- Phase E2: Questionnaire Handling ---
+export type CoverLetterSource = 'GENERATED' | 'TEMPLATE' | 'DEFAULT' | 'NONE';
+export type ApplyBlockedReason = 'AUTH_REQUIRED' | 'CAPTCHA' | 'COMPLEX_FORM' | 'UNKNOWN';
 
 export interface QuestionnaireField {
     id: string;
-    type: 'TEXT' | 'TEXTAREA' | 'RADIO' | 'CHECKBOX' | 'SELECT' | 'FILE' | 'UNKNOWN';
     label: string;
-    options?: string[]; // For SELECT/RADIO
-    required: boolean;
-    selector: string; // Abstract handle
+    type: string;
+    options?: string[];
+    required?: boolean;
+    selector: string;
+}
+
+export interface QuestionnaireAnswer {
+    fieldId: string;
+    value: string | boolean | number | string[] | null;
 }
 
 export interface QuestionnaireSnapshotV1 {
@@ -483,15 +393,7 @@ export interface QuestionnaireSnapshotV1 {
     pageUrl: string;
     capturedAt: number;
     fields: QuestionnaireField[];
-    questionnaireHash: string; // to detect duplicates/idempotency
-}
-
-export interface QuestionnaireAnswer {
-    fieldId: string;
-    value: string | boolean | number | string[] | null;
-    confidence: number; // 0..1
-    factsUsed: string[];
-    risks: string[];
+    questionnaireHash: string;
 }
 
 export interface QuestionnaireAnswerSetV1 {
@@ -499,30 +401,9 @@ export interface QuestionnaireAnswerSetV1 {
     questionnaireHash: string;
     vacancyId: string;
     generatedAt: number;
-    answers: QuestionnaireAnswer[];
+    answers: { fieldId: string; value: any; confidence: number; risks: string[] }[];
     globalRisks: string[];
 }
-
-// --- Phase E3: Retry & Failover ---
-
-export type ApplyStage = 'STARTED' | 'QUESTIONNAIRE' | 'SUBMITTING' | 'CONFIRMING' | 'DONE' | 'FAILED';
-export type TerminalAction = 'NONE' | 'HIDDEN' | 'SKIPPED';
-
-export interface ApplyAttemptState {
-    vacancyId: string;
-    siteId: string;
-    applyStage: ApplyStage;
-    retryCount: number; // 0, 1, 2, 3
-    lastErrorCode: string | null;
-    lastErrorMessage: string | null;
-    lastAttemptAt: number;
-    terminalAction: TerminalAction;
-}
-
-// --- Phase E1.3: Apply Draft Snapshot ---
-
-export type ApplyBlockedReason = 'VACANCY_NOT_OPENED' | 'APPLY_ENTRYPOINT_NOT_FOUND' | 'FORM_NOT_REACHED' | 'FIELD_NOT_FOUND' | 'READBACK_FAILED' | null;
-export type CoverLetterSource = 'GENERATED' | 'TEMPLATE' | 'DEFAULT' | 'NONE';
 
 export interface ApplyDraftSnapshotV1 {
   vacancyId: string;
@@ -531,21 +412,18 @@ export interface ApplyDraftSnapshotV1 {
   coverLetterFieldFound: boolean;
   coverLetterFilled: boolean;
   coverLetterReadbackHash: string | null;
-  coverLetterSource?: CoverLetterSource; // Track where the text came from
+  coverLetterSource: CoverLetterSource;
   
-  // Phase E2: Questionnaire State
   questionnaireFound: boolean;
   questionnaireFilled: boolean;
   questionnaireSnapshot?: QuestionnaireSnapshotV1;
   questionnaireAnswers?: QuestionnaireAnswerSetV1;
-
-  formStateSummary: string; // Short desc e.g. "Visible: textarea, submit"
-  blockedReason: ApplyBlockedReason;
+  
+  formStateSummary: string;
+  blockedReason: ApplyBlockedReason | null;
 }
 
-// --- Phase E1.4: Apply Submit Receipt ---
-
-export type ApplyFailureReason = 'NO_CONFIRMATION' | 'SUBMIT_BUTTON_NOT_FOUND' | 'FORM_NOT_REACHED' | 'NAV_CHANGED' | 'TIMEOUT' | 'UNKNOWN';
+export type ApplyFailureReason = 'SUBMIT_TIMEOUT' | 'ERROR_MESSAGE_DETECTED' | 'CAPTCHA' | 'UNKNOWN';
 
 export interface ApplySubmitReceiptV1 {
   receiptId: string;
@@ -554,84 +432,157 @@ export interface ApplySubmitReceiptV1 {
   submittedAt: number;
   submitAttempts: number;
   successConfirmed: boolean;
-  confirmationSource: "text_hint" | "url_change" | "dom_marker" | "unknown";
+  confirmationSource: 'UI_TEXT' | 'URL_CHANGE' | 'unknown';
   confirmationEvidence: string | null;
-  finalQueueStatus: "APPLIED" | "FAILED";
+  finalQueueStatus: 'APPLIED' | 'FAILED';
   failureReason: ApplyFailureReason | null;
 }
 
-// --- Core State ---
-
-export interface AgentState {
-  id: string;
-  status: AgentStatus;
-  currentUrl: string | null;
-  lastSnapshotTimestamp: number | null;
-  logs: string[];
-  tokenLedger: TokenLedger; // Telemetry
-  
-  // Data Containers
-  activeTargetingSpec?: TargetingSpecV1 | null; // Stage 4: Job Requirements
-  activeSearchDOMSnapshot?: SearchDOMSnapshotV1 | null; // Stage 5.2.3: Raw DOM
-  activeSearchUISpec?: SearchUISpecV1 | null;   // Stage 5.3: Processed Spec
-  activeSearchPrefs?: UserSearchPrefsV1 | null; // Stage 5.3: User Choices
-  activeSearchApplyPlan?: SearchApplyPlanV1 | null; // Stage 5.4: Execution Plan
-  activeAppliedFilters?: AppliedFiltersSnapshotV1 | null; // Phase A1.1: Execution Progress
-  activeVerification?: FiltersAppliedVerificationV1 | null; // Phase A2.1: Verification Report
-  activeVacancyBatch?: VacancyCardBatchV1 | null; // Phase B1: Captured Vacancies
-  activeDedupedBatch?: DedupedVacancyBatchV1 | null; // Phase B2: Deduped Vacancies
-  activePrefilterBatch?: PreFilterResultBatchV1 | null; // Phase C1: Script Filter Results
-  activeLLMBatch?: LLMDecisionBatchV1 | null; // Phase C2: LLM Screening Results
-  activeExtractionBatch?: VacancyExtractionBatchV1 | null; // Phase D1: Extracted Details
-  activeEvalBatch?: LLMVacancyEvalBatchV1 | null; // Phase D2: Evaluated Vacancies
-  activeApplyQueue?: ApplyQueueV1 | null; // Phase D2.2: Queue for Auto Apply
-  activeApplyProbe?: ApplyEntrypointProbeV1 | null; // Phase E1.1: Transient Probe Result
-  activeApplyFormProbe?: ApplyFormProbeV1 | null; // Phase E1.2: Transient Form Probe
-  activeApplyDraft?: ApplyDraftSnapshotV1 | null; // Phase E1.3: Transient Draft Result
-  
-  // Phase E2 & E3
-  activeQuestionnaireSnapshot?: QuestionnaireSnapshotV1 | null;
-  activeQuestionnaireAnswers?: QuestionnaireAnswerSetV1 | null;
-  activeApplyAttempt?: ApplyAttemptState | null;
-
-  // Phase F1
-  activeDriftEvent?: DomDriftEventV1 | null;
+export interface ApplyAttemptState {
+    vacancyId: string;
+    attemptCount: number;
+    lastAttemptAt: number;
+    history: { status: string; timestamp: number; error?: string }[];
 }
 
+// --- Resilience (Phase F1) ---
+
+export interface DOMFingerprintV1 {
+  siteId: string;
+  pageType: 'search' | 'vacancy' | 'apply_form';
+  capturedAt: number;
+  domVersion: number;
+  structuralHash: string;
+}
+
+export interface DomDriftEventV1 {
+  siteId: string;
+  pageType: string;
+  detectedAt: number;
+  expectedHash: string;
+  observedHash: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH';
+  actionRequired: 'NONE' | 'RE_SCAN' | 'HUMAN_CHECK';
+}
+
+// --- Governance (Phase G3) ---
+
+export interface PruningPolicyV1 {
+  forbidRawHtml: true;
+  maxCharsPerField: number; 
+  maxItemsPerBatch: number;
+  minItemsPerBatch: number;
+}
+
+export const DEFAULT_PRUNING_POLICY: PruningPolicyV1 = {
+  forbidRawHtml: true,
+  maxCharsPerField: 10000,
+  maxItemsPerBatch: 15,
+  minItemsPerBatch: 10
+};
+
+export interface CompactionPolicyV1 {
+  maxLogItems: number; 
+  keptLogHead: number; 
+  keptLogTail: number; 
+}
+
+export const DEFAULT_COMPACTION_POLICY: CompactionPolicyV1 = {
+  maxLogItems: 50,
+  keptLogHead: 5,
+  keptLogTail: 5
+};
+
+export interface ContextBudgetV1 {
+  softTokenLimit: number;
+  hardTokenLimit: number;
+}
+
+export interface CompactionSummaryV1 {
+  id: string;
+  createdAt: number;
+  scope: 'session';
+  source: string[];
+  summary: {
+    logCountBefore: number;
+    lastStatus: string;
+    pipelineStats?: string;
+    notes: string;
+  };
+}
+
+// --- Profile & Agent State ---
+
 export interface ProfileSnapshot {
-  siteId: string;      // e.g. 'hh.ru'
-  capturedAt: number;  // timestamp
-  sourceUrl: string;   // where we got it
-  rawContent: string;  // minimal text content
-  contentHash: string; // simple hash to detect changes
+  siteId: string;
+  capturedAt: number;
+  sourceUrl: string;
+  rawContent: string;
+  contentHash: string;
+}
+
+export interface AgentState {
+  status: AgentStatus;
+  currentUrl: string;
+  logs: string[];
+  
+  // Observability
+  tokenLedger: TokenLedger;
+  
+  // Phase G3
+  contextHealth?: {
+      estimatedTokens: number;
+      softLimit: number;
+      hardLimit: number;
+      status: 'OK' | 'NEAR_LIMIT' | 'OVER_LIMIT';
+  };
+  lastCompaction?: {
+      summaryId: string;
+      timestamp: number;
+  };
+
+  // Phase F1
+  activeDriftEvent: DomDriftEventV1 | null;
+  
+  // Data
+  activeProfileSnapshot?: ProfileSnapshot;
+  activeTargetingSpec?: TargetingSpecV1;
+
+  // Search Config
+  activeSearchDOMSnapshot?: SearchDOMSnapshotV1;
+  activeSearchUISpec?: SearchUISpecV1;
+  activeSearchPrefs?: UserSearchPrefsV1;
+  activeSearchApplyPlan?: SearchApplyPlanV1;
+
+  // Execution (Phase A)
+  activeAppliedFilters?: AppliedFiltersSnapshotV1;
+  activeVerification?: FiltersAppliedVerificationV1;
+
+  // Vacancies (Phase B)
+  activeVacancyBatch?: VacancyCardBatchV1;
+  activeDedupedBatch?: DedupedVacancyBatchV1;
+
+  // Screening (Phase C)
+  activePrefilterBatch?: PreFilterResultBatchV1;
+  activeLLMBatch?: LLMDecisionBatchV1;
+
+  // Extraction/Eval (Phase D)
+  activeExtractionBatch?: VacancyExtractionBatchV1;
+  activeEvalBatch?: LLMVacancyEvalBatchV1;
+  activeApplyQueue?: ApplyQueueV1;
+  
+  // Apply (Phase E)
+  activeApplyProbe?: ApplyEntrypointProbeV1;
+  activeApplyFormProbe?: ApplyFormProbeV1;
+  activeApplyDraft?: ApplyDraftSnapshotV1;
+  activeQuestionnaireSnapshot?: QuestionnaireSnapshotV1;
+  activeQuestionnaireAnswers?: QuestionnaireAnswerSetV1;
 }
 
 export const createInitialAgentState = (): AgentState => ({
-  id: crypto.randomUUID(),
   status: AgentStatus.IDLE,
-  currentUrl: null,
-  lastSnapshotTimestamp: null,
+  currentUrl: '',
   logs: [],
   tokenLedger: { inputTokens: 0, outputTokens: 0, cacheHits: 0, cacheMisses: 0, calls: 0 },
-  activeTargetingSpec: null,
-  activeSearchDOMSnapshot: null,
-  activeSearchUISpec: null,
-  activeSearchPrefs: null,
-  activeSearchApplyPlan: null,
-  activeAppliedFilters: null,
-  activeVerification: null,
-  activeVacancyBatch: null,
-  activeDedupedBatch: null,
-  activePrefilterBatch: null,
-  activeLLMBatch: null,
-  activeExtractionBatch: null,
-  activeEvalBatch: null,
-  activeApplyQueue: null,
-  activeApplyProbe: null,
-  activeApplyFormProbe: null,
-  activeApplyDraft: null,
-  activeQuestionnaireSnapshot: null,
-  activeQuestionnaireAnswers: null,
-  activeApplyAttempt: null,
   activeDriftEvent: null
 });

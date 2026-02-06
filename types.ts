@@ -64,6 +64,11 @@ export enum AgentStatus {
   // Phase F1: Resilience
   DOM_DRIFT_DETECTED = 'DOM_DRIFT_DETECTED',
 
+  // Phase G3: Context & Pruning
+  CONTEXT_NEAR_LIMIT = 'CONTEXT_NEAR_LIMIT', // Soft limit reached, compacted
+  CONTEXT_OVER_LIMIT = 'CONTEXT_OVER_LIMIT', // Hard limit reached, blocked
+  PRUNING_VIOLATION = 'PRUNING_VIOLATION',   // Safety check failed
+
   // Phase A1.1 Execution Statuses
   APPLYING_FILTERS = 'APPLYING_FILTERS', // In process
   APPLY_STEP_DONE = 'APPLY_STEP_DONE',   // One step finished successfully

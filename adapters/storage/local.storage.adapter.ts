@@ -3,7 +3,7 @@
 
 import { StoragePort } from '../../core/ports/storage.port';
 import { AgentConfig } from '../../types';
-import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1, LLMVacancyEvalBatchV1, ApplyQueueV1, ApplyDraftSnapshotV1, ApplySubmitReceiptV1, QuestionnaireSnapshotV1, QuestionnaireAnswerSetV1, ApplyAttemptState, DOMFingerprintV1 } from '../../core/domain/entities';
+import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1, LLMVacancyEvalBatchV1, ApplyQueueV1, ApplyDraftSnapshotV1, ApplySubmitReceiptV1, QuestionnaireSnapshotV1, QuestionnaireAnswerSetV1, ApplyAttemptState, DOMFingerprintV1, CompactionSummaryV1 } from '../../core/domain/entities';
 import { TargetingSpecV1 } from '../../core/domain/llm_contracts';
 
 // Legacy Prefixes (Read-Only fallback)
@@ -433,6 +433,19 @@ export class LocalStorageAdapter implements StoragePort {
       const newKey = this.getSiteKey(siteId, 'dom_fp', pageType);
       const legacyKey = LEGACY_DOM_FP_PREFIX + siteId + '_' + pageType;
       const raw = this.getWithLegacyFallback(newKey, legacyKey);
+      return raw ? JSON.parse(raw) : null;
+  }
+
+  // --- Phase G3: Compaction ---
+  async saveCompactionSummary(summary: CompactionSummaryV1): Promise<void> {
+      // Session scope
+      const key = `as/session/compaction/${summary.id}`;
+      localStorage.setItem(key, JSON.stringify(summary));
+  }
+
+  async getCompactionSummary(id: string): Promise<CompactionSummaryV1 | null> {
+      const key = `as/session/compaction/${id}`;
+      const raw = localStorage.getItem(key);
       return raw ? JSON.parse(raw) : null;
   }
 

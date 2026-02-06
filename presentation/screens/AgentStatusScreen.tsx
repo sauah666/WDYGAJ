@@ -1,7 +1,7 @@
 
 // ... (imports)
 import React, { useEffect, useState, useRef } from 'react';
-import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit, FileSearch, CheckSquare, Award, Send, MousePointerClick, FormInput, PenTool, HelpCircle, EyeOff, FastForward, Info, AlertTriangle, RefreshCw, Globe, Settings } from 'lucide-react';
+import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit, FileSearch, CheckSquare, Award, Send, MousePointerClick, FormInput, PenTool, HelpCircle, EyeOff, FastForward, Info, AlertTriangle, RefreshCw, Globe, Settings, Scale, BatteryWarning } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentStatus } from '../../types';
 import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep, ControlVerificationResult, VacancyCardV1, VacancyDecision, VacancyExtractV1, LLMVacancyEvalResult, ApplyQueueItem } from '../../core/domain/entities';
@@ -154,6 +154,9 @@ export const AgentStatusScreen: React.FC<Props> = ({
       case AgentStatus.APPLY_FAILED_HIDDEN: return 'text-gray-500'; // New
       case AgentStatus.APPLY_FAILED_SKIPPED: return 'text-gray-500'; // New
       case AgentStatus.DOM_DRIFT_DETECTED: return 'text-amber-500'; // F1
+      case AgentStatus.CONTEXT_NEAR_LIMIT: return 'text-orange-400'; // G3
+      case AgentStatus.CONTEXT_OVER_LIMIT: return 'text-red-600'; // G3
+      case AgentStatus.PRUNING_VIOLATION: return 'text-red-600'; // G3
       case AgentStatus.COMPLETED: return 'text-green-500';
       case AgentStatus.FAILED: return 'text-red-500';
       default: return 'text-gray-100';
@@ -163,6 +166,9 @@ export const AgentStatusScreen: React.FC<Props> = ({
   const getStatusIcon = (status: AgentStatus) => {
     if (status === AgentStatus.WAITING_FOR_SITE_SELECTION) return <Globe />;
     if (status === AgentStatus.LLM_CONFIG_ERROR) return <Settings />;
+    if (status === AgentStatus.CONTEXT_NEAR_LIMIT) return <BatteryWarning />;
+    if (status === AgentStatus.CONTEXT_OVER_LIMIT) return <XCircle />;
+    if (status === AgentStatus.PRUNING_VIOLATION) return <AlertTriangle />;
     if (status === AgentStatus.NAVIGATING || status === AgentStatus.EXTRACTING || status === AgentStatus.STARTING || status === AgentStatus.TARGETING_PENDING || status === AgentStatus.NAVIGATING_TO_SEARCH || status === AgentStatus.EXTRACTING_SEARCH_UI || status === AgentStatus.ANALYZING_SEARCH_UI || status === AgentStatus.APPLYING_FILTERS || status === AgentStatus.EXTRACTING_VACANCIES || status === AgentStatus.FINDING_APPLY_BUTTON || status === AgentStatus.SUBMITTING_APPLICATION || status === AgentStatus.FILLING_QUESTIONNAIRE || status === AgentStatus.APPLY_RETRYING) return <Loader2 className="animate-spin" />;
     if (status === AgentStatus.WAITING_FOR_HUMAN) return <AlertCircle />;
     if (status === AgentStatus.WAITING_FOR_PROFILE_PAGE) return <FileText />;
@@ -196,10 +202,10 @@ export const AgentStatusScreen: React.FC<Props> = ({
     return <Terminal />;
   };
 
-  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.WAITING_FOR_SITE_SELECTION && state.status !== AgentStatus.LLM_CONFIG_ERROR && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY && state.status !== AgentStatus.APPLY_BUTTON_FOUND && state.status !== AgentStatus.APPLY_FORM_OPENED && state.status !== AgentStatus.APPLY_DRAFT_FILLED && state.status !== AgentStatus.APPLY_SUBMIT_SUCCESS && state.status !== AgentStatus.APPLY_SUBMIT_FAILED && state.status !== AgentStatus.FILLING_QUESTIONNAIRE && state.status !== AgentStatus.APPLY_RETRYING && state.status !== AgentStatus.APPLY_FAILED_HIDDEN && state.status !== AgentStatus.APPLY_FAILED_SKIPPED && state.status !== AgentStatus.DOM_DRIFT_DETECTED;
+  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.WAITING_FOR_SITE_SELECTION && state.status !== AgentStatus.LLM_CONFIG_ERROR && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY && state.status !== AgentStatus.APPLY_BUTTON_FOUND && state.status !== AgentStatus.APPLY_FORM_OPENED && state.status !== AgentStatus.APPLY_DRAFT_FILLED && state.status !== AgentStatus.APPLY_SUBMIT_SUCCESS && state.status !== AgentStatus.APPLY_SUBMIT_FAILED && state.status !== AgentStatus.FILLING_QUESTIONNAIRE && state.status !== AgentStatus.APPLY_RETRYING && state.status !== AgentStatus.APPLY_FAILED_HIDDEN && state.status !== AgentStatus.APPLY_FAILED_SKIPPED && state.status !== AgentStatus.DOM_DRIFT_DETECTED && state.status !== AgentStatus.CONTEXT_NEAR_LIMIT && state.status !== AgentStatus.CONTEXT_OVER_LIMIT;
   const isFinished = state.status === AgentStatus.COMPLETED || state.status === AgentStatus.FAILED;
   // Can reset profile if captured OR targeting ready OR dom ready OR waiting prefs OR plan ready
-  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY || state.status === AgentStatus.APPLY_BUTTON_FOUND || state.status === AgentStatus.APPLY_FORM_OPENED || state.status === AgentStatus.APPLY_DRAFT_FILLED || state.status === AgentStatus.APPLY_SUBMIT_SUCCESS || state.status === AgentStatus.APPLY_SUBMIT_FAILED || state.status === AgentStatus.FILLING_QUESTIONNAIRE || state.status === AgentStatus.APPLY_RETRYING || state.status === AgentStatus.APPLY_FAILED_HIDDEN || state.status === AgentStatus.APPLY_FAILED_SKIPPED || state.status === AgentStatus.DOM_DRIFT_DETECTED;
+  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY || state.status === AgentStatus.APPLY_BUTTON_FOUND || state.status === AgentStatus.APPLY_FORM_OPENED || state.status === AgentStatus.APPLY_DRAFT_FILLED || state.status === AgentStatus.APPLY_SUBMIT_SUCCESS || state.status === AgentStatus.APPLY_SUBMIT_FAILED || state.status === AgentStatus.FILLING_QUESTIONNAIRE || state.status === AgentStatus.APPLY_RETRYING || state.status === AgentStatus.APPLY_FAILED_HIDDEN || state.status === AgentStatus.APPLY_FAILED_SKIPPED || state.status === AgentStatus.DOM_DRIFT_DETECTED || state.status === AgentStatus.CONTEXT_NEAR_LIMIT || state.status === AgentStatus.CONTEXT_OVER_LIMIT;
 
   // ... (render helpers)
   const renderFieldInput = (field: SearchFieldDefinition, currentValue: any) => {
@@ -224,6 +230,17 @@ export const AgentStatusScreen: React.FC<Props> = ({
                   {getStatusIcon(state.status)}
                   {state.status}
                 </span>
+                
+                {/* Context Health Indicator */}
+                {state.contextHealth && (
+                    <span className={`px-3 py-1 rounded-full bg-gray-900 border border-gray-700 text-xs font-mono flex items-center gap-2 ${
+                        state.contextHealth.status === 'OK' ? 'text-gray-400' :
+                        state.contextHealth.status === 'NEAR_LIMIT' ? 'text-orange-400 border-orange-500/50' : 'text-red-400 border-red-500/50'
+                    }`}>
+                        <Scale size={14} />
+                        MEM: {Math.round(state.contextHealth.estimatedTokens / 1000)}k
+                    </span>
+                )}
              </div>
 
              {/* Mock Viewport */}
@@ -232,7 +249,39 @@ export const AgentStatusScreen: React.FC<Props> = ({
                    <div className="text-center"><Terminal size={48} className="mx-auto text-gray-700 mb-4" /><p className="text-gray-600 font-mono">Waiting for initialization...</p></div>
                 )}
                 
-                {/* Phase F2: Site Selection UI */}
+                {/* Phase G3: Context Warning */}
+                {state.status === AgentStatus.CONTEXT_NEAR_LIMIT && (
+                    <div className="bg-orange-900/30 border border-orange-500/50 rounded-lg p-6 max-w-md text-center">
+                        <BatteryWarning className="mx-auto text-orange-500 mb-4" size={48} />
+                        <h3 className="text-xl font-bold text-orange-100 mb-2">Memory Soft Limit Reached</h3>
+                        <p className="text-gray-300 mb-4 text-sm">
+                            Session history is getting large ({state.contextHealth?.estimatedTokens} tokens).
+                            Logs have been auto-compacted.
+                            It is recommended to Reset Session soon to prevent errors.
+                        </p>
+                        <div className="flex gap-2">
+                           <button onClick={onReset} className="flex-1 bg-red-900/50 hover:bg-red-900 text-red-200 px-4 py-2 rounded-lg font-bold transition-colors">
+                              RESET NOW
+                           </button>
+                        </div>
+                    </div>
+                )}
+
+                {state.status === AgentStatus.CONTEXT_OVER_LIMIT && (
+                    <div className="bg-red-900/30 border border-red-500/50 rounded-lg p-6 max-w-md text-center">
+                        <XCircle className="mx-auto text-red-500 mb-4" size={48} />
+                        <h3 className="text-xl font-bold text-red-100 mb-2">Memory Hard Limit Exceeded</h3>
+                        <p className="text-gray-300 mb-4 text-sm">
+                            Session history is too large ({state.contextHealth?.estimatedTokens} tokens).
+                            Execution blocked to prevent context overflow.
+                        </p>
+                         <button onClick={onReset} className="w-full bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-bold transition-colors">
+                              RESET SESSION
+                           </button>
+                    </div>
+                )}
+                
+                {/* ... (Existing Views) ... */}
                 {state.status === AgentStatus.WAITING_FOR_SITE_SELECTION && (
                    <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 max-w-md w-full text-center">
                       <Globe className="mx-auto text-blue-400 mb-4" size={48} />
