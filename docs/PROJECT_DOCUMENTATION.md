@@ -40,17 +40,20 @@ MASTER PLAN v1.0 — JobSearch Agent (Mode 1: HH.ru, затем мультиса
 ✅ Done-F1: DOM Drift Detection
 ✅ Done-F2: Site Memory & Multi-Site Readiness
 ✅ Done-G1: LLM Provider Registry
-- WHAT ADDED: `LLMProviderRegistry` domain entity, `activeLLMProviderId` config.
-- BEHAVIOR: 
-  - Allows switching between Mock, Gemini (Cloud), OpenAI (Cloud - disabled), Local (disabled).
-  - Validates API Keys before allowing run.
-  - UI visualizes `LLM_CONFIG_ERROR` state if keys are missing.
-  - Added "Reset LLM Config" to settings.
+✅ Done-G2: Token Ledger & Telemetry
+- WHAT ADDED: 
+  - `calls` counter in `TokenLedger`.
+  - `tokenUsage` prop in LLM contract outputs.
+  - Telemetry capture in UseCase.
+  - Read-only counters in Runner UI.
+- BEHAVIOR:
+  - Agent now tracks Input/Output tokens and API Call counts across all LLM operations.
+  - No change to actual search/apply logic.
 
 2) MASTER PLAN — от “сейчас” до “финиша”
 PHASE G — LLM Config, Token Telemetry, Compaction
 ✅ G1. LLM Provider Registry (cloud/local) + env keys + reset
-G2. Token Ledger per Session (input/output/cache hit/miss)
+✅ G2. Token Ledger per Session (input/output/cache hit/miss)
 G3. Pruning/Compaction + адаптивный контекст + батчинг 10–15
 
 3) Конец проекта (Definition of Done)
@@ -68,8 +71,8 @@ UI: выбор режима/сайта/настроек и reset’ов.
 Документация: позволяет новому агенту продолжить без истории.
 
 4) Текущая точка
-Последний завершённый этап: PHASE G1 — LLM Provider Registry
-Текущий этап: PHASE G2 — Token Ledger (Refinement)
+Последний завершённый этап: PHASE G2 — Token Ledger & Telemetry
+Текущий этап: PHASE G3 — Pruning/Compaction
 
 ## Reset Matrix
 

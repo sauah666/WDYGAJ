@@ -1,3 +1,4 @@
+
 // Layer: ADAPTERS
 // Purpose: Real Implementation of LLM Port using Google Gemini API.
 
@@ -90,7 +91,10 @@ export class GeminiLLMAdapter implements LLMProviderPort {
     `;
 
     const result = await this.callGemini(prompt, system);
-    return JSON.parse(result.text) as TargetingSpecV1;
+    const spec = JSON.parse(result.text) as TargetingSpecV1;
+    // Phase G2: Telemetry
+    spec.tokenUsage = result.usage;
+    return spec;
   }
 
   async analyzeSearchDOM(input: SearchUIAnalysisInputV1): Promise<SearchUISpecV1> {
@@ -121,11 +125,11 @@ export class GeminiLLMAdapter implements LLMProviderPort {
     `;
 
     const result = await this.callGemini(prompt, system);
-    // Merge back metadata if needed, but for now just return the parsing result
-    // We assume LLM returns full object matching SearchUISpecV1 structure (minus dynamic timestamps which we can fix in UseCase if needed, but Adapter should try)
     const spec = JSON.parse(result.text);
     spec.siteId = input.siteId; // Ensure consistency
     spec.derivedAt = Date.now();
+    // Phase G2: Telemetry
+    spec.tokenUsage = result.usage;
     return spec as SearchUISpecV1;
   }
 
@@ -207,6 +211,8 @@ export class GeminiLLMAdapter implements LLMProviderPort {
 
     const result = await this.callGemini(prompt, system);
     const parsed = JSON.parse(result.text);
+    // Phase G2: Telemetry
+    parsed.tokenUsage = result.usage;
 
     return parsed as QuestionnaireAnswerOutputV1;
   }

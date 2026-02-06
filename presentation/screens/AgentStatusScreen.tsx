@@ -359,6 +359,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
           <div className="p-3 border-b border-gray-800 bg-gray-900/50 flex justify-between items-center">
             <span className="text-gray-400 text-xs">SYSTEM LOGS</span>
             <div className="flex items-center gap-3 text-xs">
+                <span className="text-yellow-400">CALLS: {state.tokenLedger.calls}</span>
                 <span className="text-blue-400">IN: {state.tokenLedger.inputTokens}</span>
                 <span className="text-purple-400">OUT: {state.tokenLedger.outputTokens}</span>
                 <span className="text-green-400">HIT: {state.tokenLedger.cacheHits}</span>

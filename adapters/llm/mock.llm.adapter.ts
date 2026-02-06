@@ -1,3 +1,4 @@
+
 // Layer: ADAPTERS
 // Purpose: Mock implementation of LLM Port for development.
 
@@ -37,7 +38,12 @@ export class MockLLMAdapter implements LLMProviderPort {
         autoRead: 0.85,
         autoIgnore: 0.4
       },
-      assumptions: ['Assuming focus on Web Development based on "React" keyword.']
+      assumptions: ['Assuming focus on Web Development based on "React" keyword.'],
+      // Phase G2: Telemetry
+      tokenUsage: {
+        input: 1000,
+        output: 500
+      }
     };
   }
 
@@ -104,7 +110,12 @@ export class MockLLMAdapter implements LLMProviderPort {
             }
         ],
         unsupportedFields: [],
-        assumptions: ['Assuming "Уровень дохода" implies monthly salary in local currency.']
+        assumptions: ['Assuming "Уровень дохода" implies monthly salary in local currency.'],
+        // Phase G2: Telemetry
+        tokenUsage: {
+          input: 1500,
+          output: 300
+        }
     };
   }
 
@@ -291,7 +302,12 @@ export class MockLLMAdapter implements LLMProviderPort {
 
       return {
           answers,
-          globalRisks: []
+          globalRisks: [],
+          // Phase G2: Telemetry
+          tokenUsage: {
+            input: 800,
+            output: 200
+          }
       };
   }
 }

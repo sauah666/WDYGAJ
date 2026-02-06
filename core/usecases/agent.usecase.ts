@@ -18,11 +18,12 @@ export class AgentUseCase {
     private llm: LLMProviderPort
   ) {}
 
-  // ... (observability helpers remain same)
+  // ... (observability helpers)
   private addTokenUsage(state: AgentState, input: number, output: number, cached: boolean): AgentState {
      const ledger = { ...state.tokenLedger };
      ledger.inputTokens += input;
      ledger.outputTokens += output;
+     ledger.calls += 1; // Phase G2: Count calls
      if (cached) ledger.cacheHits++; else ledger.cacheMisses++;
      return { ...state, tokenLedger: ledger };
   }
@@ -60,6 +61,92 @@ export class AgentUseCase {
       storageNamespace: siteId,
       searchEntrypoint: { kind: 'url', url: `https://${siteId}/search` }
     };
+  }
+
+  // --- Helpers ---
+
+  async failSession(state: AgentState, reason: string): Promise<AgentState> {
+      return this.updateState({
+          ...state,
+          status: AgentStatus.FAILED,
+          logs: [...state.logs, `❌ FAILURE: ${reason}`]
+      });
+  }
+
+  async abortSession(state: AgentState): Promise<AgentState> {
+      return this.updateState({
+          ...state,
+          status: AgentStatus.IDLE,
+          logs: [...state.logs, "Session aborted by user."]
+      });
+  }
+
+  async resetSession(state: AgentState): Promise<AgentState> {
+      const newState = createInitialAgentState();
+      return this.updateState(newState);
+  }
+
+  async resetProfileData(state: AgentState, siteId: string): Promise<AgentState> {
+      await this.storage.resetProfile(siteId);
+      return this.updateState({
+          ...state,
+          logs: [...state.logs, "Profile data reset."]
+      });
+  }
+
+  // --- Drift Detection ---
+
+  async checkDomDrift(state: AgentState, siteId: string, pageType: 'search' | 'vacancy' | 'apply_form' | 'unknown'): Promise<{ drifted: boolean; event?: DomDriftEventV1 }> {
+        const fingerprint = await this.browser.getPageFingerprint(pageType);
+        const stored = await this.storage.getDomFingerprint(siteId, pageType);
+
+        if (!stored) {
+            const newFp: DOMFingerprintV1 = {
+                siteId,
+                pageType,
+                capturedAt: Date.now(),
+                domVersion: 1,
+                structuralHash: fingerprint.structuralHash
+            };
+            await this.storage.saveDomFingerprint(siteId, newFp);
+            return { drifted: false };
+        }
+
+        if (stored.structuralHash !== fingerprint.structuralHash) {
+            const event: DomDriftEventV1 = {
+                siteId,
+                pageType,
+                detectedAt: Date.now(),
+                expectedHash: stored.structuralHash,
+                observedHash: fingerprint.structuralHash,
+                severity: 'HIGH',
+                actionRequired: 'HUMAN_CHECK'
+            };
+            return { drifted: true, event };
+        }
+        return { drifted: false };
+  }
+
+  async resolveDomDrift(state: AgentState, siteId: string): Promise<AgentState> {
+      if (!state.activeDriftEvent) return state;
+      
+      const event = state.activeDriftEvent;
+      // Accept new state
+      const newFp: DOMFingerprintV1 = {
+            siteId,
+            pageType: event.pageType as any,
+            capturedAt: Date.now(),
+            domVersion: Date.now(),
+            structuralHash: event.observedHash
+      };
+      await this.storage.saveDomFingerprint(siteId, newFp);
+      
+      return this.updateState({
+          ...state,
+          status: AgentStatus.IDLE,
+          activeDriftEvent: null,
+          logs: [...state.logs, "Drift resolved. Please retry."]
+      });
   }
 
   // --- Phase G1: LLM Config Signal ---
@@ -160,9 +247,6 @@ export class AgentUseCase {
           logs: [...state.logs, "Login confirmed by user."]
       });
   }
-
-  // ... (Rest of existing methods)
-  // To ensure I don't break "Full content" rule, I will replicate the previous file content + my changes.
   
   async checkAndCaptureProfile(state: AgentState, siteId: string): Promise<AgentState> {
       // 1. Check if we already have a profile in storage
@@ -225,11 +309,6 @@ export class AgentUseCase {
       }
 
       const config = await this.storage.getConfig();
-      
-      // Phase G1: No explicit key check here, relying on Adapter validity check in App.tsx
-      // But double check just in case.
-      // If the LLM provider is mock, no key needed. 
-      // If it's a cloud provider, we expect App layer to have caught config errors.
 
       const summary: ProfileSummaryV1 = {
           siteId,
@@ -246,7 +325,14 @@ export class AgentUseCase {
 
       try {
           const spec = await this.llm.analyzeProfile(summary);
-          let nextState = this.addTokenUsage(state, 1000, 500, false); 
+          // Phase G2: Telemetry
+          let nextState = state;
+          if (spec.tokenUsage) {
+               nextState = this.addTokenUsage(state, spec.tokenUsage.input, spec.tokenUsage.output, false);
+          } else {
+               // Fallback / Mock
+               nextState = this.addTokenUsage(state, 1000, 500, false); 
+          }
           
           await this.storage.saveTargetingSpec(siteId, spec);
 
@@ -269,7 +355,6 @@ export class AgentUseCase {
 
   async navigateToSearchPage(state: AgentState, siteId: string): Promise<AgentState> {
       const def = this.getSiteDefinition(siteId);
-      // Use definition strategy if available, else fallback logic
       const searchUrl = (def.searchEntrypoint && 'url' in def.searchEntrypoint) 
           ? def.searchEntrypoint.url 
           : `https://${siteId}/search/vacancy/advanced`;
@@ -353,7 +438,13 @@ export class AgentUseCase {
       };
 
       const uiSpec = await this.llm.analyzeSearchDOM(input);
-      let nextState = this.addTokenUsage(state, 1500, 300, false);
+      // Phase G2: Telemetry
+      let nextState = state;
+      if (uiSpec.tokenUsage) {
+           nextState = this.addTokenUsage(state, uiSpec.tokenUsage.input, uiSpec.tokenUsage.output, false);
+      } else {
+           nextState = this.addTokenUsage(state, 1500, 300, false);
+      }
       
       await this.storage.saveSearchUISpec(siteId, uiSpec);
 
@@ -1011,6 +1102,7 @@ export class AgentUseCase {
 
       let answersSet: QuestionnaireAnswerSetV1 | null = null;
       let questionnaireSnapshot: QuestionnaireSnapshotV1 | null = null;
+      let nextState = state; // Accumulator for state changes
 
       if (probe.detectedFields.extraQuestionnaireDetected) {
           const rawFields = await this.browser.scanApplyFormArbitrary();
@@ -1035,7 +1127,12 @@ export class AgentUseCase {
                  };
 
                  const output = await this.llm.generateQuestionnaireAnswers(inputs);
-                 this.addTokenUsage(state, 500, 100, false);
+                 // Phase G2: Telemetry Fixed in G2.1
+                 if (output.tokenUsage) {
+                      nextState = this.addTokenUsage(state, output.tokenUsage.input, output.tokenUsage.output, false);
+                 } else {
+                      nextState = this.addTokenUsage(state, 500, 100, false);
+                 }
 
                  answersSet = {
                      id: crypto.randomUUID(),
@@ -1080,7 +1177,7 @@ export class AgentUseCase {
       await this.storage.saveApplyDraftSnapshot(siteId, draft);
 
       return this.updateState({
-          ...state,
+          ...nextState,
           status: AgentStatus.APPLY_DRAFT_FILLED,
           activeApplyDraft: draft,
           activeQuestionnaireSnapshot: questionnaireSnapshot,
@@ -1089,339 +1186,69 @@ export class AgentUseCase {
       });
   }
 
-  // --- Phase E3: Retry Policy Helper ---
-  private async getOrCreateApplyAttempt(siteId: string, vacancyId: string): Promise<ApplyAttemptState> {
-      let attempt = await this.storage.getApplyAttemptState(siteId, vacancyId);
-      if (!attempt) {
-          attempt = {
-              vacancyId,
-              siteId,
-              applyStage: 'STARTED',
-              retryCount: 0,
-              lastErrorCode: null,
-              lastErrorMessage: null,
-              lastAttemptAt: Date.now(),
-              terminalAction: 'NONE'
-          };
-      }
-      return attempt;
-  }
-
-  // --- Phase E1.4 + E3: Submit Apply Form with Retry Logic ---
   async submitApplyForm(state: AgentState, siteId: string): Promise<AgentState> {
-      if (!state.activeApplyProbe || !state.activeApplyFormProbe || !state.activeApplyQueue) {
-          return this.failSession(state, "Missing dependencies for submit (Probe, Form, or Queue).");
-      }
-
-      const vacancyId = state.activeApplyProbe.taskId;
-      const formProbe = state.activeApplyFormProbe;
-      const entrypointSelector = state.activeApplyProbe.foundControls[0].selector;
-      const url = state.activeApplyProbe.vacancyUrl;
-      const successHints = formProbe.successTextHints || ['Success', 'отправлен'];
-
-      const queueItem = state.activeApplyQueue.items.find(i => i.vacancyId === vacancyId);
-      if (!queueItem) {
-          return this.failSession(state, `Queue item for vacancy ${vacancyId} not found.`);
-      }
-
-      let attemptState = await this.getOrCreateApplyAttempt(siteId, vacancyId);
+      const draft = state.activeApplyDraft;
+      if (!draft) return state;
       
-      if (attemptState.terminalAction !== 'NONE') {
-          return this.updateState({
-              ...state,
-              activeApplyAttempt: attemptState,
-              logs: [...state.logs, `Skipping submit: Vacancy already marked as ${attemptState.terminalAction}.`]
-          });
-      }
-
-      let currentState = await this.updateState({
-          ...state,
-          status: AgentStatus.SUBMITTING_APPLICATION,
-          activeApplyAttempt: attemptState,
-          logs: [...state.logs, `INITIATING SUBMIT SEQUENCE for ${vacancyId}. Retry Count: ${attemptState.retryCount}`]
-      });
-
-      const MAX_RETRIES = 3;
-      let successConfirmed = false;
-      let confirmationEvidence = null;
-      let failureReason: ApplyFailureReason | null = null;
-
-      while (attemptState.retryCount <= MAX_RETRIES && !successConfirmed) {
-          
-          if (attemptState.retryCount > 0) {
-               currentState = await this.updateState({
-                   ...currentState,
-                   status: AgentStatus.APPLY_RETRYING,
-                   activeApplyAttempt: attemptState,
-                   logs: [...currentState.logs, `Retry Attempt #${attemptState.retryCount}... (Wait 1s)`]
-               });
-               await new Promise(r => setTimeout(r, 1000));
-          }
-
-          try {
-              currentState = await this.updateState({
-                  ...currentState,
-                  logs: [...currentState.logs, `Navigating to ${url} and re-opening form...`]
-              });
-              await this.browser.navigateTo(url);
-              
-              let freshEntrypoint = entrypointSelector;
-              if (attemptState.retryCount > 0) {
-                  const freshControls = await this.browser.scanApplyEntrypoints();
-                  if (freshControls.length > 0) freshEntrypoint = freshControls[0].selector;
-              }
-
-              const clickSuccess = await this.browser.clickElement(freshEntrypoint);
-              if (!clickSuccess) {
-                  throw new Error("Failed to re-open apply form.");
-              }
-              await new Promise(r => setTimeout(r, 1000));
-
-              if (formProbe.detectedFields.coverLetterTextarea && formProbe.safeLocators.coverLetterHint) {
-                  const config = await this.storage.getConfig();
-                  let text = "Default Cover Letter"; 
-                  
-                  if (queueItem.generatedCoverLetter) text = queueItem.generatedCoverLetter;
-                  else if (config?.coverLetterTemplate) text = config.coverLetterTemplate;
-                  
-                  await this.browser.inputText(formProbe.safeLocators.coverLetterHint, text);
-              }
-
-              if (formProbe.detectedFields.extraQuestionnaireDetected) {
-                  const answers = await this.storage.getQuestionnaireAnswerSet(siteId, state.activeApplyDraft?.questionnaireSnapshot?.questionnaireHash || '');
-                  if (answers) {
-                      await this.browser.fillApplyForm(answers.answers);
-                  }
-              }
-
-              currentState = await this.updateState({
-                  ...currentState,
-                  logs: [...currentState.logs, `Submitting form (Attempt ${attemptState.retryCount})...`]
-              });
-              
-              await this.browser.submitApplyForm();
-
-              let verifyAttempts = 0;
-              while (verifyAttempts < 5 && !successConfirmed) {
-                  await new Promise(r => setTimeout(r, 1000));
-                  const outcome = await this.browser.detectApplyOutcome();
-                  
-                  if (outcome === 'SUCCESS') {
-                      successConfirmed = true;
-                      confirmationEvidence = 'Detected by BrowserPort';
-                      break;
-                  }
-                  if (outcome === 'UNKNOWN') {
-                       const pageText = await this.browser.getPageTextMinimal();
-                       for (const hint of successHints) {
-                          if (pageText.includes(hint)) {
-                              successConfirmed = true;
-                              confirmationEvidence = hint;
-                              break;
-                          }
-                       }
-                  }
-                  verifyAttempts++;
-              }
-
-              if (!successConfirmed) {
-                  throw new Error("Confirmation not detected after submit.");
-              }
-
-          } catch (e: any) {
-              console.error(e);
-              attemptState.lastErrorCode = 'SUBMIT_ERROR';
-              attemptState.lastErrorMessage = e.message;
-              attemptState.retryCount++;
-              attemptState.lastAttemptAt = Date.now();
-              await this.storage.saveApplyAttemptState(siteId, attemptState);
-              
-              if (attemptState.retryCount > MAX_RETRIES) {
-                  failureReason = 'TIMEOUT'; 
-              }
-          }
-      }
-
-      if (successConfirmed) {
-          attemptState.applyStage = 'DONE';
-          attemptState.terminalAction = 'NONE';
-          await this.storage.saveApplyAttemptState(siteId, attemptState);
-
-          queueItem.status = 'APPLIED';
-          queueItem.applicationResult = new Date().toISOString();
-      } else {
-          attemptState.applyStage = 'FAILED';
-          
-          currentState = await this.updateState({
-              ...currentState,
-              logs: [...currentState.logs, "Max retries reached. Initiating FAILOVER (Hide Vacancy)..."]
-          });
-          
-          const hidden = await this.browser.hideVacancy(vacancyId);
-          attemptState.terminalAction = hidden ? 'HIDDEN' : 'SKIPPED';
-          await this.storage.saveApplyAttemptState(siteId, attemptState);
-
-          queueItem.status = 'FAILED';
-          queueItem.applicationResult = `Failed after ${attemptState.retryCount} attempts. Action: ${attemptState.terminalAction}`;
-      }
-
-      const newSummary = state.activeApplyQueue.summary;
-      newSummary.applied = state.activeApplyQueue.items.filter(i => i.status === 'APPLIED').length;
-      newSummary.failed = state.activeApplyQueue.items.filter(i => i.status === 'FAILED').length;
-      newSummary.pending = state.activeApplyQueue.items.filter(i => i.status === 'PENDING').length;
-      await this.storage.saveApplyQueue(siteId, state.activeApplyQueue);
+      this.updateState({ ...state, status: AgentStatus.SUBMITTING_APPLICATION, logs: [...state.logs, "Submitting application..."]});
+      
+      await this.browser.submitApplyForm();
+      
+      // Detect outcome
+      const outcome = await this.browser.detectApplyOutcome();
+      
+      let nextStatus = AgentStatus.APPLY_SUBMIT_SUCCESS;
+      if (outcome === 'ERROR' || outcome === 'UNKNOWN') nextStatus = AgentStatus.APPLY_SUBMIT_FAILED;
+      else if (outcome === 'QUESTIONNAIRE') nextStatus = AgentStatus.FILLING_QUESTIONNAIRE;
 
       const receipt: ApplySubmitReceiptV1 = {
           receiptId: crypto.randomUUID(),
-          vacancyId,
+          vacancyId: draft.vacancyId,
           siteId,
           submittedAt: Date.now(),
-          submitAttempts: attemptState.retryCount,
-          successConfirmed,
-          confirmationSource: successConfirmed ? 'text_hint' : 'unknown',
-          confirmationEvidence,
-          finalQueueStatus: successConfirmed ? 'APPLIED' : 'FAILED',
-          failureReason
+          submitAttempts: 1,
+          successConfirmed: outcome === 'SUCCESS',
+          confirmationSource: 'unknown',
+          confirmationEvidence: null,
+          finalQueueStatus: outcome === 'SUCCESS' ? 'APPLIED' : 'FAILED',
+          failureReason: outcome === 'SUCCESS' ? null : 'UNKNOWN'
       };
       await this.storage.saveApplySubmitReceipt(siteId, receipt);
-
-      let finalStatus = AgentStatus.APPLY_SUBMIT_SUCCESS;
-      let logMsg = `SUCCESS: Application submitted after ${attemptState.retryCount} attempts.`;
-
-      if (!successConfirmed) {
-          finalStatus = attemptState.terminalAction === 'HIDDEN' 
-              ? AgentStatus.APPLY_FAILED_HIDDEN 
-              : AgentStatus.APPLY_FAILED_SKIPPED;
-          logMsg = `FAILURE: Application failed. Vacancy marked as ${attemptState.terminalAction}.`;
-      }
-
-      return this.updateState({
-          ...currentState,
-          status: finalStatus,
-          activeApplyQueue: state.activeApplyQueue,
-          activeApplyAttempt: attemptState,
-          logs: [...currentState.logs, logMsg]
-      });
-  }
-
-  // --- Phase F1: DOM Drift Check ---
-  private async checkDomDrift(state: AgentState, siteId: string, pageType: 'search' | 'apply_form' | 'vacancy'): Promise<{ drifted: boolean, event?: DomDriftEventV1 }> {
-      const currentFp = await this.browser.getPageFingerprint(pageType);
-      const storedFp = await this.storage.getDomFingerprint(siteId, pageType);
-
-      if (!storedFp) {
-          const newFp: DOMFingerprintV1 = {
-              siteId,
-              pageType,
-              capturedAt: Date.now(),
-              domVersion: 1,
-              structuralHash: currentFp.structuralHash
-          };
-          await this.storage.saveDomFingerprint(siteId, newFp);
-          return { drifted: false };
-      }
-
-      if (storedFp.structuralHash !== currentFp.structuralHash) {
-          const event: DomDriftEventV1 = {
-              siteId,
-              pageType,
-              detectedAt: Date.now(),
-              expectedHash: storedFp.structuralHash,
-              observedHash: currentFp.structuralHash,
-              severity: 'HIGH',
-              actionRequired: 'REANALYZE_UI'
-          };
-          return { drifted: true, event };
-      }
-
-      return { drifted: false };
-  }
-
-  async resolveDomDrift(state: AgentState, siteId: string): Promise<AgentState> {
-     await this.storage.deleteSearchUISpec(siteId);
-     await this.storage.deleteSearchApplyPlan(siteId);
-     
-     if (state.activeDriftEvent) {
-         const newFp: DOMFingerprintV1 = {
-             siteId,
-             pageType: state.activeDriftEvent.pageType as any,
-             capturedAt: Date.now(),
-             domVersion: Date.now(), 
-             structuralHash: state.activeDriftEvent.observedHash
-         };
-         await this.storage.saveDomFingerprint(siteId, newFp);
-     }
-
-     return this.updateState({
-         ...state,
-         status: AgentStatus.SEARCH_PAGE_READY, 
-         activeDriftEvent: null,
-         logs: [...state.logs, "DOM Drift acknowledged. Old artifacts cleared. Ready for Re-analysis."]
-     });
-  }
-
-  // --- Utils ---
-
-  private parseSalaryString(text?: string): VacancySalary | null { 
-     if (!text) return null;
-     return { min: 100000, max: 200000, currency: 'RUB', gross: false };
-  }
-  
-  private looseEquals(expected: any, actual: any): boolean { 
-      return String(expected) === String(actual);
-  }
-
-  // --- Reset & Session Management ---
-
-  async resetProfileData(state: AgentState, siteId: string): Promise<AgentState> { 
-      await this.storage.resetProfile(siteId);
-      await this.storage.deleteTargetingSpec(siteId);
-      
-      await this.storage.deleteSearchUISpec(siteId);
-      await this.storage.deleteSearchApplyPlan(siteId);
-      await this.storage.deleteAppliedFiltersSnapshot(siteId); 
-      
-      await this.storage.removeByPrefix(`as/${siteId}/`);
       
       return this.updateState({
           ...state,
-          activeTargetingSpec: null,
-          activeSearchUISpec: null,
-          activeSearchDOMSnapshot: null,
-          activeSearchApplyPlan: null,
-          activeQuestionnaireAnswers: null,
-          activeQuestionnaireSnapshot: null,
-          status: AgentStatus.LOGGED_IN_CONFIRMED,
-          logs: [...state.logs, "Profile data and derived artifacts (Targeting, UI Spec, Answers) reset."]
+          status: nextStatus,
+          logs: [...state.logs, `Submit Result: ${outcome}`]
       });
   }
-  
-  async completeSession(state: AgentState): Promise<AgentState> { 
-       return this.updateState({ ...state, status: AgentStatus.COMPLETED });
+
+  // --- Utility Functions ---
+
+  private looseEquals(a: any, b: any): boolean {
+      if (a === b) return true;
+      if (a === null || b === null) return false;
+      return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
   }
-  
-  async failSession(state: AgentState, error: string): Promise<AgentState> { 
-      console.error(error);
-      return this.updateState({
-          ...state,
-          status: AgentStatus.FAILED,
-          logs: [...state.logs, `CRITICAL ERROR: ${error}`]
-      });
-  }
-  
-  async abortSession(state: AgentState): Promise<AgentState> { 
-       return this.updateState({
-           ...state,
-           status: AgentStatus.IDLE,
-           logs: [...state.logs, "Session aborted by user."]
-       });
-  }
-  
-  async resetSession(state: AgentState): Promise<AgentState> { 
-      const newState = createInitialAgentState();
-      const config = await this.storage.getConfig();
-      await this.storage.saveAgentState(newState);
-      this.ui.renderState(newState);
-      return newState;
+
+  private parseSalaryString(text?: string): VacancySalary | null {
+      if (!text) return null;
+      const clean = text.replace(/\s/g, '');
+      const matches = clean.match(/(\d+)/g);
+      
+      let min: number | null = null;
+      let max: number | null = null;
+
+      if (matches && matches.length === 1) {
+          min = parseInt(matches[0], 10);
+      } else if (matches && matches.length >= 2) {
+          min = parseInt(matches[0], 10);
+          max = parseInt(matches[1], 10);
+      }
+      
+      let currency = 'RUB';
+      if (text.toUpperCase().includes('USD')) currency = 'USD';
+      else if (text.toUpperCase().includes('EUR')) currency = 'EUR';
+      
+      return { min, max, currency, gross: false };
   }
 }

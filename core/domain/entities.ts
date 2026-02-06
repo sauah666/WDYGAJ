@@ -1,3 +1,4 @@
+
 // Layer: DOMAIN
 // Purpose: Enterprise business rules and core entities.
 // Allowed: Pure TS classes/interfaces. No external dependencies.
@@ -12,6 +13,7 @@ export interface TokenLedger {
   outputTokens: number;
   cacheHits: number;
   cacheMisses: number;
+  calls: number; // New in G2
   totalCostEstimateUSD?: number;
 }
 
@@ -91,6 +93,11 @@ export interface SearchUISpecV1 {
   unsupportedFields: string[]; // List of field IDs that couldn't be mapped
   assumptions: string[];
   version: string; // 'v1'
+  // Phase G2: Telemetry
+  tokenUsage?: {
+    input: number;
+    output: number;
+  };
 }
 
 export interface UserSearchPrefsV1 {
@@ -605,7 +612,7 @@ export const createInitialAgentState = (): AgentState => ({
   currentUrl: null,
   lastSnapshotTimestamp: null,
   logs: [],
-  tokenLedger: { inputTokens: 0, outputTokens: 0, cacheHits: 0, cacheMisses: 0 },
+  tokenLedger: { inputTokens: 0, outputTokens: 0, cacheHits: 0, cacheMisses: 0, calls: 0 },
   activeTargetingSpec: null,
   activeSearchDOMSnapshot: null,
   activeSearchUISpec: null,

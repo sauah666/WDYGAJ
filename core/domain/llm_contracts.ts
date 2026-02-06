@@ -1,3 +1,4 @@
+
 // Layer: DOMAIN
 // Purpose: Data Transfer Objects (DTOs) and Contracts for LLM interactions.
 
@@ -135,6 +136,11 @@ export interface QuestionnaireAnswerOutputV1 {
     risks: string[];
   }[];
   globalRisks: string[];
+  // Phase G2: Telemetry
+  tokenUsage?: {
+    input: number;
+    output: number;
+  };
 }
 
 // --- Output Contract ---
@@ -173,4 +179,10 @@ export interface TargetingSpecV1 {
   confidenceThresholds: ConfidenceThresholds;
   
   assumptions: string[]; // List of assumptions LLM made if profile data was ambiguous
+
+  // Phase G2: Telemetry
+  tokenUsage?: {
+    input: number;
+    output: number;
+  };
 }
