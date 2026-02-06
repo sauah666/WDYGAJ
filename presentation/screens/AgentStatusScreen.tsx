@@ -1,11 +1,11 @@
 // ... (imports remain same)
 import React, { useEffect, useState, useRef } from 'react';
-import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit, FileSearch, CheckSquare, Award, Send, MousePointerClick, FormInput, PenTool, HelpCircle, EyeOff, FastForward, Info } from 'lucide-react';
+import { Terminal, Play, Pause, AlertCircle, CheckCircle, Loader2, UserCheck, XCircle, RotateCcw, FileText, UploadCloud, Lock, Compass, Eye, Sparkles, Filter, Save, ChevronRight, List, Cpu, Zap, Repeat, ShieldCheck, DownloadCloud, Layers, FilterX, BrainCircuit, FileSearch, CheckSquare, Award, Send, MousePointerClick, FormInput, PenTool, HelpCircle, EyeOff, FastForward, Info, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentStatus } from '../../types';
 import { AgentState, UserSearchPrefsV1, SearchFieldDefinition, SearchApplyStep, ControlVerificationResult, VacancyCardV1, VacancyDecision, VacancyExtractV1, LLMVacancyEvalResult, ApplyQueueItem } from '../../core/domain/entities';
 
-// ... (Props interface remains same)
+// ... (Props interface remain same)
 interface Props {
   state: AgentState;
   onRun: () => void;
@@ -34,6 +34,8 @@ interface Props {
   onOpenApplyForm?: () => void; // Phase E1.2
   onFillApplyDraft?: () => void; // Phase E1.3
   onSubmitApply?: () => void; // Phase E1.4
+  // Phase F1
+  onResolveDrift?: () => void;
 }
 
 export const AgentStatusScreen: React.FC<Props> = ({ 
@@ -62,7 +64,8 @@ export const AgentStatusScreen: React.FC<Props> = ({
   onProbeApplyEntrypoint,
   onOpenApplyForm,
   onFillApplyDraft,
-  onSubmitApply
+  onSubmitApply,
+  onResolveDrift
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [localPrefs, setLocalPrefs] = useState<UserSearchPrefsV1 | null>(null);
@@ -142,6 +145,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
       case AgentStatus.APPLY_SUBMIT_FAILED: return 'text-red-500';
       case AgentStatus.APPLY_FAILED_HIDDEN: return 'text-gray-500'; // New
       case AgentStatus.APPLY_FAILED_SKIPPED: return 'text-gray-500'; // New
+      case AgentStatus.DOM_DRIFT_DETECTED: return 'text-amber-500'; // F1
       case AgentStatus.COMPLETED: return 'text-green-500';
       case AgentStatus.FAILED: return 'text-red-500';
       default: return 'text-gray-100';
@@ -177,14 +181,15 @@ export const AgentStatusScreen: React.FC<Props> = ({
     if (status === AgentStatus.APPLY_SUBMIT_FAILED) return <XCircle />;
     if (status === AgentStatus.APPLY_FAILED_HIDDEN) return <EyeOff />;
     if (status === AgentStatus.APPLY_FAILED_SKIPPED) return <FastForward />;
+    if (status === AgentStatus.DOM_DRIFT_DETECTED) return <AlertTriangle />;
     if (status === AgentStatus.COMPLETED) return <CheckCircle />;
     return <Terminal />;
   };
 
-  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY && state.status !== AgentStatus.APPLY_BUTTON_FOUND && state.status !== AgentStatus.APPLY_FORM_OPENED && state.status !== AgentStatus.APPLY_DRAFT_FILLED && state.status !== AgentStatus.APPLY_SUBMIT_SUCCESS && state.status !== AgentStatus.APPLY_SUBMIT_FAILED && state.status !== AgentStatus.FILLING_QUESTIONNAIRE && state.status !== AgentStatus.APPLY_RETRYING && state.status !== AgentStatus.APPLY_FAILED_HIDDEN && state.status !== AgentStatus.APPLY_FAILED_SKIPPED;
+  const isRunning = state.status !== AgentStatus.IDLE && state.status !== AgentStatus.COMPLETED && state.status !== AgentStatus.FAILED && state.status !== AgentStatus.PROFILE_CAPTURED && state.status !== AgentStatus.TARGETING_READY && state.status !== AgentStatus.SEARCH_PAGE_READY && state.status !== AgentStatus.SEARCH_DOM_READY && state.status !== AgentStatus.WAITING_FOR_SEARCH_PREFS && state.status !== AgentStatus.SEARCH_PREFS_SAVED && state.status !== AgentStatus.APPLY_PLAN_READY && state.status !== AgentStatus.APPLY_STEP_DONE && state.status !== AgentStatus.APPLY_STEP_FAILED && state.status !== AgentStatus.SEARCH_READY && state.status !== AgentStatus.VACANCIES_CAPTURED && state.status !== AgentStatus.VACANCIES_DEDUPED && state.status !== AgentStatus.PREFILTER_DONE && state.status !== AgentStatus.LLM_SCREENING_DONE && state.status !== AgentStatus.VACANCIES_EXTRACTED && state.status !== AgentStatus.EVALUATION_DONE && state.status !== AgentStatus.APPLY_QUEUE_READY && state.status !== AgentStatus.APPLY_BUTTON_FOUND && state.status !== AgentStatus.APPLY_FORM_OPENED && state.status !== AgentStatus.APPLY_DRAFT_FILLED && state.status !== AgentStatus.APPLY_SUBMIT_SUCCESS && state.status !== AgentStatus.APPLY_SUBMIT_FAILED && state.status !== AgentStatus.FILLING_QUESTIONNAIRE && state.status !== AgentStatus.APPLY_RETRYING && state.status !== AgentStatus.APPLY_FAILED_HIDDEN && state.status !== AgentStatus.APPLY_FAILED_SKIPPED && state.status !== AgentStatus.DOM_DRIFT_DETECTED;
   const isFinished = state.status === AgentStatus.COMPLETED || state.status === AgentStatus.FAILED;
   // Can reset profile if captured OR targeting ready OR dom ready OR waiting prefs OR plan ready
-  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY || state.status === AgentStatus.APPLY_BUTTON_FOUND || state.status === AgentStatus.APPLY_FORM_OPENED || state.status === AgentStatus.APPLY_DRAFT_FILLED || state.status === AgentStatus.APPLY_SUBMIT_SUCCESS || state.status === AgentStatus.APPLY_SUBMIT_FAILED || state.status === AgentStatus.FILLING_QUESTIONNAIRE || state.status === AgentStatus.APPLY_RETRYING || state.status === AgentStatus.APPLY_FAILED_HIDDEN || state.status === AgentStatus.APPLY_FAILED_SKIPPED;
+  const isProfileDone = state.status === AgentStatus.PROFILE_CAPTURED || state.status === AgentStatus.TARGETING_READY || state.status === AgentStatus.TARGETING_ERROR || state.status === AgentStatus.SEARCH_DOM_READY || state.status === AgentStatus.SEARCH_PAGE_READY || state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS || state.status === AgentStatus.SEARCH_PREFS_SAVED || state.status === AgentStatus.APPLY_PLAN_READY || state.status === AgentStatus.APPLY_STEP_DONE || state.status === AgentStatus.SEARCH_READY || state.status === AgentStatus.VACANCIES_CAPTURED || state.status === AgentStatus.VACANCIES_DEDUPED || state.status === AgentStatus.PREFILTER_DONE || state.status === AgentStatus.LLM_SCREENING_DONE || state.status === AgentStatus.VACANCIES_EXTRACTED || state.status === AgentStatus.EVALUATION_DONE || state.status === AgentStatus.APPLY_QUEUE_READY || state.status === AgentStatus.APPLY_BUTTON_FOUND || state.status === AgentStatus.APPLY_FORM_OPENED || state.status === AgentStatus.APPLY_DRAFT_FILLED || state.status === AgentStatus.APPLY_SUBMIT_SUCCESS || state.status === AgentStatus.APPLY_SUBMIT_FAILED || state.status === AgentStatus.FILLING_QUESTIONNAIRE || state.status === AgentStatus.APPLY_RETRYING || state.status === AgentStatus.APPLY_FAILED_HIDDEN || state.status === AgentStatus.APPLY_FAILED_SKIPPED || state.status === AgentStatus.DOM_DRIFT_DETECTED;
 
   // ... (render helpers)
   const renderFieldInput = (field: SearchFieldDefinition, currentValue: any) => {
@@ -215,6 +220,32 @@ export const AgentStatusScreen: React.FC<Props> = ({
              <div className="flex-1 bg-gray-900/50 m-1 rounded-lg flex items-center justify-center border border-gray-800/50 border-dashed relative overflow-auto">
                 {state.status === AgentStatus.IDLE && (
                    <div className="text-center"><Terminal size={48} className="mx-auto text-gray-700 mb-4" /><p className="text-gray-600 font-mono">Waiting for initialization...</p></div>
+                )}
+                
+                {/* DOM DRIFT WARNING */}
+                {state.status === AgentStatus.DOM_DRIFT_DETECTED && (
+                    <div className="bg-amber-900/30 border border-amber-500/50 rounded-lg p-6 max-w-md text-center">
+                        <AlertTriangle className="mx-auto text-amber-500 mb-4" size={48} />
+                        <h3 className="text-xl font-bold text-amber-100 mb-2">DOM Drift Detected</h3>
+                        <p className="text-gray-300 mb-4 text-sm">
+                            The structure of the current page has changed significantly since the last scan.
+                            Existing selectors may fail.
+                        </p>
+                        <div className="bg-black/40 rounded p-2 mb-4 text-left font-mono text-xs text-amber-200">
+                             <div>Page: {state.activeDriftEvent?.pageType}</div>
+                             <div>Severity: {state.activeDriftEvent?.severity}</div>
+                             <div>Action: {state.activeDriftEvent?.actionRequired}</div>
+                        </div>
+                        {onResolveDrift && (
+                            <button 
+                                onClick={onResolveDrift}
+                                className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center w-full gap-2 transition-colors"
+                            >
+                                <RefreshCw size={18} />
+                                ACKNOWLEDGE & RE-ANALYZE
+                            </button>
+                        )}
+                    </div>
                 )}
                 
                 {/* DRAFT PREVIEW WITH QUESTIONNAIRE */}

@@ -388,6 +388,27 @@ export class MockBrowserAdapter implements BrowserPort {
       return true; // Mock success
   }
 
+  // --- Phase F1: DOM Drift ---
+  async getPageFingerprint(pageType: 'search' | 'vacancy' | 'apply_form' | 'unknown'): Promise<{ structuralHash: string }> {
+      console.log(`[BrowserAdapter] Calculating DOM fingerprint for ${pageType}...`);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // In a real adapter, this would hash the DOM tree.
+      // In Mock, we return a stable hash for 'search' to simulate stability,
+      // but if we wanted to test drift, we'd change this based on some internal flag.
+      
+      if (pageType === 'search') {
+          // Stable hash for search page mock
+          return { structuralHash: 'mock_search_v1_stable_hash' };
+      }
+      
+      if (pageType === 'apply_form') {
+           return { structuralHash: this.isApplyModalOpen ? 'mock_apply_modal_open_v1' : 'mock_apply_closed_v1' };
+      }
+
+      return { structuralHash: 'mock_generic_hash_' + pageType };
+  }
+
   // -------------------------------------
 
   async inputText(selector: string, text: string): Promise<boolean> {

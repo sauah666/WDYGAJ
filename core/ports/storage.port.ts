@@ -2,7 +2,7 @@
 // Purpose: Define contracts for persistence.
 
 import { AgentConfig } from '../../types';
-import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1, LLMVacancyEvalBatchV1, ApplyQueueV1, ApplyDraftSnapshotV1, ApplySubmitReceiptV1, QuestionnaireSnapshotV1, QuestionnaireAnswerSetV1, ApplyAttemptState } from '../domain/entities';
+import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1, LLMVacancyEvalBatchV1, ApplyQueueV1, ApplyDraftSnapshotV1, ApplySubmitReceiptV1, QuestionnaireSnapshotV1, QuestionnaireAnswerSetV1, ApplyAttemptState, DOMFingerprintV1 } from '../domain/entities';
 import { TargetingSpecV1 } from '../domain/llm_contracts';
 
 export interface StoragePort {
@@ -103,6 +103,10 @@ export interface StoragePort {
   // Phase E1.4: Apply Submit Receipt
   saveApplySubmitReceipt(siteId: string, receipt: ApplySubmitReceiptV1): Promise<void>;
   getApplySubmitReceipt(siteId: string, vacancyId: string): Promise<ApplySubmitReceiptV1 | null>;
+
+  // Phase F1: DOM Drift
+  saveDomFingerprint(siteId: string, fp: DOMFingerprintV1): Promise<void>;
+  getDomFingerprint(siteId: string, pageType: string): Promise<DOMFingerprintV1 | null>;
 
   // Utility
   removeByPrefix(keyPrefix: string): Promise<void>;

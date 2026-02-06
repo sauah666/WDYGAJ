@@ -1,4 +1,4 @@
-# 📘 PROJECT DOCUMENTATION — v1.25
+# 📘 PROJECT DOCUMENTATION — v1.26
 
 **Проект:** Agent-based Job Search Automation  
 **Аудитория:** LLM-агент-разработчик (Gemini / GPT / Claude)  
@@ -154,10 +154,19 @@ MASTER PLAN v1.0 — JobSearch Agent (Mode 1: HH.ru, затем мультиса
 - ResetProfile теперь удаляет `SearchUISpec`, `QuestionnaireAnswerSet` и связанные кэши.
 - UI отображает поле `facts_used` для ответов анкеты.
 - Добавлен метод `storage.removeByPrefix`.
+✅ Done-F1: DOM Drift Detection
+- WHAT ADDED: `DOMFingerprintV1` (structural hash), `DomDriftEventV1`, `BrowserPort.getPageFingerprint`.
+- WHY: Обнаружение изменений верстки (Drift) на странице поиска и формах отклика.
+- BEHAVIOR:
+  - Baseline: Первый визит сохраняет fingerprint.
+  - Check: Последующие визиты сравнивают хэш.
+  - Drift: При несовпадении -> Статус `DOM_DRIFT_DETECTED` (Блокировка действий).
+  - Resolution: Кнопка "RE-ANALYZE" очищает `SearchUISpec` и обновляет fingerprint.
+- CONSTRAINTS: No Auto-LLM fix (User must acknowledge).
 
 2) MASTER PLAN — от “сейчас” до “финиша”
 PHASE F — Memory, Resilience, DOM Drift
-F1. DOM Drift Detection (diff snapshots) + обновление mappings
+✅ F1. DOM Drift Detection (diff snapshots) + обновление mappings
 F2. Site Memory (multi-site ready) + UI выбор сайта
 
 PHASE G — LLM Config, Token Telemetry, Compaction
@@ -180,8 +189,8 @@ UI: выбор режима/сайта/настроек и reset’ов.
 Документация: позволяет новому агенту продолжить без истории.
 
 4) Текущая точка
-Последний завершённый этап: PATCH FIX (ResetProfile semantics)
-Текущий этап: PHASE F1 — DOM DRIFT DETECTION (Resilience)
+Последний завершённый этап: PHASE F1 — DOM DRIFT DETECTION (Resilience)
+Текущий этап: PHASE F2 — SITE MEMORY (Multi-site Readiness)
 
 ## Reset Matrix
 

@@ -15,6 +15,27 @@ export interface TokenLedger {
   totalCostEstimateUSD?: number;
 }
 
+// --- Phase F1: Resilience & Drift Detection ---
+
+export interface DOMFingerprintV1 {
+  siteId: string;
+  pageType: 'search' | 'vacancy' | 'apply_form' | 'unknown';
+  capturedAt: number;
+  domVersion: number;
+  structuralHash: string; // Hash of DOM structure (tags + ids + classes)
+  salientNodesHash?: string; // Hash of critical interactive elements
+}
+
+export interface DomDriftEventV1 {
+  siteId: string;
+  pageType: string;
+  detectedAt: number;
+  expectedHash: string;
+  observedHash: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH';
+  actionRequired: 'REPROBE' | 'REANALYZE_UI' | 'HUMAN_CHECK';
+}
+
 // --- Stage 5: Site Definitions & Strategies ---
 
 export interface SearchEntryStrategy {
@@ -561,6 +582,9 @@ export interface AgentState {
   activeQuestionnaireSnapshot?: QuestionnaireSnapshotV1 | null;
   activeQuestionnaireAnswers?: QuestionnaireAnswerSetV1 | null;
   activeApplyAttempt?: ApplyAttemptState | null;
+
+  // Phase F1
+  activeDriftEvent?: DomDriftEventV1 | null;
 }
 
 export interface ProfileSnapshot {
@@ -597,5 +621,6 @@ export const createInitialAgentState = (): AgentState => ({
   activeApplyDraft: null,
   activeQuestionnaireSnapshot: null,
   activeQuestionnaireAnswers: null,
-  activeApplyAttempt: null
+  activeApplyAttempt: null,
+  activeDriftEvent: null
 });

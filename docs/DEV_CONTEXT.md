@@ -1,12 +1,12 @@
 # Developer Context (Save Game)
 
-**Last Updated**: Patch Fix Verified (Reset & Transparency)
+**Last Updated**: Phase F1 Verified (DOM Drift Detection)
 **Role**: Senior Agent Architect
 **Manifesto**: See `docs/PROJECT_DOCUMENTATION.md` (Rule D-01)
 
 ## Где мы сейчас?
-Мы завершили **PHASE E3** и применили **PATCH FIX** (Reset Semantics).
-Система стабильна, поддерживает ретраи, failover, и корректно очищает данные при смене профиля.
+Мы завершили **PHASE F1** (DOM Drift Detection).
+Система теперь умеет определять изменение верстки и блокировать выполнение до подтверждения пользователя.
 
 ### Что сделано:
 1.  **Drafting (E1.3)**: Агент открывает форму, находит поле CV, заполняет его.
@@ -22,25 +22,27 @@
 5.  **Patch Fix (Reset & UI)**:
     *   **ResetProfile**: Теперь удаляет не только `ProfileSnapshot`, но и `TargetingSpec`, `SearchUISpec`, `QuestionnaireAnswerSet`, `SearchApplyPlan`. Гарантия "Fresh Start".
     *   **UI**: Отображение `facts_used` в статусе агента для прозрачности решений LLM.
+6.  **Resilience (F1)**:
+    *   **Fingerprinting**: Снятие структурного хэша страницы (`BrowserPort.getPageFingerprint`).
+    *   **Drift Check**: Сравнение текущего хэша с сохраненным (`as_dom_fp_...`).
+    *   **Intervention**: Статус `DOM_DRIFT_DETECTED` останавливает работу.
+    *   **Resolution**: Кнопка "ACKNOWLEDGE & RE-ANALYZE" сбрасывает устаревшие `SearchUISpec` и обновляет хэш.
 
 ### Текущее техническое состояние:
-*   State Machine: Полный цикл, включая failover.
+*   State Machine: Полный цикл, включая failover и блокировку дрейфа.
 *   Storage: `removeByPrefix` реализован для массовой очистки артефактов сайта.
-*   UI: Детальная визуализация (Status, Draft, Questionnaire Answers, Logs).
+*   UI: Детальная визуализация (Status, Draft, Questionnaire Answers, Logs) + Drift Warning Banner.
 
-### Mock Fidelity & Testing Guide (E3 Specifics)
-Critical context for Phase F1 (Resilience):
-*   **Questionnaire Trigger**: The Mock Adapter simulates a questionnaire *only* if the "Apply" modal is open.
+### Mock Fidelity & Testing Guide (F1 Specifics)
+*   **Drift Simulation**: `MockBrowserAdapter.getPageFingerprint` returns a stable hash for 'search'. To test drift, you would need to modify this method code temporarily to return a different hash, or clear local storage key `as_dom_fp_hh.ru_search` to force a new baseline capture.
 *   **Submit Success**: Triggered by clicking `mock://apply-form/submit`. Sets internal flag `isSuccessState`.
-*   **Retry Loop Test**: To test retries, you must modify `MockBrowserAdapter.clickElement` to return `false` or throw an error for the submit selector conditionally.
 *   **Failover Test**: `hideVacancy` currently always returns `true`.
-*   **DOM Static Nature**: The mock returns *static* HTML snapshots. For Phase F1 (Drift Detection), you must manually alter the string returned by `getDomSnapshot` to simulate layout changes.
 
 ### Следующий шаг (IMMEDIATE NEXT):
-**PHASE F1 — DOM DRIFT DETECTION (Resilience)**:
-1.  Реализовать механизм сравнения DOM-снимков (`SearchDOMSnapshotV1`).
-2.  Детектировать изменения верстки (Drift) по сравнению с сохраненным `SearchUISpec`.
-3.  Если Drift обнаружен -> инвалидировать `SearchUISpec` и запустить реанализ (Stage 5.3).
+**PHASE F2 — SITE MEMORY & MULTI-SITE**:
+1.  Подготовить `SiteDefinition` registry для поддержки нескольких сайтов (не только hh.ru).
+2.  Добавить UI селектор сайта в `AgentStatusScreen` (если нужно переключение на лету) или улучшить `SiteSelectionScreen`.
+3.  Изолировать хранилище (уже сделано через префиксы, проверить полноту).
 
 ## Правила разработки (Strict)
 См. `docs/PROJECT_DOCUMENTATION.md`

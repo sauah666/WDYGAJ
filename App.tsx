@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AppRoute, AgentConfig } from './types';
 import { AgentState, createInitialAgentState, UserSearchPrefsV1 } from './core/domain/entities';
@@ -110,6 +111,9 @@ export default function App() {
   const handleFillApplyDraft = () => agentPresenter.fillApplyDraft(agentState);
   const handleSubmitApply = () => agentPresenter.submitApply(agentState);
 
+  // Phase F1 Actions
+  const handleResolveDrift = () => agentPresenter.resolveDomDrift(agentState);
+
   // Router
   let screen;
   switch (route) {
@@ -155,6 +159,7 @@ export default function App() {
           onOpenApplyForm={handleOpenApplyForm}
           onFillApplyDraft={handleFillApplyDraft}
           onSubmitApply={handleSubmitApply}
+          onResolveDrift={handleResolveDrift}
         />
       );
       break;

@@ -319,6 +319,18 @@ export class AgentPresenter implements UIPort {
       }
   }
 
+  // Phase F1: Resolve Dom Drift
+  async resolveDomDrift(currentState: AgentState) {
+      if (!this.useCase) return;
+      try {
+          const site = this.currentConfig.targetSite || 'hh.ru';
+          await this.useCase.resolveDomDrift(currentState, site);
+      } catch (e) {
+          console.error(e);
+          await this.useCase.failSession(currentState, "Resolve Drift Error");
+      }
+  }
+
   async resetProfile(currentState: AgentState) {
       if (!this.useCase) return;
       try {

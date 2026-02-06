@@ -2,7 +2,7 @@
 
 import { StoragePort } from '../../core/ports/storage.port';
 import { AgentConfig } from '../../types';
-import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1, LLMVacancyEvalBatchV1, ApplyQueueV1, ApplyDraftSnapshotV1, ApplySubmitReceiptV1, QuestionnaireSnapshotV1, QuestionnaireAnswerSetV1, ApplyAttemptState } from '../../core/domain/entities';
+import { AgentState, ProfileSnapshot, SearchDOMSnapshotV1, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, AppliedFiltersSnapshotV1, FiltersAppliedVerificationV1, VacancyCardBatchV1, SeenVacancyIndexV1, DedupedVacancyBatchV1, PreFilterResultBatchV1, LLMDecisionBatchV1, VacancyExtractionBatchV1, LLMVacancyEvalBatchV1, ApplyQueueV1, ApplyDraftSnapshotV1, ApplySubmitReceiptV1, QuestionnaireSnapshotV1, QuestionnaireAnswerSetV1, ApplyAttemptState, DOMFingerprintV1 } from '../../core/domain/entities';
 import { TargetingSpecV1 } from '../../core/domain/llm_contracts';
 
 const KEY_CONFIG = 'as_config';
@@ -28,6 +28,7 @@ const KEY_APPLY_RECEIPT_PREFIX = 'as_apply_receipt_';
 const KEY_QUESTIONNAIRE_SNAP_PREFIX = 'as_quest_snap_';
 const KEY_QUESTIONNAIRE_ANS_PREFIX = 'as_quest_ans_';
 const KEY_APPLY_ATTEMPT_PREFIX = 'as_apply_attempt_';
+const KEY_DOM_FP_PREFIX = 'as_dom_fp_';
 
 export class LocalStorageAdapter implements StoragePort {
   async saveConfig(config: AgentConfig): Promise<void> {
@@ -340,6 +341,18 @@ export class LocalStorageAdapter implements StoragePort {
 
   async getApplySubmitReceipt(siteId: string, vacancyId: string): Promise<ApplySubmitReceiptV1 | null> {
       const key = `${KEY_APPLY_RECEIPT_PREFIX}${siteId}_${vacancyId}`;
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+  }
+
+  // --- Phase F1: DOM Drift ---
+  async saveDomFingerprint(siteId: string, fp: DOMFingerprintV1): Promise<void> {
+      const key = `${KEY_DOM_FP_PREFIX}${siteId}_${fp.pageType}`;
+      localStorage.setItem(key, JSON.stringify(fp));
+  }
+
+  async getDomFingerprint(siteId: string, pageType: string): Promise<DOMFingerprintV1 | null> {
+      const key = `${KEY_DOM_FP_PREFIX}${siteId}_${pageType}`;
       const raw = localStorage.getItem(key);
       return raw ? JSON.parse(raw) : null;
   }

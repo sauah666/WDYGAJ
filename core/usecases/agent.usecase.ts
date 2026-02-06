@@ -4,7 +4,7 @@ import { StoragePort } from '../ports/storage.port';
 import { UIPort } from '../ports/ui.port';
 import { LLMProviderPort } from '../ports/llm.port';
 import { AgentStatus, AgentConfig, WorkMode, SeniorityLevel, RoleCategory } from '../../types';
-import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem, ApplyEntrypointProbeV1, ApplyFormProbeV1, ApplyDraftSnapshotV1, ApplyBlockedReason, CoverLetterSource, ApplySubmitReceiptV1, ApplyFailureReason, QuestionnaireSnapshotV1, QuestionnaireAnswerSetV1, QuestionnaireAnswer, ApplyAttemptState, SearchFieldDefinition, TokenLedger, ExecutionStatus } from '../domain/entities';
+import { AgentState, createInitialAgentState, ProfileSnapshot, SearchDOMSnapshotV1, SiteDefinition, SearchUISpecV1, UserSearchPrefsV1, SearchApplyPlanV1, SearchApplyStep, SemanticFieldType, ApplyActionType, SearchFieldType, AppliedFiltersSnapshotV1, AppliedStepResult, FiltersAppliedVerificationV1, ControlVerificationResult, VerificationStatus, VerificationSource, VacancyCardV1, VacancyCardBatchV1, VacancySalary, SeenVacancyIndexV1, DedupedVacancyBatchV1, DedupedCardResult, VacancyDecision, PreFilterResultBatchV1, PreFilterDecisionV1, PrefilterDecisionType, LLMDecisionBatchV1, LLMDecisionV1, VacancyExtractV1, VacancyExtractionBatchV1, VacancyExtractionStatus, LLMVacancyEvalBatchV1, LLMVacancyEvalResult, ApplyQueueV1, ApplyQueueItem, ApplyEntrypointProbeV1, ApplyFormProbeV1, ApplyDraftSnapshotV1, ApplyBlockedReason, CoverLetterSource, ApplySubmitReceiptV1, ApplyFailureReason, QuestionnaireSnapshotV1, QuestionnaireAnswerSetV1, QuestionnaireAnswer, ApplyAttemptState, SearchFieldDefinition, TokenLedger, ExecutionStatus, DOMFingerprintV1, DomDriftEventV1 } from '../domain/entities';
 import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, LLMScreeningInputV1, ScreeningCard, EvaluateExtractsInputV1, EvalCandidate, QuestionnaireAnswerInputV1 } from '../domain/llm_contracts';
 
 export class AgentUseCase {
@@ -236,6 +236,17 @@ export class AgentUseCase {
   }
 
   async scanSearchPageDOM(state: AgentState, siteId: string): Promise<AgentState> {
+      // Phase F1: Check Drift BEFORE scanning or relying on cache
+      const driftCheck = await this.checkDomDrift(state, siteId, 'search');
+      if (driftCheck.drifted) {
+          return this.updateState({
+              ...state,
+              status: AgentStatus.DOM_DRIFT_DETECTED,
+              activeDriftEvent: driftCheck.event,
+              logs: [...state.logs, `⚠️ DOM DRIFT DETECTED on Search Page. Action Required: ${driftCheck.event?.actionRequired}`]
+          });
+      }
+
       const rawFields = await this.browser.scanPageInteractionElements();
       const url = await this.browser.getCurrentUrl();
       // compute hash
@@ -269,6 +280,7 @@ export class AgentUseCase {
       // Check Cache
       const cachedSpec = await this.storage.getSearchUISpec(siteId);
       if (cachedSpec) {
+           // We might want to check drift here too, but scanSearchPageDOM handles it usually.
            return this.updateState({
               ...state,
               status: AgentStatus.WAITING_FOR_SEARCH_PREFS,
@@ -1275,6 +1287,79 @@ export class AgentUseCase {
           activeApplyAttempt: attemptState,
           logs: [...currentState.logs, logMsg]
       });
+  }
+
+  // --- Phase F1: DOM Drift Check ---
+  private async checkDomDrift(state: AgentState, siteId: string, pageType: 'search' | 'apply_form' | 'vacancy'): Promise<{ drifted: boolean, event?: DomDriftEventV1 }> {
+      const currentFp = await this.browser.getPageFingerprint(pageType);
+      const storedFp = await this.storage.getDomFingerprint(siteId, pageType);
+
+      if (!storedFp) {
+          // Baseline capture
+          const newFp: DOMFingerprintV1 = {
+              siteId,
+              pageType,
+              capturedAt: Date.now(),
+              domVersion: 1,
+              structuralHash: currentFp.structuralHash
+          };
+          await this.storage.saveDomFingerprint(siteId, newFp);
+          return { drifted: false };
+      }
+
+      if (storedFp.structuralHash !== currentFp.structuralHash) {
+          const event: DomDriftEventV1 = {
+              siteId,
+              pageType,
+              detectedAt: Date.now(),
+              expectedHash: storedFp.structuralHash,
+              observedHash: currentFp.structuralHash,
+              severity: 'HIGH',
+              actionRequired: 'REANALYZE_UI'
+          };
+          return { drifted: true, event };
+      }
+
+      return { drifted: false };
+  }
+
+  // Phase F1: Drift Resolution
+  async resolveDomDrift(state: AgentState, siteId: string): Promise<AgentState> {
+     // Acknowledge drift = Clear broken artifacts + Clear drift status
+     await this.storage.deleteSearchUISpec(siteId);
+     await this.storage.deleteSearchApplyPlan(siteId);
+     // We do NOT clear the drift fingerprint yet; it will be updated when the next scan succeeds (baseline update).
+     // Actually, we should probably delete the old fingerprint so the next scan is treated as a new baseline.
+     // Let's rely on baseline update logic in checkDomDrift: if we delete stored FP, next check saves new one.
+     // But we only have get/save. Let's overwrite it on next successful scan?
+     // Better: Remove the old stored fingerprint to allow "New Baseline" capture.
+     // NOTE: storage port doesn't have deleteDomFingerprint specific method, but we have save.
+     // We can just rely on the fact that the artifacts (UISpec) are gone, so the flow will naturally go to Scan -> Analysis.
+     // When Scan happens, checkDomDrift will see mismatch again? YES.
+     // So we MUST clear the stored fingerprint to accept the new one.
+     // Let's use generic remove or add specific delete if strict. 
+     // Using `removeByPrefix` on the specific key is safest if we construct it manually, 
+     // or just trust that we can't easily delete it without a new port method.
+     // Alternative: Update the stored fingerprint NOW to the observed one from the event?
+     // Yes, that accepts the "Drift" as the "New Normal".
+     
+     if (state.activeDriftEvent) {
+         const newFp: DOMFingerprintV1 = {
+             siteId,
+             pageType: state.activeDriftEvent.pageType as any,
+             capturedAt: Date.now(),
+             domVersion: Date.now(), // simple versioning
+             structuralHash: state.activeDriftEvent.observedHash
+         };
+         await this.storage.saveDomFingerprint(siteId, newFp);
+     }
+
+     return this.updateState({
+         ...state,
+         status: AgentStatus.SEARCH_PAGE_READY, // Reset to state that triggers re-scan/re-analysis
+         activeDriftEvent: null,
+         logs: [...state.logs, "DOM Drift acknowledged. Old artifacts cleared. Ready for Re-analysis."]
+     });
   }
 
   // --- Utils ---

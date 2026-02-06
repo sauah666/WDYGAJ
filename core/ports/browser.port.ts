@@ -164,6 +164,12 @@ export interface BrowserPort {
   readInputValue(selector: string): Promise<string | null>;
 
   /**
+   * Phase F1: Calculates a fingerprint of the current page for drift detection.
+   * @param pageType - context hint
+   */
+  getPageFingerprint(pageType: 'search' | 'vacancy' | 'apply_form' | 'unknown'): Promise<{ structuralHash: string }>;
+
+  /**
    * Closes the browser session.
    */
   close(): Promise<void>;

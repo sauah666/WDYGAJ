@@ -55,6 +55,9 @@ export enum AgentStatus {
   
   APPLY_PLAN_READY = 'APPLY_PLAN_READY', // Plan built and saved
   
+  // Phase F1: Resilience
+  DOM_DRIFT_DETECTED = 'DOM_DRIFT_DETECTED',
+
   // Phase A1.1 Execution Statuses
   APPLYING_FILTERS = 'APPLYING_FILTERS', // In process
   APPLY_STEP_DONE = 'APPLY_STEP_DONE',   // One step finished successfully
