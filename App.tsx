@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AppRoute, AgentConfig, AgentStatus } from './types';
 import { AgentState, createInitialAgentState, UserSearchPrefsV1 } from './core/domain/entities';
@@ -216,6 +215,9 @@ export default function App() {
     case AppRoute.MODE_SELECTION:
       screen = <ModeSelectionScreen 
                   activeSite={config.targetSite}
+                  config={config}
+                  onConfigChange={(k, v) => setConfig(prev => ({ ...prev, [k]: v }))}
+                  onRun={handleLaunchAgent}
                   onSiteSelect={handleSiteSelectFromMode}
                   onSelect={handleModeSelect} 
                   onSettingsClick={handleGlobalSettingsOpen}
@@ -266,6 +268,10 @@ export default function App() {
       break;
     default:
       screen = <ModeSelectionScreen 
+                  activeSite={config.targetSite}
+                  config={config}
+                  onConfigChange={(k, v) => setConfig(prev => ({ ...prev, [k]: v }))}
+                  onRun={handleLaunchAgent}
                   onSelect={handleModeSelect} 
                   onSettingsClick={handleGlobalSettingsOpen} 
                   onNavigate={handleNavigate}

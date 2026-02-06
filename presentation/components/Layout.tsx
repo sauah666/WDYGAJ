@@ -199,16 +199,7 @@ export const Layout: React.FC<LayoutProps> = ({
       {/* --- MAIN CHAMBER --- */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative z-10 order-first md:order-last">
         
-        {/* LANDING MODE: Custom Branding Header - CENTERED, NO LOGO, NO SUBTITLE */}
-        {hideSidebar && (
-            <div className="absolute top-8 left-0 right-0 z-50 flex justify-center items-center animate-in fade-in slide-in-from-top duration-1000 pointer-events-none">
-                <div className="drop-shadow-2xl">
-                    <h1 className="text-4xl md:text-6xl font-serif font-black text-[#d6d3d1] tracking-[0.1em] uppercase text-shadow leading-none text-center">
-                        <span className="text-[#fbbf24]">М</span>АШИНАРИУМ
-                    </h1>
-                </div>
-            </div>
-        )}
+        {/* LANDING MODE HEADER REMOVED */}
 
         {/* STANDARD MODE: Dashboard Top Plate */}
         {!hideSidebar && (
