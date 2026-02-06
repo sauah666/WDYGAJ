@@ -9,6 +9,9 @@ export class AgentPresenter implements UIPort {
   private viewCallback: ((state: AgentState) => void) | null = null;
   private useCase: AgentUseCase | null = null;
   private currentConfig: Partial<AgentConfig> = {};
+  
+  // Track the absolute latest state received from the UseCase to handle external interruptions (Pause)
+  private latestState: AgentState | null = null;
 
   // Injection logic
   setUseCase(useCase: AgentUseCase) {
@@ -22,6 +25,7 @@ export class AgentPresenter implements UIPort {
 
   // --- Output Port Implementation ---
   renderState(state: AgentState): void {
+    this.latestState = state;
     if (this.viewCallback) {
       this.viewCallback(state);
     }
@@ -34,6 +38,171 @@ export class AgentPresenter implements UIPort {
 
   unbind() {
     this.viewCallback = null;
+  }
+
+  // --- Automation Loop ---
+  // Orchestrates automatic transitions between states to prevent "stuck" agent
+  private async runAutomationLoop(currentState: AgentState) {
+      if (!this.useCase) return;
+      
+      // Always start with the freshest state if available to catch Pauses immediately
+      let state = this.latestState && this.latestState.updatedAt > currentState.updatedAt ? this.latestState : currentState;
+      if (this.latestState && this.latestState.isPaused) return;
+
+      const site = this.currentConfig.targetSite || 'hh.ru';
+
+      // Loop until we hit a "Wait" state or Error
+      // Use a safety counter to prevent infinite loops in one tick
+      let steps = 0;
+      const MAX_STEPS_PER_TICK = 10;
+
+      while (steps < MAX_STEPS_PER_TICK) {
+          // CRITICAL: Check external pause signal (from UI button)
+          if (this.latestState && this.latestState.isPaused) {
+              break;
+          }
+          // Also check internal state pause
+          if (state.isPaused || state.status === AgentStatus.FAILED) break;
+
+          steps++;
+
+          // 1. Targeting Ready -> Go to Search
+          if (state.status === AgentStatus.TARGETING_READY) {
+              state = await this.useCase.navigateToSearchPage(state, site);
+              continue;
+          }
+
+          // 2. Search Page Ready -> Scan DOM
+          if (state.status === AgentStatus.SEARCH_PAGE_READY) {
+              state = await this.useCase.scanSearchPageDOM(state, site);
+              continue;
+          }
+
+          // 3. DOM Ready -> Analyze UI
+          if (state.status === AgentStatus.SEARCH_DOM_READY) {
+              state = await this.useCase.performSearchUIAnalysis(state, site);
+              continue;
+          }
+
+          // 4. Waiting for Prefs -> Auto-Submit (Automated now)
+          if (state.status === AgentStatus.WAITING_FOR_SEARCH_PREFS) {
+              if (state.activeSearchPrefs) {
+                  state = await this.useCase.submitSearchPrefs(state, state.activeSearchPrefs);
+              } else {
+                  // Fallback if no prefs generated? Should not happen.
+                  break;
+              }
+              continue;
+          }
+
+          // 5. Prefs Saved -> Build Plan
+          if (state.status === AgentStatus.SEARCH_PREFS_SAVED) {
+              state = await this.useCase.buildSearchApplyPlan(state, site);
+              continue;
+          }
+
+          // 6. Plan Ready -> Execute Cycle
+          if (state.status === AgentStatus.APPLY_PLAN_READY) {
+              state = await this.useCase.executeApplyPlanCycle(state, site);
+              continue;
+          }
+
+          // 7. Search Ready -> Collect Batch
+          if (state.status === AgentStatus.SEARCH_READY) {
+              state = await this.useCase.collectVacancyCardsBatch(state, site);
+              continue;
+          }
+
+          // 8. Vacancies Captured -> Dedup
+          if (state.status === AgentStatus.VACANCIES_CAPTURED) {
+              state = await this.useCase.dedupAndSelectVacancyBatch(state, site);
+              continue;
+          }
+
+          // 9. Deduped -> Prefilter
+          if (state.status === AgentStatus.VACANCIES_DEDUPED) {
+              state = await this.useCase.runScriptPrefilter(state, site);
+              continue;
+          }
+
+          // 10. Prefilter Done -> LLM Screening
+          if (state.status === AgentStatus.PREFILTER_DONE) {
+              state = await this.useCase.runLLMBatchScreening(state, site);
+              continue;
+          }
+
+          // 11. LLM Screening Done -> Extraction
+          if (state.status === AgentStatus.LLM_SCREENING_DONE) {
+              state = await this.useCase.runVacancyExtraction(state, site);
+              continue;
+          }
+
+          // 12. Extracted -> LLM Eval
+          if (state.status === AgentStatus.VACANCIES_EXTRACTED) {
+              state = await this.useCase.runLLMEvalBatch(state, site);
+              continue;
+          }
+
+          // 13. Eval Done -> Build Queue
+          if (state.status === AgentStatus.EVALUATION_DONE) {
+              state = await this.useCase.buildApplyQueue(state, site);
+              continue;
+          }
+
+          // 14. Queue Ready -> Probe Entrypoint (First Apply)
+          if (state.status === AgentStatus.APPLY_QUEUE_READY) {
+              state = await this.useCase.probeNextApplyEntrypoint(state, site);
+              continue;
+          }
+
+          // 15. Apply Button Found -> Open Form
+          if (state.status === AgentStatus.APPLY_BUTTON_FOUND) {
+              state = await this.useCase.openAndScanApplyForm(state, site);
+              continue;
+          }
+
+          // 16. Form Opened -> Fill Draft
+          if (state.status === AgentStatus.APPLY_FORM_OPENED) {
+              state = await this.useCase.fillApplyFormDraft(state, site);
+              continue;
+          }
+
+          // 17. Draft Filled -> Submit
+          if (state.status === AgentStatus.APPLY_DRAFT_FILLED) {
+              state = await this.useCase.submitApplyForm(state, site);
+              continue;
+          }
+
+          // 18. Submit Result -> Next in Queue
+          if (state.status === AgentStatus.APPLY_SUBMIT_SUCCESS || state.status === AgentStatus.APPLY_SUBMIT_FAILED) {
+              // Loop back to probe next item
+              state = await this.useCase.probeNextApplyEntrypoint(state, site);
+              continue;
+          }
+
+          // 19. Completed -> Rotate Search Context
+          if (state.status === AgentStatus.COMPLETED) {
+              state = await this.useCase.rotateSearchContext(state, site);
+              continue;
+          }
+
+          // If no transition matched, break to allow UI update
+          break;
+      }
+
+      // --- CONTINUATION LOGIC ---
+      const isStillRunning = 
+          state.status !== AgentStatus.IDLE && 
+          state.status !== AgentStatus.FAILED && 
+          // Note: COMPLETED now rotates to TARGETING_READY so it continues
+          state.status !== AgentStatus.WAITING_FOR_HUMAN && 
+          state.status !== AgentStatus.WAITING_FOR_HUMAN_ASSISTANCE;
+
+      const isPaused = (this.latestState && this.latestState.isPaused) || state.isPaused;
+
+      if (isStillRunning && !isPaused) {
+          setTimeout(() => this.runAutomationLoop(state), 200);
+      }
   }
 
   // --- Controller Actions ---
@@ -55,7 +224,6 @@ export class AgentPresenter implements UIPort {
       }
   }
 
-  // Step 1: Start -> Open URL -> Wait for Human
   async startLoginSequence(initialState: AgentState, config: Partial<AgentConfig>) {
     if (!this.useCase) return;
     this.currentConfig = config;
@@ -67,107 +235,106 @@ export class AgentPresenter implements UIPort {
     }
   }
 
-  // Step 2: User says "I logged in" -> Check Profile
   async confirmLogin(currentState: AgentState) {
     if (!this.useCase) return;
     try {
-      // 1. Confirm Login
       let current = await this.useCase.confirmLogin(currentState);
-      
-      // 2. Check Profile
       const site = this.currentConfig.targetSite || 'hh.ru';
       current = await this.useCase.checkAndCaptureProfile(current, site);
 
-      // If profile was already captured (found in storage), trigger targeting immediately
+      if (current.status === AgentStatus.WAITING_FOR_PROFILE_PAGE) {
+          current = await this.useCase.scanAndNavigateToProfile(current, site);
+      }
+
       if (current.status === AgentStatus.PROFILE_CAPTURED) {
-         await this.useCase.generateTargetingSpec(current, site);
+         current = await this.useCase.generateTargetingSpec(current, site);
       }
       
+      await this.runAutomationLoop(current);
+
     } catch (e) {
       console.error(e);
       await this.useCase.failSession(currentState, "Login/Profile Error");
     }
   }
 
-  // Step 3: User says "I am on profile page" -> Capture -> Auto-Trigger Targeting
   async confirmProfilePage(currentState: AgentState) {
       if (!this.useCase) return;
       try {
           const site = this.currentConfig.targetSite || 'hh.ru';
-          // 1. Capture
           let stateAfterCapture = await this.useCase.executeProfileCapture(currentState, site);
           
-          // 2. Trigger AI Targeting (Chained automatically)
           if (stateAfterCapture.status === AgentStatus.PROFILE_CAPTURED) {
-             await this.useCase.generateTargetingSpec(stateAfterCapture, site);
+             stateAfterCapture = await this.useCase.generateTargetingSpec(stateAfterCapture, site);
           }
+          
+          await this.runAutomationLoop(stateAfterCapture);
+
       } catch (e) {
           console.error(e);
           await this.useCase.failSession(currentState, "Profile Capture Error");
       }
   }
 
-  // Step 4: Continue to Search Page
   async continueToSearch(currentState: AgentState) {
       if (!this.useCase) return;
       try {
          const site = this.currentConfig.targetSite || 'hh.ru';
-         await this.useCase.navigateToSearchPage(currentState, site);
-         // NOTE: We stop here and let the UI reflect "SEARCH_PAGE_READY"
+         const next = await this.useCase.navigateToSearchPage(currentState, site);
+         await this.runAutomationLoop(next);
       } catch (e) {
          console.error(e);
          await this.useCase.failSession(currentState, "Navigation Error");
       }
   }
 
-  // Step 5.2: Scan Search UI (DOM Snapshot)
   async scanSearchUI(currentState: AgentState) {
       if (!this.useCase) return;
       try {
          const site = this.currentConfig.targetSite || 'hh.ru';
-         await this.useCase.scanSearchPageDOM(currentState, site);
+         const next = await this.useCase.scanSearchPageDOM(currentState, site);
+         await this.runAutomationLoop(next);
       } catch (e) {
          console.error(e);
          await this.useCase.failSession(currentState, "DOM Scan Error");
       }
   }
 
-  // Step 5.3: LLM Analyze Search UI
   async analyzeSearchUI(currentState: AgentState) {
       if (!this.useCase) return;
       try {
          const site = this.currentConfig.targetSite || 'hh.ru';
-         await this.useCase.performSearchUIAnalysis(currentState, site);
+         const next = await this.useCase.performSearchUIAnalysis(currentState, site);
+         await this.runAutomationLoop(next);
       } catch (e) {
          console.error(e);
          await this.useCase.failSession(currentState, "UI Analysis Error");
       }
   }
 
-  // Step 5.3: Submit Preferences
   async submitSearchPrefs(currentState: AgentState, prefs: UserSearchPrefsV1) {
     if (!this.useCase) return;
     try {
-        await this.useCase.submitSearchPrefs(currentState, prefs);
+        let next = await this.useCase.submitSearchPrefs(currentState, prefs);
+        await this.planSearchActions(next);
     } catch (e) {
         console.error(e);
         await this.useCase.failSession(currentState, "Preferences Save Error");
     }
   }
 
-  // Step 5.4: Plan Search Actions
   async planSearchActions(currentState: AgentState) {
     if (!this.useCase) return;
     try {
         const site = this.currentConfig.targetSite || 'hh.ru';
-        await this.useCase.buildSearchApplyPlan(currentState, site);
+        let next = await this.useCase.buildSearchApplyPlan(currentState, site);
+        await this.runAutomationLoop(next); 
     } catch (e) {
         console.error(e);
         await this.useCase.failSession(currentState, "Planning Error");
     }
   }
 
-  // Phase A1.1: Execute Single Step
   async executePlanStep(currentState: AgentState) {
     if (!this.useCase) return;
     try {
@@ -179,19 +346,18 @@ export class AgentPresenter implements UIPort {
     }
   }
   
-  // Phase A1.2: Execute Plan Cycle
   async executePlanCycle(currentState: AgentState) {
     if (!this.useCase) return;
     try {
         const site = this.currentConfig.targetSite || 'hh.ru';
-        await this.useCase.executeApplyPlanCycle(currentState, site);
+        let next = await this.useCase.executeApplyPlanCycle(currentState, site);
+        await this.runAutomationLoop(next); 
     } catch (e) {
         console.error(e);
         await this.useCase.failSession(currentState, "Auto-Execution Error");
     }
   }
 
-  // Phase A2.1: Verify Filters
   async verifySearchFilters(currentState: AgentState) {
     if (!this.useCase) return;
     try {
@@ -203,19 +369,18 @@ export class AgentPresenter implements UIPort {
     }
   }
 
-  // Phase B1: Collect Vacancy Batch
   async collectVacancyBatch(currentState: AgentState) {
       if (!this.useCase) return;
       try {
           const site = this.currentConfig.targetSite || 'hh.ru';
-          await this.useCase.collectVacancyCardsBatch(currentState, site);
+          let next = await this.useCase.collectVacancyCardsBatch(currentState, site);
+          await this.runAutomationLoop(next);
       } catch (e) {
           console.error(e);
           await this.useCase.failSession(currentState, "Batch Collection Error");
       }
   }
 
-  // Phase B2: Dedup
   async dedupVacancyBatch(currentState: AgentState) {
       if (!this.useCase) return;
       try {
@@ -227,7 +392,6 @@ export class AgentPresenter implements UIPort {
       }
   }
 
-  // Phase C1: Script Prefilter
   async runScriptPrefilter(currentState: AgentState) {
       if (!this.useCase) return;
       try {
@@ -239,7 +403,6 @@ export class AgentPresenter implements UIPort {
       }
   }
 
-  // Phase C2: LLM Batch Screening
   async runLLMBatchScreening(currentState: AgentState) {
       if (!this.useCase) return;
       try {
@@ -251,7 +414,6 @@ export class AgentPresenter implements UIPort {
       }
   }
 
-  // Phase D1: Vacancy Extraction
   async runVacancyExtraction(currentState: AgentState) {
       if (!this.useCase) return;
       try {
@@ -263,7 +425,6 @@ export class AgentPresenter implements UIPort {
       }
   }
 
-  // Phase D2: LLM Eval Batch
   async runLLMEvalBatch(currentState: AgentState) {
       if (!this.useCase) return;
       try {
@@ -275,7 +436,6 @@ export class AgentPresenter implements UIPort {
       }
   }
 
-  // Phase D2.2: Build Apply Queue
   async buildApplyQueue(currentState: AgentState) {
       if (!this.useCase) return;
       try {
@@ -287,55 +447,54 @@ export class AgentPresenter implements UIPort {
       }
   }
   
-  // Phase E1.1: Probe Apply Entrypoint
   async probeApplyEntrypoint(currentState: AgentState) {
       if (!this.useCase) return;
       try {
           const site = this.currentConfig.targetSite || 'hh.ru';
-          await this.useCase.probeNextApplyEntrypoint(currentState, site);
+          let next = await this.useCase.probeNextApplyEntrypoint(currentState, site);
+          await this.runAutomationLoop(next);
       } catch (e) {
           console.error(e);
           await this.useCase.failSession(currentState, "Probe Apply Entrypoint Error");
       }
   }
   
-  // Phase E1.2: Open Apply Form
   async openApplyForm(currentState: AgentState) {
       if (!this.useCase) return;
       try {
           const site = this.currentConfig.targetSite || 'hh.ru';
-          await this.useCase.openAndScanApplyForm(currentState, site);
+          let next = await this.useCase.openAndScanApplyForm(currentState, site);
+          await this.runAutomationLoop(next);
       } catch (e) {
           console.error(e);
           await this.useCase.failSession(currentState, "Open Apply Form Error");
       }
   }
 
-  // Phase E1.3: Fill Draft
   async fillApplyDraft(currentState: AgentState) {
       if (!this.useCase) return;
       try {
           const site = this.currentConfig.targetSite || 'hh.ru';
-          await this.useCase.fillApplyFormDraft(currentState, site);
+          let next = await this.useCase.fillApplyFormDraft(currentState, site);
+          await this.runAutomationLoop(next);
       } catch (e) {
           console.error(e);
           await this.useCase.failSession(currentState, "Fill Apply Draft Error");
       }
   }
 
-  // Phase E1.4: Submit Apply
   async submitApply(currentState: AgentState) {
       if (!this.useCase) return;
       try {
           const site = this.currentConfig.targetSite || 'hh.ru';
-          await this.useCase.submitApplyForm(currentState, site);
+          let next = await this.useCase.submitApplyForm(currentState, site);
+          await this.runAutomationLoop(next);
       } catch (e) {
           console.error(e);
           await this.useCase.failSession(currentState, "Submit Application Error");
       }
   }
 
-  // Phase F1: Resolve Dom Drift
   async resolveDomDrift(currentState: AgentState) {
       if (!this.useCase) return;
       try {
@@ -351,10 +510,21 @@ export class AgentPresenter implements UIPort {
       if (!this.useCase) return;
       try {
           const site = this.currentConfig.targetSite || 'hh.ru';
-          // Reset data
-          let nextState = await this.useCase.resetProfileData(currentState, site);
-          // Restart check (which will now fail and ask for nav)
-          await this.useCase.checkAndCaptureProfile(nextState, site);
+          let next = await this.useCase.resetProfileData(currentState, site);
+          await this.useCase.checkAndCaptureProfile(next, site);
+      } catch (e) {
+          console.error(e);
+      }
+  }
+
+  // --- MEMORY WIPE ---
+  async wipeMemory(currentState: AgentState) {
+      if (!this.useCase) return;
+      try {
+          const site = this.currentConfig.targetSite || 'hh.ru';
+          let next = await this.useCase.forgetSearchHistory(currentState, site);
+          // If paused, just render. If running, automation loop will pick up new clean state.
+          this.renderState(next); 
       } catch (e) {
           console.error(e);
       }

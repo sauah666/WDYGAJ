@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AppRoute, AgentConfig, AgentStatus } from './types';
 import { AgentState, createInitialAgentState, UserSearchPrefsV1 } from './core/domain/entities';
@@ -132,8 +133,17 @@ export default function App() {
       setAgentState(newState);
     });
 
-    return () => agentPresenter.unbind();
-  }, []);
+    // Listen for custom Amnesia event from Screen
+    const handleWipe = () => {
+        agentPresenter.wipeMemory(agentState);
+    };
+    window.addEventListener('AGENT_WIPE_MEMORY', handleWipe);
+
+    return () => {
+        agentPresenter.unbind();
+        window.removeEventListener('AGENT_WIPE_MEMORY', handleWipe);
+    };
+  }, [agentState]); // Add agentState dep to capture latest state for wipe
 
   // --- Actions ---
 
@@ -179,7 +189,7 @@ export default function App() {
           alert("Configuration Saved."); 
           setRoute(AppRoute.MODE_SELECTION); 
       } else {
-          alert("Configuration Error: " + validation.issues[0].message);
+          alert("Configuration Error. " + validation.issues[0].message);
       }
   };
 
@@ -198,7 +208,7 @@ export default function App() {
   const handleConfirmLogin = () => agentPresenter.confirmLogin(agentState);
   const handleReset = async () => {
       await agentPresenter.resetSession(agentState);
-      setRoute(AppRoute.MODE_SELECTION);
+      setRoute(AppRoute.JOB_PREFERENCES); // Go back to Salary Page as requested
   };
   
   // Pause Logic
@@ -263,6 +273,7 @@ export default function App() {
           onPause={handlePause}
           onResume={handleResume}
           onNavigate={handleNavigate}
+          isMock={config.browserProvider === 'mock'}
         />
       );
       break;

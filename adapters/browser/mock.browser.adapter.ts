@@ -58,23 +58,47 @@ export class MockBrowserAdapter implements BrowserPort {
         `;
     }
 
+    // SCENARIO: Profile Page
+    if (this.currentUrlVal.includes('/applicant/resumes') || this.currentUrlVal.includes('/resume/')) {
+        return `
+          Иван Иванов
+          Senior Frontend Developer
+          
+          Опыт работы: 10 лет
+          Stack: React, Node.js, TypeScript, AI Agents
+          
+          Желаемая зарплата: 300 000 руб.
+          Готов к удаленной работе.
+        `;
+    }
+
     // Stub: messy text to prove normalization
     return `
-      Mock Profile Content:    Senior Engineer
-      
-      10 years exp...
-      
-      Stack: React,    Node,   AI.
+      Mock Page Content
+      Navigation: Search, Profile, Login
     `;
   }
 
   async findLinksByTextKeywords(keywords: string[]): Promise<{ text: string; href: string }[]> {
     console.log(`[BrowserAdapter] Scanning for links matching: [${keywords.join(', ')}]...`);
-    // Mock logic: If we are NOT on a search page, pretend we found one.
-    if (!this.currentUrlVal.includes('search')) {
-      return [{ text: 'Расширенный поиск', href: '/search/vacancy/advanced' }];
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const lowerKeywords = keywords.map(k => k.toLowerCase());
+    const found: { text: string; href: string }[] = [];
+
+    // Mock logic: Context-aware links
+    
+    // 1. Profile / Resume Links (for Auto-Discovery)
+    if (lowerKeywords.some(k => 'мои резюме'.includes(k) || 'profile'.includes(k) || 'резюме'.includes(k))) {
+        found.push({ text: 'Мои резюме', href: '/applicant/resumes' });
     }
-    return [];
+
+    // 2. Search Links
+    if (!this.currentUrlVal.includes('search') && lowerKeywords.some(k => 'поиск'.includes(k) || 'search'.includes(k))) {
+        found.push({ text: 'Расширенный поиск', href: '/search/vacancy/advanced' });
+    }
+
+    return found;
   }
 
   async clickLink(href: string): Promise<void> {
@@ -393,12 +417,7 @@ export class MockBrowserAdapter implements BrowserPort {
       console.log(`[BrowserAdapter] Calculating DOM fingerprint for ${pageType}...`);
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // In a real adapter, this would hash the DOM tree.
-      // In Mock, we return a stable hash for 'search' to simulate stability,
-      // but if we wanted to test drift, we'd change this based on some internal flag.
-      
       if (pageType === 'search') {
-          // Stable hash for search page mock
           return { structuralHash: 'mock_search_v1_stable_hash' };
       }
       
@@ -415,9 +434,7 @@ export class MockBrowserAdapter implements BrowserPort {
     console.log(`[BrowserAdapter] INPUT into ${selector}: "${text.substring(0, 20)}..."`);
     await new Promise(resolve => setTimeout(resolve, 500));
     
-    // Check if we can input (simulate state)
     if (this.isApplyModalOpen) {
-        // Use generic selector as key for mock state
         this.applyFormInputs[selector] = text;
         return true;
     }

@@ -525,12 +525,28 @@ export interface ProfileSnapshot {
   contentHash: string;
 }
 
+export interface AppliedVacancyRecord {
+    id: string;
+    title: string;
+    company: string;
+    timestamp: number;
+    status: 'APPLIED' | 'SKIPPED' | 'FAILED';
+    reason: string;
+}
+
 export interface AgentState {
   status: AgentStatus;
   currentUrl: string;
+  updatedAt: number;
   logs: string[];
-  isPaused: boolean; // New Flag for Pause Control
+  isPaused: boolean; 
   
+  // Job Rotation
+  currentRoleIndex: number; // For cycling through targetingSpec.targetRoles.ruTitles
+  
+  // History (48h retention handled by UseCase)
+  appliedHistory: AppliedVacancyRecord[];
+
   // Observability
   tokenLedger: TokenLedger;
   
@@ -587,8 +603,11 @@ export interface AgentState {
 export const createInitialAgentState = (): AgentState => ({
   status: AgentStatus.IDLE,
   currentUrl: '',
+  updatedAt: Date.now(),
   logs: [],
   isPaused: false,
+  currentRoleIndex: 0,
+  appliedHistory: [],
   tokenLedger: { inputTokens: 0, outputTokens: 0, cacheHits: 0, cacheMisses: 0, calls: 0 },
   activeDriftEvent: null
 });

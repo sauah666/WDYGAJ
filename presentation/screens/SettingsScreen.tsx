@@ -1,9 +1,10 @@
-import React from 'react';
-import { Save, Key, Shield, Globe, RotateCcw, Server, AlertTriangle, Command, Network, Wrench } from 'lucide-react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import Atropos from 'atropos/react';
 import { Layout } from '../components/Layout';
+import { Save, RotateCcw, ArrowLeft, Key, Network, Cpu, ShieldCheck } from 'lucide-react';
 import { AgentConfig } from '../../types';
-import { listProviders, DEFAULT_LLM_PROVIDER, LLMProviderRegistry } from '../../core/domain/llm_registry';
-import { computeRuntimeCapabilities } from '../../core/domain/runtime';
+import { listProviders, DEFAULT_LLM_PROVIDER } from '../../core/domain/llm_registry';
+import { JokeService } from '../services/JokeService';
 
 interface Props {
   config: Partial<AgentConfig>;
@@ -13,186 +14,289 @@ interface Props {
   onNavigate?: (route: string) => void;
 }
 
-export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBack, onNavigate }) => {
-  const providers = listProviders();
-  const currentProviderId = config.activeLLMProviderId || DEFAULT_LLM_PROVIDER;
-  
-  const runtime = computeRuntimeCapabilities();
-  const isBrowserEnv = runtime.kind === 'BROWSER_UI';
+const LOOP_VIDEO = "https://raw.githubusercontent.com/sauah666/WDYGAJ/98771fc49589081d334b431a618452b72c0c450e/valera_idle_merged.mp4";
 
-  const handleResetLLMConfig = () => {
+// Messages
+const MSG_INTRO = "Панель управления нейроядром.";
+const MSG_SAVED = "Конфигурация сохранена.";
+
+export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBack, onNavigate }) => {
+  const [showPanel, setShowPanel] = useState(false);
+  
+  // Agent Logic
+  const [agentMessage, setAgentMessage] = useState<string>(MSG_INTRO);
+  const [typedMessage, setTypedMessage] = useState<string>("");
+  
+  // UI Refs
+  const avatarRef = useRef<HTMLDivElement>(null);
+  const loopVideoRef = useRef<HTMLVideoElement>(null);
+  const [orbDest, setOrbDest] = useState<{top: number, left: number, width: number, height: number} | null>(null);
+
+  useEffect(() => {
+      let frameId: number;
+      let charIndex = 0;
+      const speed = 2; 
+      let tick = 0;
+      const animate = () => {
+          tick++;
+          if (tick >= speed) {
+              tick = 0;
+              charIndex++;
+              setTypedMessage(agentMessage.slice(0, charIndex));
+          }
+          if (charIndex <= agentMessage.length) {
+              frameId = requestAnimationFrame(animate);
+          }
+      };
+      setTypedMessage(""); 
+      frameId = requestAnimationFrame(animate);
+      return () => cancelAnimationFrame(frameId);
+  }, [agentMessage]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowPanel(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const updateOrbTarget = () => {
+      if (avatarRef.current) {
+          const rect = avatarRef.current.getBoundingClientRect();
+          setOrbDest({
+              top: rect.top,
+              left: rect.left,
+              width: rect.width,
+              height: rect.height
+          });
+      }
+  };
+
+  useLayoutEffect(() => {
+      updateOrbTarget();
+      window.addEventListener('resize', updateOrbTarget);
+      if (showPanel) setTimeout(updateOrbTarget, 100);
+      return () => window.removeEventListener('resize', updateOrbTarget);
+  }, [showPanel]);
+
+  const handleProviderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const val = e.target.value;
+      onChange('activeLLMProviderId', val);
+      
+      let jokeCategory = 'LLM_LOBOTOMY'; // default mock
+      if (val.includes('deepseek')) jokeCategory = 'LLM_CHINA_HACKER';
+      else if (val.includes('local')) jokeCategory = 'LLM_LOCAL_GPU';
+      else if (val.includes('cloud')) jokeCategory = 'LLM_CLOUD_EXPENSIVE';
+      
+      setAgentMessage(JokeService.getJoke(jokeCategory));
+  };
+
+  const handleKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      onChange('apiKey', e.target.value);
+      // Occasional paranoia joke when typing key
+      if (Math.random() > 0.8) {
+          setAgentMessage(JokeService.getJoke('LLM_CLOUD_EXPENSIVE'));
+      }
+  };
+
+  const handleSaveWrapper = () => {
+      setAgentMessage(MSG_SAVED);
+      setTimeout(() => onSave(), 800);
+  };
+
+  const handleReset = () => {
       onChange('activeLLMProviderId', DEFAULT_LLM_PROVIDER);
       onChange('apiKey', '');
       onChange('localGatewayUrl', '');
+      setAgentMessage(JokeService.getJoke('LLM_LOBOTOMY'));
   };
 
+  const currentProviderId = config.activeLLMProviderId || DEFAULT_LLM_PROVIDER;
+  const providers = listProviders();
+
   return (
-    <Layout title="Калибровка Системы" currentRoute="SETTINGS" onSettingsClick={() => {}} onNavigate={onNavigate}>
-      <div className="max-w-5xl mx-auto mt-6">
+    <Layout title="" hideSidebar={true} onSettingsClick={() => {}} onNavigate={onNavigate}>
+      <style>{`
+        @keyframes switchOn {
+            0% { opacity: 0; filter: brightness(0) blur(2px); }
+            100% { opacity: 1; filter: brightness(1); }
+        }
+        .animate-switch-on {
+            animation: switchOn 0.5s ease-out forwards;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+      `}</style>
+
+      <div className="flex flex-col items-center justify-center h-full w-full relative pt-0 pb-0 overflow-hidden bg-[#0a0503]">
         
-        {/* Main Panel */}
-        <div className="bg-[#1c1917] border-4 border-[#292524] shadow-[0_10px_30px_rgba(0,0,0,0.5)] relative">
-            {/* Screws */}
-            <div className="absolute top-2 left-2 w-2 h-2 rounded-full bg-[#0c0a08] border border-[#44403c]"></div>
-            <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#0c0a08] border border-[#44403c]"></div>
-            
-            <div className="p-8 border-b-2 border-[#292524] bg-[#151413] flex justify-between items-end">
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-[#292524] rounded border border-[#44403c] text-amber-600 shadow-inner">
-                        <Wrench size={24} />
-                    </div>
-                    <div>
-                        <h3 className="text-2xl font-serif font-bold text-[#d6d3d1] uppercase tracking-wide">Внутренняя Механика</h3>
-                        <p className="text-lg text-[#78716c] mt-1 font-cursive">Настройка параметров исполнения и нейронных связей.</p>
-                    </div>
+        {/* --- SETTINGS PANEL --- */}
+        <div className={`absolute inset-0 z-20 flex items-center justify-center pointer-events-none`}>
+            {/* MAXIMIZED CONTAINER */}
+            <div 
+                className={`relative w-[98%] h-[98%] md:w-[600px] md:h-auto md:max-h-[95vh] bg-[#2a2420] border-[3px] border-[#4a3b32] shadow-[0_0_100px_rgba(0,0,0,0.8)] rounded-xl md:rounded-3xl overflow-hidden flex flex-col font-serif ${showPanel ? 'pointer-events-auto animate-switch-on' : 'opacity-0'}`}
+                style={{ 
+                    backgroundImage: `url('https://www.transparenttextures.com/patterns/dark-leather.png')`,
+                    boxShadow: 'inset 0 0 50px rgba(0,0,0,0.8), 0 20px 50px rgba(0,0,0,1)'
+                }}
+            >
+                {/* 1. HEADER */}
+                <div className="shrink-0 relative h-14 bg-[#1a120e] border-b-4 border-[#3a2d25] flex items-center justify-between px-4 shadow-md z-30">
+                    <button onClick={onBack} className="text-[#78716c] hover:text-[#d97706] transition-colors p-2 rounded-full hover:bg-[#2a2018]">
+                        <ArrowLeft size={24} />
+                    </button>
+                    <h2 className="relative z-10 font-serif font-bold text-xl text-[#cdbba7] tracking-widest uppercase text-shadow-md">
+                        Нейроядро
+                    </h2>
+                    <div className="w-8"></div> 
                 </div>
-                <div className="text-[10px] font-mono text-[#44403c] uppercase border border-[#292524] px-2 py-1 bg-[#0c0a08]">
-                    CONF_MOD_RU_V1
-                </div>
-            </div>
-            
-            <div className="p-8 space-y-8 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]">
-            
-            {/* Browser Runtime Section */}
-            <div className="relative p-6 border-2 border-[#292524] bg-[#1c1917]">
-                <div className="absolute -top-3 left-4 bg-[#1c1917] px-2 text-xs font-bold text-amber-700 uppercase tracking-widest border-l border-r border-[#292524] font-serif">
-                    Двигатель Навигации
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div>
-                        <label className="block text-[12px] font-bold text-[#a8a29e] mb-2 uppercase font-serif">Режим Исполнения</label>
-                        <div className="relative">
-                            <select 
-                                value={config.browserProvider}
-                                onChange={(e) => onChange('browserProvider', e.target.value)}
-                                className="w-full bg-[#0c0a08] border border-[#44403c] text-[#d6d3d1] px-4 py-3 focus:border-amber-600 outline-none appearance-none font-mono text-sm shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]"
-                            >
-                                {runtime.supportsPlaywright && <option value="playwright">Local Playwright (Native)</option>}
-                                <option value="remote_node">Remote Node Runner (Удаленный)</option>
-                            </select>
-                            <div className="absolute right-4 top-4 pointer-events-none text-[#57534e]">▼</div>
+
+                {/* 2. ORB ROW */}
+                <div className="shrink-0 p-4 pb-2 bg-[#2a2420] z-20 relative">
+                    <div className="flex gap-4 items-stretch h-28">
+                        {/* Avatar Placeholder */}
+                        <div ref={avatarRef} className="w-28 shrink-0 relative opacity-0"></div>
+
+                        {/* Message Screen */}
+                        <div className="flex-1 bg-[#1a1512] rounded-xl border-2 border-[#3a2d25] shadow-[inset_0_2px_10px_black] relative overflow-hidden p-3 flex flex-col justify-center">
+                             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cardboard.png')] opacity-10"></div>
+                             <div className="relative z-10 font-mono text-[#d97706] text-sm leading-tight drop-shadow-md break-words pl-1">
+                                 <span className="opacity-90">{typedMessage}</span>
+                                 <span className="inline-block w-2 h-4 bg-[#d97706] ml-1 animate-[blink_1s_infinite] align-middle"></span>
+                             </div>
+                             <div className="absolute top-2 right-2 w-1.5 h-1.5 bg-green-600 rounded-full animate-pulse shadow-[0_0_4px_green]"></div>
                         </div>
                     </div>
+                </div>
 
-                    {config.browserProvider === 'playwright' && !isBrowserEnv && (
-                        <div>
-                            <label className="block text-[12px] font-bold text-[#a8a29e] mb-2 uppercase font-serif">Путь к Бинарному Файлу</label>
-                            <input 
-                                type="text" 
-                                value={config.chromeExecutablePath || ''}
-                                onChange={(e) => onChange('chromeExecutablePath', e.target.value)}
-                                placeholder="Авто-определение"
-                                className="w-full bg-[#0c0a08] border border-[#44403c] text-amber-100 px-4 py-3 focus:border-amber-600 outline-none font-mono text-sm shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)] placeholder-[#44403c]" 
-                            />
+                {/* 3. SETTINGS CONTENT (Maximized) */}
+                <div className="flex-1 overflow-y-auto px-6 pb-4 custom-scrollbar relative z-10 flex flex-col">
+                    {/* Divider */}
+                    <div className="relative flex items-center justify-center py-4 opacity-50 shrink-0">
+                        <div className="h-px bg-[#4a3b32] flex-1"></div>
+                        <div className="px-3 text-[#8c7b70] font-serif text-[10px] font-bold tracking-widest uppercase flex items-center gap-2">
+                            <Cpu size={12} /> Конфигурация
                         </div>
-                    )}
+                        <div className="h-px bg-[#4a3b32] flex-1"></div>
+                    </div>
 
-                    {config.browserProvider === 'remote_node' && (
-                        <div>
-                            <label className="block text-[12px] font-bold text-[#a8a29e] mb-2 uppercase font-serif">Удаленный Канал</label>
-                            <div className="relative">
-                                <Server size={14} className="absolute left-3 top-4 text-[#57534e]" />
-                                <input 
-                                    type="text" 
-                                    value={config.nodeRunnerUrl || ''}
-                                    onChange={(e) => onChange('nodeRunnerUrl', e.target.value)}
-                                    placeholder="http://localhost:3000"
-                                    className="w-full bg-[#0c0a08] border border-[#44403c] text-amber-100 pl-10 pr-4 py-3 focus:border-amber-600 outline-none font-mono text-sm shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]" 
-                                />
+                    <div className="space-y-6 flex-1 flex flex-col justify-center">
+                        {/* LLM Provider */}
+                        <div className="flex flex-col gap-2">
+                             <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">Модель Интеллекта</label>
+                             <div className="relative">
+                                <select 
+                                    value={currentProviderId}
+                                    onChange={handleProviderChange}
+                                    className="w-full h-14 bg-[#0c0a08] border-2 border-[#3e2f26] rounded-2xl px-4 text-[#cdbba7] font-mono text-base shadow-[inset_0_2px_5px_black] outline-none active:bg-[#1a120e] transition-all appearance-none cursor-pointer"
+                                >
+                                    {providers.map(p => (
+                                        <option key={p.id} value={p.id} disabled={!p.enabled}>
+                                            {p.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="absolute right-4 top-4 pointer-events-none text-[#57534e]">▼</div>
+                             </div>
+                        </div>
+
+                        {/* API Key / URL */}
+                        <div className="flex flex-col gap-4">
+                            {currentProviderId !== 'mock' && (
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">
+                                        {currentProviderId === 'local_llm' ? 'Адрес Шлюза' : 'Ключ Доступа'}
+                                    </label>
+                                    <div className="relative">
+                                        {currentProviderId === 'local_llm' ? (
+                                            <Network size={18} className="absolute left-4 top-4 text-[#57534e]" />
+                                        ) : (
+                                            <Key size={18} className="absolute left-4 top-4 text-[#57534e]" />
+                                        )}
+                                        <input 
+                                            type={currentProviderId === 'local_llm' ? "text" : "password"}
+                                            value={currentProviderId === 'local_llm' ? (config.localGatewayUrl || '') : (config.apiKey || '')}
+                                            onChange={currentProviderId === 'local_llm' 
+                                                ? (e) => onChange('localGatewayUrl', e.target.value)
+                                                : handleKeyChange
+                                            }
+                                            placeholder={currentProviderId === 'local_llm' ? "http://localhost:1234/v1" : "sk-..."}
+                                            className="w-full h-14 bg-[#140c08] border-2 border-[#3e2f26] rounded-2xl pl-12 pr-4 text-[#e7e5e4] font-mono text-sm outline-none focus:border-[#d97706] shadow-[inset_0_2px_5px_black] placeholder-[#2a2018]"
+                                        />
+                                    </div>
+                                    <div className="ml-2 text-[10px] text-[#57534e] flex items-center gap-1">
+                                        <ShieldCheck size={12} />
+                                        <span>Только локальное хранение в браузере.</span>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {/* Reset */}
+                            <div className="pt-4 flex justify-center border-t border-[#3e2f26]/30 mt-2">
+                                <button onClick={handleReset} className="text-[10px] text-[#57534e] hover:text-[#b91c1c] uppercase tracking-widest flex items-center gap-2 transition-colors border-b border-transparent hover:border-[#b91c1c] pb-1">
+                                    <RotateCcw size={12} /> Сброс Настроек
+                                </button>
                             </div>
                         </div>
-                    )}
-                </div>
-            </div>
-
-            {/* AI Core Section */}
-            <div className="relative p-6 border-2 border-[#292524] bg-[#1c1917]">
-                <div className="absolute -top-3 left-4 bg-[#1c1917] px-2 text-xs font-bold text-amber-700 uppercase tracking-widest border-l border-r border-[#292524] font-serif">
-                    Когнитивное Ядро
+                    </div>
                 </div>
 
-                <div className="flex justify-end mb-4">
+                {/* 4. FOOTER */}
+                <div className="shrink-0 relative p-6 bg-[#1a120e] border-t-2 border-[#3a2d25] shadow-inner z-30">
                     <button 
-                        onClick={handleResetLLMConfig}
-                        className="text-[12px] text-[#78716c] hover:text-amber-500 flex items-center gap-2 uppercase tracking-wide border-b border-transparent hover:border-amber-500 transition-all font-serif"
+                        onClick={handleSaveWrapper}
+                        className="w-full relative h-16 bg-gradient-to-b from-[#6b350f] to-[#451a03] border border-[#78350f] shadow-[0_5px_10px_black] active:shadow-none active:translate-y-1 transition-all group overflow-hidden rounded-2xl flex items-center justify-center gap-3"
                     >
-                        <RotateCcw size={10} /> Заводской Сброс
+                         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/wood-pattern.png')] opacity-20 mix-blend-overlay"></div>
+                         <Save size={20} className="text-[#fcd34d] relative z-10" />
+                         <span className="relative z-10 font-serif font-black text-xl text-[#fcd34d] tracking-[0.15em] uppercase drop-shadow-md">
+                             Применить
+                         </span>
+                         <div className="absolute top-0 left-0 w-full h-[1px] bg-white/20"></div>
                     </button>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div>
-                        <label className="block text-[12px] font-bold text-[#a8a29e] mb-2 uppercase font-serif">Модуль Провайдера</label>
-                        <div className="relative">
-                            <select 
-                                value={currentProviderId}
-                                onChange={(e) => onChange('activeLLMProviderId', e.target.value)}
-                                className="w-full bg-[#0c0a08] border border-[#44403c] text-[#d6d3d1] px-4 py-3 focus:border-purple-600 outline-none appearance-none font-mono text-sm shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]"
-                            >
-                                {providers.map(p => (
-                                    <option key={p.id} value={p.id} disabled={!p.enabled}>
-                                        {p.label}
-                                    </option>
-                                ))}
-                            </select>
-                            <div className="absolute right-4 top-4 pointer-events-none text-[#57534e]">▼</div>
-                        </div>
-                    </div>
-
-                    <div className="space-y-4">
-                        {currentProviderId !== 'mock' && (
-                            <div>
-                                <label className="block text-[12px] font-bold text-[#a8a29e] mb-2 uppercase font-serif">Ключ Доступа</label>
-                                <div className="relative">
-                                    <Key size={14} className="absolute left-3 top-4 text-[#57534e]" />
-                                    <input 
-                                        type="password" 
-                                        value={config.apiKey || ''}
-                                        onChange={(e) => onChange('apiKey', e.target.value)}
-                                        placeholder={currentProviderId === 'local_llm' ? "Not required" : "sk-..."}
-                                        className="w-full bg-[#0c0a08] border border-[#44403c] text-amber-100 pl-10 pr-4 py-3 focus:border-purple-600 outline-none font-mono text-sm shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]" 
-                                    />
-                                </div>
-                            </div>
-                        )}
-
-                        {currentProviderId === 'local_llm' && (
-                            <div>
-                                <label className="block text-[12px] font-bold text-[#a8a29e] mb-2 uppercase font-serif">Локальный Шлюз</label>
-                                <div className="relative">
-                                    <Network size={14} className="absolute left-3 top-4 text-[#57534e]" />
-                                    <input 
-                                        type="text" 
-                                        value={config.localGatewayUrl || ''}
-                                        onChange={(e) => onChange('localGatewayUrl', e.target.value)}
-                                        placeholder="http://localhost:1234/v1"
-                                        className="w-full bg-[#0c0a08] border border-[#44403c] text-amber-100 pl-10 pr-4 py-3 focus:border-orange-600 outline-none font-mono text-sm shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]" 
-                                    />
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-            </div>
-
-            {/* Actions Footer */}
-            <div className="p-6 bg-[#151413] border-t-2 border-[#292524] flex justify-end space-x-6">
-                {onBack && (
-                    <button onClick={onBack} className="text-[#78716c] hover:text-[#d6d3d1] px-6 py-3 text-lg font-bold uppercase tracking-wider transition-colors border-b-2 border-transparent hover:border-[#78716c] font-serif">
-                        Сбросить
-                    </button>
-                )}
-                <button 
-                    onClick={onSave}
-                    className="flex items-center space-x-3 bg-amber-800 hover:bg-amber-700 text-[#f5f5f4] px-8 py-3 font-bold uppercase tracking-wider shadow-[0_4px_0_#451a03] active:translate-y-[4px] active:shadow-none transition-all border border-amber-900 font-serif"
-                >
-                    <Save size={18} />
-                    <span>Применить</span>
-                </button>
+                <div className="absolute -bottom-2 left-8 right-8 h-2 bg-[#1a120e] border-l border-r border-b border-[#3a2d25] rounded-b-xl shadow-lg"></div>
             </div>
         </div>
+
+        {/* --- ORB --- */}
+        <div 
+            className={`fixed z-50 ease-in-out transition-all duration-[800ms] ${
+                showPanel && orbDest
+                    ? "" 
+                    : "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px]"
+            }`}
+            style={showPanel && orbDest ? {
+                top: orbDest.top,
+                left: orbDest.left,
+                width: orbDest.width,
+                height: orbDest.height,
+                transform: 'none'
+            } : {}}
+        >
+            <Atropos activeOffset={10} shadowScale={0.5} className="w-full h-full rounded-full">
+                <div 
+                    className={`relative w-full h-full rounded-full bg-[#1a120e] shadow-[0_20px_60px_rgba(0,0,0,0.9)] flex items-center justify-center overflow-hidden border-[#2e1d15] ease-in-out transition-all duration-[800ms] ${
+                        showPanel ? "border-[3px]" : "border-[15px]"
+                    }`}
+                >
+                    <div className={`absolute inset-0 border-[#b45309] rounded-full opacity-80 pointer-events-none z-50 shadow-[inset_0_0_15px_rgba(0,0,0,0.8)] ease-in-out transition-all duration-[800ms] ${
+                        showPanel ? "border-[2px]" : "border-[4px]"
+                    }`}></div>
+                    
+                    <div className={`absolute rounded-full bg-black shadow-[inset_0_10px_30px_rgba(255,255,255,0.05)] overflow-hidden isolate z-10 ease-in-out transition-all duration-[800ms] ${
+                        showPanel ? "inset-0.5" : "inset-4"
+                    }`}>
+                        <video 
+                            ref={loopVideoRef}
+                            src={LOOP_VIDEO}
+                            className="absolute inset-0 w-full h-full object-cover z-20 opacity-100"
+                            playsInline muted loop autoPlay
+                        />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_50%,rgba(0,0,0,0.8)_100%)] pointer-events-none z-30 mix-blend-multiply"></div>
+                    </div>
+                </div>
+            </Atropos>
+        </div>
+
       </div>
     </Layout>
   );
