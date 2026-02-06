@@ -7,6 +7,7 @@ The interface of **AgentSeeker** (aka "Кузница Кадров") is designed
 *   Old Operating Systems (retro-futurism).
 *   Industrial Machinery (gauges, bolts, heavy switches).
 *   Noir & Cyberpunk aesthetics (Shadows, Neon on Rust, CRT effects).
+*   **The Videophone**: The main entry point resembles a physical communication device from an alternate timeline.
 
 ### Color Palette
 *   **Backgrounds**: `#0a0503` (Deep Void), `#140c08` (Dark Iron), `#2a2420` (Leather/Rust).
@@ -23,62 +24,72 @@ The interface of **AgentSeeker** (aka "Кузница Кадров") is designed
 
 ## Key UI Components
 
-### 1. The Orb ("Valera")
+### 1. The Videophone (Mode Selection)
+*   **Concept**: A heavy, physical chassis housing the AI Agent.
+*   **Visuals**: 
+    *   **Chassis**: Dark leather texture, reinforced borders, industrial screws.
+    *   **Speaker Grille**: Top section suggesting audio output capability.
+    *   **Dashboard**: A control panel with knobs (simulated inputs) and switches.
+*   **Inputs**: Consolidated "Quick Start" controls for Salary, Location, Work Mode, and Cover Letter directly on the device.
+
+### 2. The Orb ("Valera")
 *   **Role**: The personification of the Agent.
 *   **Behavior**:
-    *   **Idle**: Pulses gently, plays a seamless loop video.
-    *   **Working**: Moves to the top-left corner, minimizes to allow focus on the workspace.
+    *   **Idle**: Pulses gently inside the Videophone screen.
+    *   **Active (Call)**: Transitions (relocates) to the top-left corner (Picture-in-Picture style) to oversee the browser work.
     *   **Relocated**: Transitions smoothly between "Intro Mode" (large) and "Dashboard Mode" (small).
 *   **UX Note**: Users should feel like they are issuing commands to a distinct entity, not just clicking buttons.
 
-### 2. The Browser Viewport
+### 3. The Browser Viewport
 *   **Visuals**: Styled like an old OS window (`Win95` meets `Fallout`).
-*   **Purpose**: Shows the user exactly what the agent is "seeing" or doing.
-*   **Mock Mode**: Simulates typing, loading bars, and fake websites to give feedback during development/demo.
-*   **Remote Mode**: Mirrors the actual state of the headless browser.
+*   **Modes**:
+    *   **Standby**: CRT noise and "WAITING FOR SIGNAL" pulse when the agent is IDLE.
+    *   **Mock/Remote**: Displays the simulated or actual web content.
+    *   **Scanner/Terminal**: A special visual mode during `VACANCIES_CAPTURED` status. It renders the batch of 50 found vacancies as a scrolling list with a "laser scan" effect, showing real-time decisions (Green/Red indicators) as the agent processes them.
 
-### 3. The Log/Message Module
-*   **Visuals**: Typewriter effect (`typedMessage`).
+### 4. The Log/Message Module
+*   **Visuals**: Typewriter effect (`typedMessage`) on a cardboard-textured panel.
 *   **Content**: Dark humor provided by `JokeService`. The agent complains about salary, location, and the futility of existence, adding personality to boring waiting times.
 
-### 4. Navigation Control (Sidebar)
-*   **Concept**: Physical levers and buttons rather than "Links".
-*   **State**: Highlights the active "Mode" (Rubka, Mechanica).
+### 5. Atmospherics (Three.js)
+*   **Component**: `SteamEngineBackground` in `Layout.tsx`.
+*   **Effect**: A 3D wireframe steam engine rotates slowly in the background, overlaid with fog and ambient lighting.
+*   **Interaction**: Reacts subtly to mouse movement/window resize.
+*   **Tech**: Renders to a dedicated canvas layer behind the main UI, ensuring the "industrial" feel permeates every screen.
 
 ---
 
 ## User Flows
 
-### Flow A: Quick Start (Default)
-1.  **Launch**: User opens the app. "Valera" greets them in the **Mode Selection** screen.
-2.  **Parameters**: User sets Salary, Location, and Work Mode directly on the landing panel.
-3.  **Run**: User clicks **"Начать Поиск"**.
-    *   *Result*: Agent launches immediately targeting `hh.ru`.
+### Flow A: Quick Start (Videophone)
+1.  **Launch**: User opens the app. The "Videophone" is presented.
+2.  **Parameters**: User adjusts the "Control Panel" directly on the device:
+    *   **Salary**: Numeric input with joke feedback.
+    *   **Location**: Dropdown selector.
+    *   **Mode**: Toggles for Remote/Hybrid/Office.
+    *   **Details**: Expandable section for Cover Letter.
+3.  **Call**: User presses the large **"СВЯЗЬ"** (Call) button or **"Начать Поиск"**.
+    *   *Result*: "Valera" transitions to the corner, the Browser Viewport opens, and the agent begins the `hh.ru` loop.
 
 ### Flow B: Advanced Setup
-1.  **Launch**: User opens app.
-2.  **Switch**: User clicks the **Globe Icon** ("Сменить Платформу") in the header.
-3.  **Site Selection**: User chooses a platform (e.g., `hh.ru`, `LinkedIn` [Locked]).
-4.  **Job Preferences**: A dedicated screen allows finer tuning:
-    *   Salary & Currency.
-    *   Location (City).
-    *   Work Mode (Multiple selection).
-    *   **Cover Letter Template**: Edit the default text.
-5.  **Confirm**: User clicks **"Подтвердить"**.
-    *   *Result*: Agent launches with custom settings.
+1.  **Access**: User clicks the **Sliders Icon** in the Videophone header.
+2.  **Job Preferences Screen**: A dedicated full-screen configuration view for deeper settings (if needed beyond the main dashboard).
+3.  **Site Selection**: Accessible via the **Globe Icon** (currently locked/disabled for single-site mode).
 
 ### Flow C: The Autonomous Loop
 1.  **Login**: If credentials missing, Agent pauses. User enters them in the simulated browser.
 2.  **Profiling**: Agent scans user profile to build `TargetingSpec`.
-3.  **Search**: Agent navigates, filters, and scrapes vacancies (Batch of 15).
-4.  **Screening**: De-duplication -> Prefilter -> LLM Screen -> Extraction -> Evaluation.
-5.  **Apply**: Agent fills form, checks for questionnaires, submits.
-6.  **Rotation**: If batch finished, switches to next Role Keyword.
+3.  **Search**: Agent navigates, filters, and scrapes vacancies (Batch of 50).
+4.  **Scanning**: The list auto-scrolls, visually indicating "Processing".
+5.  **Screening**: De-duplication -> Prefilter -> LLM Screen -> Extraction -> Evaluation.
+6.  **Apply**: Agent fills form, checks for questionnaires, submits.
+7.  **Rotation**: If batch finished, switches to next Role Keyword.
 
 ### Flow D: Post-Run & Amnesia
-1.  **Stop**: User interrupts the session.
+1.  **Stop**: User interrupts the session via the "Stop" button in `AgentStatusScreen`.
 2.  **Report**: Summary Overlay shows applied/skipped stats.
-3.  **Amnesia**: User clicks **Brain Icon** to wipe session memory (seen vacancies + history) to start fresh.
+3.  **Archive**: User can view history via the **Archive** button on the Videophone.
+4.  **Amnesia**: User clicks **Brain Icon** (in Agent Runner) or **Trash Icon** (in Archive) to wipe session memory (seen vacancies + history) to start fresh.
 
 ---
 

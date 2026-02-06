@@ -18,7 +18,7 @@
 
 ### 1. Domain (`core/domain/`)
 *   **Entities**:
-    *   **Core**: `AgentState` (includes `TokenLedger`, `AppliedVacancyRecord`), `SiteDefinition`, `ContextBudgetV1`.
+    *   **Core**: `AgentState` (includes `TokenLedger`, `AppliedVacancyRecord`, `ContextHealth`), `SiteDefinition`, `ContextBudgetV1`.
     *   **Search**: `SearchDOMSnapshotV1`, `SearchUISpecV1`, `UserSearchPrefsV1`, `SearchApplyPlanV1`.
     *   **Pipeline**: `VacancyCardV1`, `VacancyCardBatchV1`, `DedupedVacancyBatchV1`, `PreFilterResultBatchV1`.
     *   **LLM Processing**: `LLMDecisionBatchV1`, `VacancyExtractionBatchV1`, `LLMVacancyEvalBatchV1`.
@@ -40,7 +40,7 @@
 
 ### 4. Adapters (`adapters/`)
 *   **BrowserAdapter**:
-    *   `MockBrowserAdapter`: Fully simulated browser environment for development/demo.
+    *   `MockBrowserAdapter`: Fully simulated browser environment for development/demo. Generates realistic mock data (50 items) for UI visualization.
     *   `RemoteBrowserAdapter`: Client for connecting to a remote Node.js runner (HTTP/WebSocket).
     *   `PlaywrightBrowserAdapter` (Node-only): Direct control of Chromium via Playwright.
 *   **StorageAdapter**: `LocalStorageAdapter` with namespace isolation and legacy fallback support.
@@ -49,6 +49,17 @@
     *   `GeminiLLMAdapter`: Native Google GenAI integration.
     *   `OpenAILLMAdapter`: Generic client supporting OpenAI, DeepSeek, and Local LLMs (Ollama/LM Studio).
 *   **Presenter**: `AgentPresenter` - Bridges React UI events to UseCase logic and drives the "Automation Loop".
+
+## Presentation Layer & Infrastructure
+
+### Presentation Services
+*   **JokeService**: Manages the "personality" of the agent (`Valera`). Handles dynamic text generation based on salary inputs, location, and agent status.
+    *   *Storage*: Uses `localStorage` directly (`sys_seen_jokes_v1`) to persist joke history and avoid repetition. This is a deliberate architectural deviation (see below).
+
+### Visual Infrastructure
+*   **Three.js Integration**: The `Layout` component hosts a `SteamEngineBackground` subsystem.
+    *   **Purpose**: Atmospherics and visual immersion (rotating gears, fog).
+    *   **Performance**: Runs outside the React render cycle (ref-based) to ensure 60fps without triggering React reconciliation.
 
 ## Runtime Governance (Factory Pattern)
 
@@ -63,7 +74,7 @@ The application uses a dynamic factory in `App.tsx` backed by `core/domain/runti
 ## Routing vs State Machine
 
 *   **AppRoute (UI Router)**: Controls which *Screen* is visible to the user.
-    *   `MODE_SELECTION` -> `SITE_SELECTION` -> `JOB_PREFERENCES` -> `AGENT_RUNNER`.
+    *   `MODE_SELECTION` (Videophone Dashboard) -> `JOB_PREFERENCES` (Advanced) -> `SETTINGS` -> `AGENT_RUNNER`.
     *   Managed by React State (`route`).
 *   **AgentStatus (Business Logic)**: Controls what the *Agent* is doing.
     *   `IDLE` -> `STARTING` -> `SEARCH...` -> `APPLY...`.
@@ -88,9 +99,11 @@ The application uses a dynamic factory in `App.tsx` backed by `core/domain/runti
 4.  **Search Prep**: `TARGETING_READY` -> `NAVIGATING_TO_SEARCH` -> `SEARCH_PAGE_READY`.
 5.  **Search Config**: `SEARCH_PAGE_READY` -> `SEARCH_DOM_READY` -> `ANALYZING_SEARCH_UI` -> `WAITING_FOR_SEARCH_PREFS` -> `SEARCH_PREFS_SAVED` -> `APPLY_PLAN_READY`.
 6.  **Pipeline Loop**:
-    *   `SEARCH_READY` -> `VACANCIES_CAPTURED` -> `VACANCIES_DEDUPED`.
+    *   `SEARCH_READY` -> `VACANCIES_CAPTURED` (Batch 50) -> `VACANCIES_DEDUPED`.
+    *   `VACANCIES_DEDUPED` -> `PREFILTER_DONE`.
     *   `PREFILTER_DONE` -> `LLM_SCREENING_DONE`.
-    *   `EXTRACTING_VACANCIES` -> `VACANCIES_EXTRACTED` -> `EVALUATION_DONE`.
+    *   `LLM_SCREENING_DONE` -> `EXTRACTING_VACANCIES` -> `VACANCIES_EXTRACTED`.
+    *   `VACANCIES_EXTRACTED` -> `EVALUATION_DONE`.
 7.  **Apply Cycle**:
     *   `APPLY_QUEUE_READY`.
     *   `FINDING_APPLY_BUTTON` -> `APPLY_BUTTON_FOUND`.
@@ -106,3 +119,17 @@ The application uses a dynamic factory in `App.tsx` backed by `core/domain/runti
 *   **Token Ledger**: Tracks input/output tokens per session.
 *   **Pruning**: `pruneInput()` recursivley removes raw HTML tags from LLM payloads to save context window.
 *   **Compaction**: When `AgentState` size > `softTokenLimit` (30k chars), older logs are compressed into a `CompactionSummary` entry, keeping only the head and tail of the session log.
+
+## Batch Enforcement Policy
+*   **Max Batch Size**: 50 items (updated from 15) to enable realistic scrolling visualization and broader context for the agent.
+*   **Dedup**: Strictly filters out previously seen external IDs.
+
+## Technical Deviations & Debt
+
+1.  **JokeService Persistence**: 
+    *   *Issue*: `JokeService` accesses `localStorage` directly instead of going through `StoragePort`.
+    *   *Reason*: Purely UI concern (preventing repeating jokes), loosely coupled from core Agent logic.
+    *   *Mitigation*: Isolated in `presentation/services`.
+2.  **Node Runner Dependency**:
+    *   *Issue*: `RemoteBrowserAdapter` implements the client side of the protocol, but the Server (Node Runner) code is not part of this client bundle.
+    *   *Mitigation*: Adapter throws explicit error if connection fails, guiding user to use Mock or Playwright (if in Node).

@@ -22,7 +22,7 @@
 ### Phase D: Automation Pipeline (DONE)
 - [x] Search Page Navigation.
 - [x] DOM Analysis & Filter Application.
-- [x] Vacancy Collection Batching.
+- [x] Vacancy Collection Batching (Updated to 50 items).
 - [x] Apply Queue & Execution.
 
 ### Phase E: Application Execution (DONE)
@@ -46,12 +46,19 @@
 - [x] H1: Design System Update (Industrial/Cyberpunk).
 - [x] H2: User Feedback (Joke Service, Logs).
 - [x] H3: Advanced Flow Control (Pause, Stop, Amnesia).
-- [x] H4: Documentation Audit.
+- [x] H4: Documentation Audit (Complete).
+- [x] H5: Videophone Interface & Visual Scanning.
 
 ## Runtime Governance
 - **Adapter Safety**: Browser bundles use Mock/Remote adapters. Playwright is Node-only.
 - **Env Detection**: `RuntimeCapabilities` logic automatically detects Browser vs Node Runner environment.
 
 ## Batch Enforcement Policy
-- Strict 10-15 item window for LLM batches.
-- Execution blocked if batch size < 10, unless `endOfResults` is flagged.
+- **Strict 50 item window** for Vacancy Batches to support realistic scrolling visualization and LLM context efficiency.
+- Execution blocked if batch size < 5 (soft limit), unless `endOfResults` is flagged.
+
+## Current Status
+**Release Candidate 1.1**
+- Architecture is fully audited.
+- UI/UX implements the "Retrofuturistic Videophone" concept.
+- Documentation is 100% compliant with the codebase.
