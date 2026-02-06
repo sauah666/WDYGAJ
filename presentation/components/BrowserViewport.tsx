@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Globe, Lock, ArrowLeft, ArrowRight, RotateCw, User, LogIn } from 'lucide-react';
 import { AgentStatus } from '../../types';
@@ -47,8 +46,8 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({ url, status, i
                 <div className="flex flex-col items-center justify-center h-full text-[#404040] space-y-4 p-8 text-center bg-[url('https://www.transparenttextures.com/patterns/graphy.png')]">
                     <Globe size={64} className="text-[#a0a0a0]" strokeWidth={1} />
                     <div className="bg-[#f0f0f0] p-4 border border-[#808080] shadow-md">
-                        <h3 className="text-lg font-bold uppercase tracking-widest mb-2">Remote Uplink Established</h3>
-                        <p className="text-xs font-mono">Video feed intercepted from external automaton.</p>
+                        <h3 className="text-lg font-bold uppercase tracking-widest mb-2 font-serif">Удаленный Канал Установлен</h3>
+                        <p className="text-lg font-cursive">Видеопоток перехвачен с внешнего автоматона.</p>
                         <div className="mt-4 h-1 w-full bg-[#d4d0c8] overflow-hidden">
                              <div className="h-full bg-green-600 animate-pulse w-1/3"></div>
                         </div>
@@ -61,28 +60,28 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({ url, status, i
                 <div className="flex flex-col items-center justify-center h-full w-full bg-[#f3f4f6]">
                     <div className="w-full max-w-sm p-8 bg-white border border-gray-300 shadow-xl">
                         <div className="flex justify-center mb-6 text-red-600 font-bold text-3xl font-serif">hh.ru</div>
-                        <h2 className="text-lg font-bold mb-4 text-gray-800 uppercase tracking-wide border-b border-red-600 pb-2">Auth Required</h2>
+                        <h2 className="text-lg font-bold mb-4 text-gray-800 uppercase tracking-wide border-b border-red-600 pb-2 font-serif">Требуется Авторизация</h2>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase">Identity</label>
+                                <label className="block text-xs font-bold text-gray-500 uppercase">Идентификатор</label>
                                 <input 
                                     type="text" 
                                     value={fakeUser}
                                     onChange={e => setFakeUser(e.target.value)}
-                                    className="mt-1 block w-full border border-gray-400 p-2 text-gray-900 focus:border-red-500 outline-none" 
+                                    className="mt-1 block w-full border border-gray-400 p-2 text-gray-900 focus:border-red-500 outline-none font-mono" 
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase">Cipher</label>
+                                <label className="block text-xs font-bold text-gray-500 uppercase">Шифр</label>
                                 <input 
                                     type="password" 
                                     value={fakePass}
                                     onChange={e => setFakePass(e.target.value)}
-                                    className="mt-1 block w-full border border-gray-400 p-2 text-gray-900 focus:border-red-500 outline-none" 
+                                    className="mt-1 block w-full border border-gray-400 p-2 text-gray-900 focus:border-red-500 outline-none font-mono" 
                                 />
                             </div>
-                            <button type="submit" className="w-full bg-red-600 text-white py-3 font-bold hover:bg-red-700 uppercase tracking-widest shadow-md active:translate-y-px transition-all">
-                                Enter System
+                            <button type="submit" className="w-full bg-red-600 text-white py-3 font-bold hover:bg-red-700 uppercase tracking-widest shadow-md active:translate-y-px transition-all font-serif">
+                                Войти в Систему
                             </button>
                         </form>
                     </div>
@@ -103,7 +102,7 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({ url, status, i
                         </div>
                     </div>
                     <div className="mt-12 text-center text-xs text-gray-400 font-mono border-t border-gray-200 pt-4 uppercase">
-                        [ Simulation Data Rendered ]
+                        [ Симуляция Данных Визуализирована ]
                     </div>
                 </div>
             )}

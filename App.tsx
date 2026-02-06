@@ -26,9 +26,9 @@ const runtimeCaps = computeRuntimeCapabilities();
 
 // Factory for dynamic adapters
 const buildAdapters = (config: Partial<AgentConfig>) => {
-  // Browser Adapter Selection - ENFORCE REAL
+  // Browser Adapter Selection
   let browserAdapter;
-  let activeBrowserProvider = config.browserProvider || 'remote_node'; // Default to remote node if undefined
+  let activeBrowserProvider = config.browserProvider || 'mock'; // Default to mock for stability
 
   // 1. Try Native Playwright (Node Env)
   if (runtimeCaps.supportsPlaywright && activeBrowserProvider === 'playwright') {
@@ -43,11 +43,14 @@ const buildAdapters = (config: Partial<AgentConfig>) => {
           activeBrowserProvider = 'remote_node';
       }
   } 
-  // 2. Default/Fallback to Remote Node Runner (Web/Electron split)
-  else {
-      // User requested "No Mock", so we default to Remote Adapter even if it might fail connection
+  // 2. Remote Node Runner
+  else if (activeBrowserProvider === 'remote_node') {
       browserAdapter = new RemoteBrowserAdapter(config.nodeRunnerUrl || 'http://localhost:3000');
-      activeBrowserProvider = 'remote_node';
+  }
+  // 3. Default to Mock
+  else {
+      browserAdapter = new MockBrowserAdapter();
+      activeBrowserProvider = 'mock';
   }
 
   // LLM Adapter Selection (Updated for DeepSeek & Local)
@@ -95,7 +98,7 @@ export default function App() {
     mode: 'JOB_SEARCH',
     targetSite: 'hh.ru',
     activeLLMProviderId: DEFAULT_LLM_PROVIDER,
-    browserProvider: 'remote_node', // Enforce Real by default
+    browserProvider: 'mock', // Default to Mock to fix "Connection Failed" error
     localGatewayUrl: 'http://localhost:1234/v1',
     minSalary: 100000,
     currency: 'RUB'
@@ -108,9 +111,10 @@ export default function App() {
       if (c) {
         // Merge defaults with saved config
         const merged = { ...config, ...c };
-        // Enforce Real Browser Logic
-        if (!merged.browserProvider || merged.browserProvider === 'mock') {
-             merged.browserProvider = runtimeCaps.supportsPlaywright ? 'playwright' : 'remote_node';
+        
+        // Remove forced override. Allow 'mock' to persist if saved or default.
+        if (!merged.browserProvider) {
+             merged.browserProvider = 'mock';
         }
         
         setConfig(merged);
@@ -136,12 +140,13 @@ export default function App() {
 
   // Central Navigation Handler for Sidebar
   const handleNavigate = (target: string) => {
-      // Map string route to Enum if needed, or just cast
       if (target === 'MODE_SELECTION') {
           setRoute(AppRoute.MODE_SELECTION);
       } else if (target === 'SETTINGS') {
           setLastRoute(route);
           setRoute(AppRoute.SETTINGS);
+      } else if (target === 'JOB_PREFERENCES') {
+          setRoute(AppRoute.JOB_PREFERENCES);
       }
   };
 
@@ -153,6 +158,10 @@ export default function App() {
   const handleModeSelect = (mode: string) => {
     setConfig(prev => ({ ...prev, mode }));
     setRoute(AppRoute.SITE_SELECTION);
+  };
+  
+  const handleSiteSelectFromMode = (site: string) => {
+    setConfig(prev => ({ ...prev, targetSite: site }));
   };
 
   const handleSiteSelect = (site: string) => {
@@ -168,7 +177,6 @@ export default function App() {
           agentUseCase = new AgentUseCase(browserAdapter, storageAdapter, agentPresenter, llmAdapter);
           agentPresenter.setUseCase(agentUseCase);
           
-          // User Requirement: "say ok saved, store the config and return to main"
           alert("Configuration Saved."); 
           setRoute(AppRoute.MODE_SELECTION); 
       } else {
@@ -207,6 +215,8 @@ export default function App() {
   switch (route) {
     case AppRoute.MODE_SELECTION:
       screen = <ModeSelectionScreen 
+                  activeSite={config.targetSite}
+                  onSiteSelect={handleSiteSelectFromMode}
                   onSelect={handleModeSelect} 
                   onSettingsClick={handleGlobalSettingsOpen}
                   onNavigate={handleNavigate}
@@ -225,7 +235,7 @@ export default function App() {
         config={config} 
         onChange={(k, v) => setConfig(prev => ({ ...prev, [k]: v }))}
         onRun={handleLaunchAgent}
-        onBack={() => setRoute(AppRoute.SITE_SELECTION)}
+        onBack={() => setRoute(AppRoute.MODE_SELECTION)}
         onSettingsClick={handleGlobalSettingsOpen}
         onNavigate={handleNavigate}
       />;

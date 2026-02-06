@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Globe, ArrowRight, Lock, Radio } from 'lucide-react';
 import { Layout } from '../components/Layout';
@@ -12,17 +11,17 @@ interface Props {
 
 export const SiteSelectionScreen: React.FC<Props> = ({ onSelect, onBack, onSettingsClick, onNavigate }) => {
   return (
-    <Layout title="Target Coordinates" onSettingsClick={onSettingsClick} onNavigate={onNavigate}>
+    <Layout title="Координаты Цели" onSettingsClick={onSettingsClick} onNavigate={onNavigate}>
       <div className="max-w-4xl mx-auto mt-8">
-        <button onClick={onBack} className="text-sm font-mono text-[#a8a29e] hover:text-amber-500 mb-8 flex items-center transition-colors uppercase tracking-widest">
-          <ArrowRight className="rotate-180 mr-2" size={14} />
-          Abort Sequence
+        <button onClick={onBack} className="text-xl font-cursive text-[#a8a29e] hover:text-amber-500 mb-8 flex items-center transition-colors">
+          <ArrowRight className="rotate-180 mr-2" size={24} />
+          Прервать Последовательность
         </button>
         
         <div className="space-y-6">
           <div className="border-l-2 border-amber-900/50 pl-4 mb-6">
-             <h4 className="text-amber-700 font-bold uppercase text-xs tracking-widest mb-1">Select Frequency</h4>
-             <p className="text-[#57534e] text-sm">Establish connection with external job aggregation mainframe.</p>
+             <h4 className="text-amber-700 font-bold uppercase text-lg tracking-widest mb-1 font-serif">Выбор Частоты</h4>
+             <p className="text-[#57534e] text-xl">Установить соединение с мейнфреймом агрегации труда.</p>
           </div>
 
           <button 
@@ -40,10 +39,10 @@ export const SiteSelectionScreen: React.FC<Props> = ({ onSelect, onBack, onSetti
                     </div>
                     
                     <div className="text-left">
-                        <h3 className="text-2xl font-serif font-bold text-[#e7e5e4] group-hover:text-red-400 transition-colors uppercase">HeadHunter Protocol</h3>
+                        <h3 className="text-2xl font-serif font-bold text-[#e7e5e4] group-hover:text-red-400 transition-colors uppercase">Протокол "Охотник"</h3>
                         <div className="flex items-center mt-2 text-[#78716c] font-mono text-xs">
                             <Radio size={12} className="mr-2 animate-pulse" />
-                            <span>SIGNAL STRONG</span>
+                            <span>СИГНАЛ СТАБИЛЬНЫЙ</span>
                         </div>
                     </div>
                 </div>
@@ -66,10 +65,10 @@ export const SiteSelectionScreen: React.FC<Props> = ({ onSelect, onBack, onSetti
                         <span className="font-serif font-bold text-3xl text-[#292524]">in</span>
                     </div>
                     <div className="text-left">
-                        <h3 className="text-2xl font-serif font-bold text-[#44403c] uppercase">LinkedIn Protocol</h3>
+                        <h3 className="text-2xl font-serif font-bold text-[#44403c] uppercase">Протокол "Линк"</h3>
                         <div className="flex items-center mt-2 text-[#44403c] font-mono text-xs">
                             <Lock size={12} className="mr-2" />
-                            <span>ENCRYPTED / NO KEY</span>
+                            <span>ЗАШИФРОВАНО / НЕТ КЛЮЧА</span>
                         </div>
                     </div>
                 </div>

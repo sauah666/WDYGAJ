@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef } from 'react';
 import { Terminal, Play, Pause, RotateCcw, AlertTriangle, ArrowLeft, Square, Maximize2, Zap, Gauge, Radio } from 'lucide-react';
 import { Layout } from '../components/Layout';
@@ -49,7 +48,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
   };
 
   return (
-    <Layout title="Engine Room" activeProductName="JobSearch Agent" onSettingsClick={onSettingsClick} onNavigate={onNavigate}>
+    <Layout title="Машинное Отделение" activeProductName="JobSearch Agent" onSettingsClick={onSettingsClick} onNavigate={onNavigate}>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[calc(100vh-140px)]">
         
         {/* Left Col: Visual Browser Monitor */}
@@ -96,12 +95,12 @@ export const AgentStatusScreen: React.FC<Props> = ({
                  {state.isPaused ? (
                      <button onClick={onResume} className="flex flex-col items-center justify-center w-20 h-20 bg-[#14532d] border-b-4 border-[#052e16] rounded-full active:border-b-0 active:translate-y-1 transition-all shadow-xl group">
                         <Play size={24} fill="currentColor" className="text-green-200 group-hover:text-white" />
-                        <span className="text-[10px] font-bold text-green-300 mt-1">RESUME</span>
+                        <span className="text-[10px] font-bold text-green-300 mt-1 font-serif">ПУСК</span>
                      </button>
                  ) : (
                      <button onClick={onPause} disabled={state.status === AgentStatus.IDLE} className="flex flex-col items-center justify-center w-20 h-20 bg-[#78350f] border-b-4 border-[#451a03] rounded-full active:border-b-0 active:translate-y-1 transition-all shadow-xl disabled:opacity-50 disabled:grayscale group">
                         <Pause size={24} fill="currentColor" className="text-amber-200 group-hover:text-white" />
-                        <span className="text-[10px] font-bold text-amber-300 mt-1">HALT</span>
+                        <span className="text-[10px] font-bold text-amber-300 mt-1 font-serif">ПАУЗА</span>
                      </button>
                  )}
 
@@ -113,7 +112,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
              {/* Meters */}
              <div className="flex items-center gap-6 relative z-10">
                 <div className="text-right hidden xl:block bg-black/40 p-2 border border-[#44403c] rounded">
-                    <div className="text-[9px] text-amber-700 uppercase tracking-widest font-mono mb-1">Runtime Clock</div>
+                    <div className="text-[9px] text-amber-700 uppercase tracking-widest font-mono mb-1">Время Работы</div>
                     <div className="text-2xl font-mono text-amber-500 text-shadow-glow">00:12:45</div>
                 </div>
                 
@@ -123,7 +122,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                     <div className="w-12 h-12 rounded-full border-2 border-[#44403c] flex items-center justify-center text-[#78716c] group-hover:text-amber-500 group-hover:border-amber-500 transition-all bg-[#0c0a08]">
                         <RotateCcw size={20} />
                     </div>
-                    <span className="text-[9px] font-bold text-[#57534e] mt-1 uppercase">Reset</span>
+                    <span className="text-[9px] font-bold text-[#57534e] mt-1 uppercase font-mono">СБРОС</span>
                 </button>
              </div>
           </div>
@@ -135,7 +134,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
            <div className="p-4 border-b-2 border-[#292524] bg-[#1c1917] flex justify-between items-center">
              <div className="flex items-center gap-2">
                 <Terminal size={14} className="text-green-600" />
-                <span className="text-green-700 text-xs font-bold tracking-widest uppercase">Telemetry Feed</span>
+                <span className="text-green-700 text-xs font-bold tracking-widest uppercase font-serif">Телеметрия</span>
              </div>
              <div className="w-2 h-2 bg-green-900 rounded-full animate-ping"></div>
            </div>
@@ -144,7 +143,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
             {state.logs.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-full text-[#292524] space-y-2">
                     <Radio size={32} className="opacity-20 animate-pulse" />
-                    <span className="text-xs uppercase tracking-widest opacity-50">Awaiting Data Stream...</span>
+                    <span className="text-xs uppercase tracking-widest opacity-50">Ожидание потока данных...</span>
                 </div>
             )}
             {state.logs.map((log, i) => (

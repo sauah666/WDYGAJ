@@ -1,6 +1,5 @@
-
 import React, { useEffect } from 'react';
-import { Play, FileText, DollarSign, MapPin, Briefcase, CheckSquare, Square, ChevronRight, ArrowRight, PenTool } from 'lucide-react';
+import { DollarSign, MapPin, Briefcase, PenTool, ArrowLeft, Globe, CheckCircle2, Circle } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentConfig, WorkMode } from '../../types';
 
@@ -35,134 +34,211 @@ export const JobPreferencesScreen: React.FC<Props> = ({ config, onChange, onRun,
 
   const isCityRequired = currentModes.some(m => m === WorkMode.OFFICE || m === WorkMode.HYBRID || m === WorkMode.ANY);
 
-  return (
-    <Layout title="Mission Parameters" onSettingsClick={onSettingsClick} onNavigate={onNavigate}>
-      <div className="max-w-5xl mx-auto mt-6">
-        
-        <button onClick={onBack} className="text-sm font-mono text-[#a8a29e] hover:text-amber-500 mb-6 flex items-center transition-colors uppercase tracking-widest">
-          <ArrowRight className="rotate-180 mr-2" size={14} />
-          Return to Coordinates
-        </button>
+  // Translation Helper
+  const getModeLabel = (mode: WorkMode) => {
+      switch(mode) {
+          case WorkMode.REMOTE: return 'Удаленно';
+          case WorkMode.HYBRID: return 'Гибрид';
+          case WorkMode.OFFICE: return 'Офис';
+          case WorkMode.ANY: return 'Любой';
+          default: return mode;
+      }
+  };
 
-        <div className="bg-[#1c1917] border-4 border-[#292524] shadow-2xl relative">
-            <div className="p-8 border-b-2 border-[#292524] bg-[#151413]">
-                <h3 className="text-xl font-serif font-bold text-[#e7e5e4] flex items-center gap-3">
-                    <span className="w-2 h-2 bg-amber-600 rotate-45"></span>
-                    Search Criteria
-                </h3>
+  return (
+    <Layout title="Ордер на Поиск" onSettingsClick={onSettingsClick} onNavigate={onNavigate}>
+      <div className="max-w-5xl mx-auto pb-20 pt-4">
+        
+        {/* Navigation Bar */}
+        <div className="flex justify-between items-center mb-6 px-4">
+            <button onClick={onBack} className="text-lg font-cursive text-[#a8a29e] hover:text-[#d97706] flex items-center transition-colors group">
+                <ArrowLeft className="mr-2 group-hover:-translate-x-1 transition-transform" size={24} />
+                <span className="border-b border-transparent group-hover:border-[#d97706]">Отмена</span>
+            </button>
+            <div className="text-[#57534e] font-mono text-xs uppercase tracking-widest">
+                Ордер № {Math.floor(Math.random() * 9000) + 1000}-RU
             </div>
+        </div>
+
+        {/* POSTER CONTAINER */}
+        <div className="relative w-full bg-[#e8e0cc] shadow-[0_30px_60px_rgba(0,0,0,0.9)] overflow-hidden rounded-sm border border-[#a8a29e] transform rotate-1 transition-transform duration-700 hover:rotate-0">
             
-            <div className="p-8 space-y-12 bg-[url('https://www.transparenttextures.com/patterns/cardboard.png')] opacity-90">
+            {/* Texture Overlays */}
+            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/paper.png')] opacity-80 pointer-events-none mix-blend-multiply z-0"></div>
+            <div className="absolute inset-0 shadow-[inset_0_0_150px_rgba(69,26,3,0.15)] pointer-events-none z-10"></div>
+            
+            {/* Content Wrapper */}
+            <div className="relative z-20 flex flex-col">
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                {/* --- HEADER: WANTED --- */}
+                <div className="pt-12 pb-8 text-center border-b-[4px] border-double border-[#451a03] mx-6 md:mx-12">
+                    <h1 className="font-serif font-black text-7xl md:text-9xl text-[#451a03] tracking-widest leading-[0.8] mb-4 scale-y-110 drop-shadow-sm font-ruslan">
+                        WANTED
+                    </h1>
+                    <div className="flex items-center justify-center gap-4 md:gap-8">
+                        <div className="h-[2px] flex-1 max-w-[100px] bg-[#78350f]"></div>
+                        <span className="font-serif text-2xl md:text-4xl text-[#b91c1c] font-bold tracking-[0.2em] uppercase transform -rotate-1">
+                            Вакансия Века
+                        </span>
+                        <div className="h-[2px] flex-1 max-w-[100px] bg-[#78350f]"></div>
+                    </div>
+                </div>
+
+                <div className="flex flex-col md:flex-row">
                     
-                    {/* Salary */}
-                    <div>
-                        <label className="flex items-center text-xs font-bold text-amber-700 mb-4 uppercase tracking-wider font-mono border-b border-amber-900/20 pb-1">
-                            <DollarSign size={14} className="mr-2" />
-                            Minimum Compensation
-                        </label>
-                        <div className="flex space-x-0 relative">
-                            {/* Input styled as old counter */}
-                            <input 
-                                type="number" 
-                                value={config.minSalary || ''}
-                                onChange={(e) => onChange('minSalary', parseInt(e.target.value))}
-                                placeholder="000000"
-                                className="flex-1 bg-[#0c0a08] border-2 border-[#44403c] px-6 py-4 text-amber-500 focus:border-amber-600 outline-none text-2xl font-mono shadow-[inset_0_4px_8px_rgba(0,0,0,0.8)] tracking-widest"
-                            />
-                            <div className="w-24 bg-[#292524] border-t-2 border-b-2 border-r-2 border-[#44403c] flex items-center justify-center">
-                                <select 
-                                    value={config.currency || 'RUB'}
-                                    onChange={(e) => onChange('currency', e.target.value)}
-                                    className="bg-transparent text-[#a8a29e] font-bold outline-none appearance-none uppercase text-sm"
-                                >
-                                    <option value="RUB">RUB</option>
-                                    <option value="USD">USD</option>
-                                    <option value="EUR">EUR</option>
-                                </select>
+                    {/* --- LEFT COLUMN: CRITICAL SPECS --- */}
+                    <div className="w-full md:w-1/2 p-8 md:p-12 border-b md:border-b-0 md:border-r border-[#a8a29e] bg-[#dfd7c3]/30">
+                        
+                        {/* 1. REWARD */}
+                        <div className="mb-12">
+                             <label className="block text-center font-serif text-[#451a03] text-xl font-bold uppercase tracking-widest mb-6 border-b border-[#451a03]/30 pb-2">
+                                Вознаграждение
+                            </label>
+                            
+                            <div className="relative flex justify-center items-baseline gap-1">
+                                <span className="text-4xl md:text-5xl font-serif text-[#78350f] font-bold mr-2">
+                                    {config.currency === 'USD' ? '$' : config.currency === 'EUR' ? '€' : '₽'}
+                                </span>
+                                <input 
+                                    type="number" 
+                                    value={config.minSalary || ''}
+                                    onChange={(e) => onChange('minSalary', parseInt(e.target.value))}
+                                    placeholder="0"
+                                    className="bg-transparent text-center text-6xl md:text-7xl font-serif font-bold text-[#451a03] w-full outline-none placeholder-[#cbbfa5] drop-shadow-sm"
+                                    style={{ fontFamily: 'Ruslan Display' }}
+                                />
+                            </div>
+                            
+                            {/* Currency Toggles */}
+                            <div className="flex justify-center gap-4 mt-4">
+                                {['RUB', 'USD', 'EUR'].map(curr => (
+                                    <button 
+                                        key={curr}
+                                        onClick={() => onChange('currency', curr)}
+                                        className={`text-xs font-bold font-serif px-3 py-1 border ${config.currency === curr ? 'bg-[#451a03] text-[#fbbf24] border-[#451a03]' : 'text-[#78350f] border-[#78350f] hover:bg-[#78350f]/10'}`}
+                                    >
+                                        {curr}
+                                    </button>
+                                ))}
                             </div>
                         </div>
-                    </div>
 
-                    {/* Work Mode */}
-                    <div>
-                        <label className="flex items-center text-xs font-bold text-amber-700 mb-4 uppercase tracking-wider font-mono border-b border-amber-900/20 pb-1">
-                            <Briefcase size={14} className="mr-2" />
-                            Deployment Type
-                        </label>
-                        <div className="grid grid-cols-3 gap-4">
-                            {[WorkMode.REMOTE, WorkMode.HYBRID, WorkMode.OFFICE].map((mode) => (
-                                <button 
-                                key={mode}
-                                onClick={() => toggleMode(mode)}
-                                className={`border-2 p-4 flex flex-col items-center justify-center transition-all duration-200 active:translate-y-1 relative 
-                                ${currentModes.includes(mode) 
-                                    ? 'bg-[#292524] border-amber-600 text-amber-500 shadow-[inset_0_2px_5px_rgba(0,0,0,0.5)]' 
-                                    : 'bg-[#1c1917] border-[#44403c] text-[#57534e] hover:border-[#57534e]'}`}
-                                >
-                                    <div className={`w-3 h-3 rounded-full mb-2 border ${currentModes.includes(mode) ? 'bg-amber-500 border-amber-300 shadow-[0_0_8px_orange]' : 'bg-[#0c0a08] border-[#44403c]'}`}></div>
-                                    <span className="text-[10px] font-bold uppercase tracking-wide">{mode}</span>
-                                    {/* Screw heads */}
-                                    <div className="absolute top-1 left-1 w-1 h-1 bg-[#44403c] rounded-full"></div>
-                                    <div className="absolute top-1 right-1 w-1 h-1 bg-[#44403c] rounded-full"></div>
-                                    <div className="absolute bottom-1 left-1 w-1 h-1 bg-[#44403c] rounded-full"></div>
-                                    <div className="absolute bottom-1 right-1 w-1 h-1 bg-[#44403c] rounded-full"></div>
-                                </button>
-                            ))}
+                        {/* 2. MODES */}
+                        <div>
+                            <label className="block text-center font-serif text-[#451a03] text-xl font-bold uppercase tracking-widest mb-6 border-b border-[#451a03]/30 pb-2">
+                                Режим Работы
+                            </label>
+                            <div className="flex flex-col gap-3">
+                                {[WorkMode.REMOTE, WorkMode.HYBRID, WorkMode.OFFICE].map((mode) => {
+                                    const active = currentModes.includes(mode);
+                                    return (
+                                        <button 
+                                            key={mode}
+                                            onClick={() => toggleMode(mode)}
+                                            className={`relative w-full flex items-center justify-between px-6 py-4 border-2 transition-all duration-200 group
+                                            ${active 
+                                                ? 'bg-[#451a03] border-[#451a03] shadow-[4px_4px_0px_rgba(0,0,0,0.2)] transform -translate-y-1' 
+                                                : 'bg-transparent border-[#78350f] hover:bg-[#78350f]/5'}`}
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                {active 
+                                                    ? <CheckCircle2 className="text-[#fbbf24]" size={24} />
+                                                    : <Circle className="text-[#78350f]" size={24} />
+                                                }
+                                                <span className={`text-xl font-serif font-bold tracking-wide ${active ? 'text-[#e7e5e4]' : 'text-[#451a03]'}`}>
+                                                    {getModeLabel(mode)}
+                                                </span>
+                                            </div>
+                                            
+                                            {/* Decorative rivets */}
+                                            <div className={`w-2 h-2 rounded-full ${active ? 'bg-[#fbbf24]' : 'bg-[#78350f]'}`}></div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
+
+                    </div>
+
+                    {/* --- RIGHT COLUMN: LOCATION & DETAILS --- */}
+                    <div className="w-full md:w-1/2 p-8 md:p-12">
+                        
+                        {/* 3. CITY */}
+                        <div className="mb-12 relative">
+                            <label className="block text-center font-serif text-[#451a03] text-xl font-bold uppercase tracking-widest mb-6 border-b border-[#451a03]/30 pb-2">
+                                Территория
+                            </label>
+                            
+                            <div className="relative group">
+                                <input 
+                                    type="text" 
+                                    value={config.city || ''}
+                                    onChange={(e) => onChange('city', e.target.value)}
+                                    placeholder={isCityRequired ? "Укажите Город" : "Весь Мир"}
+                                    disabled={!isCityRequired && !config.city} 
+                                    className={`w-full bg-[#f0eadd] border-2 p-4 text-center text-2xl font-cursive font-bold text-[#451a03] outline-none transition-all placeholder-[#a8a29e] shadow-inner
+                                    ${!isCityRequired ? 'border-[#a8a29e] opacity-80' : 'border-[#b91c1c] bg-white'}`}
+                                />
+                                
+                                {!isCityRequired && !config.city && (
+                                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 transform -rotate-12 border-4 border-[#15803d] text-[#15803d] px-4 py-1 text-2xl font-black font-serif uppercase tracking-widest opacity-80 pointer-events-none mix-blend-multiply">
+                                        GLOBAL
+                                    </div>
+                                )}
+                            </div>
+                            <div className="text-center mt-2 text-xs font-mono text-[#78716c]">
+                                {isCityRequired ? "* Присутствие обязательно" : "* Локация не критична"}
+                            </div>
+                        </div>
+
+                        {/* 4. COVER LETTER */}
+                        <div className="h-full flex flex-col">
+                            <label className="block text-center font-serif text-[#451a03] text-xl font-bold uppercase tracking-widest mb-4 border-b border-[#451a03]/30 pb-2">
+                                Особые Приметы
+                            </label>
+                            
+                            <div className="flex-1 bg-[#fffaf0] border border-[#d6d3d1] p-6 shadow-sm relative rotate-1">
+                                {/* Lines */}
+                                <div className="absolute inset-0 bg-[repeating-linear-gradient(0deg,transparent,transparent_29px,#a8a29e_30px)] opacity-20 pointer-events-none top-6"></div>
+                                
+                                <textarea 
+                                    value={config.coverLetterTemplate || ''}
+                                    onChange={(e) => onChange('coverLetterTemplate', e.target.value)}
+                                    className="w-full h-48 md:h-full bg-transparent text-xl font-cursive text-[#292524] leading-[30px] outline-none resize-none"
+                                    placeholder="Текст сопроводительного письма..."
+                                />
+                                {/* Pin */}
+                                <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-4 h-4 bg-[#b91c1c] rounded-full shadow-md border border-black/20"></div>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
 
-                {/* Location */}
-                <div>
-                    <label className="flex items-center text-xs font-bold text-amber-700 mb-4 uppercase tracking-wider font-mono border-b border-amber-900/20 pb-1">
-                        <MapPin size={14} className={`mr-2 ${isCityRequired ? 'text-red-700' : 'text-[#78716c]'}`} />
-                        Target Sector (City)
-                        {!isCityRequired && <span className="ml-2 text-[9px] text-[#57534e] border border-[#44403c] px-1 bg-[#0c0a08]">OPTIONAL</span>}
-                    </label>
-                    <input 
-                        type="text" 
-                        value={config.city || ''}
-                        onChange={(e) => onChange('city', e.target.value)}
-                        placeholder={isCityRequired ? "REQUIRED" : "GLOBAL"}
-                        disabled={!isCityRequired && !config.city} 
-                        className={`w-full bg-[#0c0a08] border-2 px-6 py-4 text-amber-100 focus:border-amber-600 outline-none font-mono tracking-wide shadow-[inset_0_4px_8px_rgba(0,0,0,0.8)] ${!isCityRequired ? 'border-[#292524] text-[#57534e]' : 'border-[#44403c]'}`}
-                    />
-                </div>
-
-                {/* Cover Letter */}
-                <div>
-                    <label className="flex items-center text-xs font-bold text-amber-700 mb-4 uppercase tracking-wider font-mono border-b border-amber-900/20 pb-1">
-                        <PenTool size={14} className="mr-2" />
-                        Transmission Protocol (Cover Letter)
-                    </label>
-                    <div className="relative p-2 bg-[#292524] border-2 border-[#44403c] rounded-sm">
-                        <textarea 
-                        value={config.coverLetterTemplate || ''}
-                        onChange={(e) => onChange('coverLetterTemplate', e.target.value)}
-                        className="w-full h-48 bg-[#e7e5e4] text-[#292524] p-4 outline-none font-mono text-sm leading-relaxed border-none shadow-inner"
-                        placeholder="Initiating communication sequence..."
-                        style={{ fontFamily: '"Courier New", Courier, monospace' }}
-                        />
-                        {/* Paper clip effect */}
-                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-8 h-8 bg-[#78716c] rounded-full z-10 border-4 border-[#1c1917]"></div>
-                    </div>
-                </div>
-
-            </div>
-
-            {/* Launch Lever */}
-            <div className="p-8 bg-[#151413] border-t-2 border-[#292524] flex justify-end">
+                {/* --- FOOTER: ACTION --- */}
                 <button 
                     onClick={onRun}
-                    className="group relative flex items-center gap-4 bg-gradient-to-b from-green-800 to-green-900 text-green-100 px-12 py-4 font-bold text-lg shadow-[0_5px_0_#14532d] active:translate-y-[5px] active:shadow-none transition-all border-2 border-green-950 uppercase tracking-widest overflow-hidden"
+                    className="w-full bg-[#451a03] hover:bg-[#5c2405] text-[#fbbf24] py-8 text-center relative overflow-hidden group transition-colors border-t-4 border-[#78350f]"
                 >
-                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
-                    <Play size={24} fill="currentColor" className="relative z-10 drop-shadow-md" />
-                    <span className="relative z-10 drop-shadow-md">Ignite Engine</span>
+                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30"></div>
+                    <div className="relative z-10 flex flex-col items-center justify-center transform group-hover:scale-105 transition-transform duration-300">
+                        <span className="font-serif font-black text-4xl md:text-5xl uppercase tracking-[0.2em] mb-2 drop-shadow-md">
+                            Начать Охоту
+                        </span>
+                        <span className="font-mono text-xs text-[#d6cbb4] tracking-[0.5em] uppercase">
+                            Инициализировать Агента
+                        </span>
+                    </div>
                 </button>
+
             </div>
+
+            {/* Corner Bolts */}
+            <div className="absolute top-4 left-4 w-6 h-6 rounded-full bg-gradient-to-br from-[#5c3a21] to-[#291810] shadow-md z-30 flex items-center justify-center"><div className="w-3 h-0.5 bg-black/30 rotate-45"></div></div>
+            <div className="absolute top-4 right-4 w-6 h-6 rounded-full bg-gradient-to-br from-[#5c3a21] to-[#291810] shadow-md z-30 flex items-center justify-center"><div className="w-3 h-0.5 bg-black/30 rotate-45"></div></div>
+            <div className="absolute bottom-4 left-4 w-6 h-6 rounded-full bg-gradient-to-br from-[#5c3a21] to-[#291810] shadow-md z-30 flex items-center justify-center"><div className="w-3 h-0.5 bg-black/30 rotate-45"></div></div>
+            <div className="absolute bottom-4 right-4 w-6 h-6 rounded-full bg-gradient-to-br from-[#5c3a21] to-[#291810] shadow-md z-30 flex items-center justify-center"><div className="w-3 h-0.5 bg-black/30 rotate-45"></div></div>
+
         </div>
       </div>
     </Layout>
