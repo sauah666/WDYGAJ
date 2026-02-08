@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import Atropos from 'atropos/react';
 import { Layout } from '../components/Layout';
-import { Save, RotateCcw, ArrowLeft, Key, Network, Cpu, ShieldCheck, ToggleLeft, ToggleRight, Monitor, Brain, Globe, HardDrive } from 'lucide-react';
+import { Save, RotateCcw, ArrowLeft, Key, Network, Cpu, ShieldCheck, ToggleLeft, ToggleRight, Monitor, Brain, Globe, HardDrive, Zap, Lock } from 'lucide-react';
 import { AgentConfig } from '../../types';
 import { listProviders, DEFAULT_LLM_PROVIDER } from '../../core/domain/llm_registry';
 import { JokeService } from '../services/JokeService';
@@ -107,7 +107,7 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
       
       if (willBeReal) { // Switching TO REAL
           onChange('useMockBrowser', false);
-          setAgentMessage("ВНИМАНИЕ! Режим LIVE. Агент будет использовать реальный браузер (если доступен).");
+          setAgentMessage("ВНИМАНИЕ! Режим LIVE. Агент будет использовать реальный браузер.");
       } else { // Switching TO MOCK
           onChange('useMockBrowser', true);
           setAgentMessage("Переход в режим симуляции. Безопасно, но скучно.");
@@ -250,143 +250,120 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
                     </div>
                 </div>
 
-                {/* 3. SETTINGS CONTENT */}
-                <div className="flex-1 overflow-y-auto px-6 pb-4 custom-scrollbar relative z-10 flex flex-col pointer-events-auto">
+                {/* 3. SETTINGS CONTENT (COMPACT MODE) */}
+                <div className="flex-1 px-4 md:px-6 pt-2 pb-4 relative z-10 flex flex-col gap-4 pointer-events-auto overflow-hidden">
                     
-                    {/* SECTION: REGIME */}
-                    <div className="relative flex items-center justify-center py-4 opacity-50 shrink-0">
-                        <div className="h-px bg-[#4a3b32] flex-1"></div>
-                        <div className="px-3 text-[#8c7b70] font-serif text-[10px] font-bold tracking-widest uppercase flex items-center gap-2">
-                            <Monitor size={12} /> Режим Работы
-                        </div>
-                        <div className="h-px bg-[#4a3b32] flex-1"></div>
-                    </div>
-
-                    <div className="p-4 bg-[#140c08] border-2 border-[#3e2f26] rounded-2xl flex items-center justify-between shadow-inner mb-4">
-                        <div>
-                            <div className={`font-bold font-serif text-lg ${isMock ? 'text-[#a8a29e]' : 'text-[#ef4444]'}`}>
-                                {isMock ? 'СИМУЛЯЦИЯ' : 'LIVE / REAL'}
+                    {/* SYSTEM CONTROL PANEL */}
+                    <div className="bg-[#140c08] border-2 border-[#3e2f26] rounded-xl p-3 flex flex-col gap-2 shadow-inner shrink-0">
+                        <div className="flex justify-between items-center border-b border-[#3e2f26] pb-2 mb-1">
+                            <div className="text-[10px] text-[#78685f] font-bold uppercase tracking-wider font-serif flex items-center gap-2">
+                                <Monitor size={12} /> Система
                             </div>
-                            <div className="text-xs text-[#57534e] mt-1 font-mono">
-                                {isMock ? 'Безопасный режим. Mock Data.' : 'Работа с реальным браузером.'}
-                            </div>
-                        </div>
-                        <button 
-                            onClick={handleRegimeToggle}
-                            className={`p-2 rounded-xl border-2 transition-all ${isMock ? 'border-[#4a3b32] text-[#78716c]' : 'border-[#ef4444] text-[#ef4444] bg-[#450a0a]'}`}
-                        >
-                            {isMock ? <ToggleLeft size={32} /> : <ToggleRight size={32} />}
-                        </button>
-                    </div>
-
-                    {/* BROWSER ENGINE DETECTED */}
-                    {!isMock && (
-                        <div className="mb-6 p-4 bg-[#1a120e] border border-[#4a3b32] rounded-2xl animate-switch-on">
-                            <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1 mb-2 block">Движок Браузера</label>
-                            <div className="flex items-center gap-3">
+                            {/* Runtime Indicator */}
+                            <div className="flex items-center gap-2">
                                 {runtimeCaps?.hasElectronAPI ? (
-                                    <>
-                                        <HardDrive size={18} className="text-[#d97706]" />
-                                        <div>
-                                            <div className="font-bold text-sm text-[#e7e5e4]">Native / Electron</div>
-                                            <div className="text-[10px] text-[#57534e]">Обнаружена поддержка IPC.</div>
-                                        </div>
-                                    </>
+                                    <span className="text-[10px] text-[#22c55e] font-mono flex items-center gap-1"><HardDrive size={10} /> NATIVE</span>
                                 ) : (
-                                    <>
-                                        <Globe size={18} className="text-[#57534e]" />
-                                        <div>
-                                            <div className="font-bold text-sm text-[#78716c]">Недоступен</div>
-                                            <div className="text-[10px] text-[#57534e]">Требуется Electron для реального режима.</div>
-                                        </div>
-                                    </>
+                                    <span className="text-[10px] text-[#78716c] font-mono flex items-center gap-1"><Globe size={10} /> WEB</span>
                                 )}
                             </div>
                         </div>
-                    )}
-
-                    {/* SECTION: AI */}
-                    <div className="relative flex items-center justify-center py-4 opacity-50 shrink-0">
-                        <div className="h-px bg-[#4a3b32] flex-1"></div>
-                        <div className="px-3 text-[#8c7b70] font-serif text-[10px] font-bold tracking-widest uppercase flex items-center gap-2">
-                            <Cpu size={12} /> Нейроядро
+                        
+                        <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                                <span className={`font-bold font-serif text-base ${isMock ? 'text-[#a8a29e]' : 'text-[#ef4444]'}`}>
+                                    {isMock ? 'СИМУЛЯЦИЯ' : 'LIVE РЕЖИМ'}
+                                </span>
+                                <span className="text-[10px] text-[#57534e] font-mono">
+                                    {isMock ? 'Безопасный режим' : 'Реальный браузер'}
+                                </span>
+                            </div>
+                            <button 
+                                onClick={handleRegimeToggle}
+                                className={`p-2 rounded-lg border-2 transition-all active:scale-95 ${isMock ? 'border-[#4a3b32] text-[#78716c] hover:text-[#a8a29e]' : 'border-[#ef4444] text-[#ef4444] bg-[#450a0a]'}`}
+                            >
+                                {isMock ? <ToggleLeft size={32} /> : <ToggleRight size={32} />}
+                            </button>
                         </div>
-                        <div className="h-px bg-[#4a3b32] flex-1"></div>
                     </div>
 
-                    <div className="space-y-6">
-                        {/* LLM Provider */}
-                        <div className="flex flex-col gap-2">
-                             <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">Модель Интеллекта</label>
-                             <div className="relative">
-                                <select 
-                                    value={currentProviderId}
-                                    onChange={handleProviderChange}
-                                    className="w-full h-14 bg-[#0c0a08] border-2 border-[#3e2f26] rounded-2xl px-4 text-[#cdbba7] font-mono text-base shadow-[inset_0_2px_5px_black] outline-none active:bg-[#1a120e] transition-all appearance-none cursor-pointer"
-                                >
-                                    {providers.map(p => (
-                                        <option key={p.id} value={p.id} disabled={!p.enabled}>
-                                            {p.label}
-                                        </option>
-                                    ))}
-                                </select>
-                                <div className="absolute right-4 top-4 pointer-events-none text-[#57534e]">▼</div>
-                             </div>
+                    {/* NEURAL CORE PANEL */}
+                    <div className="bg-[#140c08] border-2 border-[#3e2f26] rounded-xl p-3 flex flex-col gap-3 shadow-inner shrink-0">
+                        <div className="flex justify-between items-center border-b border-[#3e2f26] pb-2">
+                            <div className="text-[10px] text-[#78685f] font-bold uppercase tracking-wider font-serif flex items-center gap-2">
+                                <Cpu size={12} /> Нейроядро
+                            </div>
+                            <div className="text-[10px] text-[#d97706] font-mono font-bold">
+                                {providers.find(p => p.id === currentProviderId)?.label.split(' ')[0]}
+                            </div>
                         </div>
 
-                        {/* API Key / URL */}
-                        <div className="flex flex-col gap-4">
-                            {currentProviderId !== 'mock' && (
-                                <div className="flex flex-col gap-2">
-                                    <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">
-                                        {currentProviderId === 'local_llm' ? 'Адрес Шлюза' : 'Ключ Доступа'}
-                                    </label>
-                                    <div className="relative">
-                                        {currentProviderId === 'local_llm' ? (
-                                            <Network size={18} className="absolute left-4 top-4 text-[#57534e]" />
-                                        ) : (
-                                            <Key size={18} className="absolute left-4 top-4 text-[#57534e]" />
-                                        )}
-                                        <input 
-                                            type={currentProviderId === 'local_llm' ? "text" : "password"}
-                                            value={currentProviderId === 'local_llm' ? (config.localGatewayUrl || '') : (config.apiKey || '')}
-                                            onChange={currentProviderId === 'local_llm' 
-                                                ? (e) => onChange('localGatewayUrl', e.target.value)
-                                                : handleKeyChange
-                                            }
-                                            placeholder={currentProviderId === 'local_llm' ? "http://localhost:1234/v1" : "sk-..."}
-                                            className="w-full h-14 bg-[#140c08] border-2 border-[#3e2f26] rounded-2xl pl-12 pr-4 text-[#e7e5e4] font-mono text-sm outline-none focus:border-[#d97706] shadow-[inset_0_2px_5px_black] placeholder-[#2a2018]"
-                                        />
-                                    </div>
+                        {/* Provider Select */}
+                        <div className="relative">
+                            <select 
+                                value={currentProviderId}
+                                onChange={handleProviderChange}
+                                className="w-full h-10 bg-[#0c0a08] border border-[#3e2f26] rounded-lg px-3 text-[#cdbba7] font-mono text-sm shadow-inner outline-none focus:border-[#d97706] transition-all appearance-none cursor-pointer"
+                            >
+                                {providers.map(p => (
+                                    <option key={p.id} value={p.id} disabled={!p.enabled}>
+                                        {p.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <Zap size={14} className="absolute right-3 top-3 text-[#57534e] pointer-events-none" />
+                        </div>
+
+                        {/* API Key */}
+                        {currentProviderId !== 'mock' && (
+                            <div className="relative animate-switch-on">
+                                <div className="absolute left-3 top-3 text-[#57534e]">
+                                    {currentProviderId === 'local_llm' ? <Network size={14} /> : <Key size={14} />}
                                 </div>
-                            )}
-                        </div>
+                                <input 
+                                    type={currentProviderId === 'local_llm' ? "text" : "password"}
+                                    value={currentProviderId === 'local_llm' ? (config.localGatewayUrl || '') : (config.apiKey || '')}
+                                    onChange={currentProviderId === 'local_llm' 
+                                        ? (e) => onChange('localGatewayUrl', e.target.value)
+                                        : handleKeyChange
+                                    }
+                                    placeholder={currentProviderId === 'local_llm' ? "http://localhost:1234/v1" : "sk-..."}
+                                    className="w-full h-10 bg-[#0c0a08] border border-[#3e2f26] rounded-lg pl-9 pr-3 text-[#e7e5e4] font-mono text-sm outline-none focus:border-[#d97706] shadow-inner placeholder-[#2a2018]"
+                                />
+                            </div>
+                        )}
                     </div>
 
-                    {/* Reset */}
-                    <div className="pt-8 flex justify-center border-t border-[#3e2f26]/30 mt-6 mb-4">
-                        <button onClick={handleReset} className="text-[10px] text-[#57534e] hover:text-[#b91c1c] uppercase tracking-widest flex items-center gap-2 transition-colors border-b border-transparent hover:border-[#b91c1c] pb-1">
-                            <RotateCcw size={12} /> Сброс Настроек
+                    {/* Spacer to push buttons to bottom */}
+                    <div className="flex-1"></div>
+
+                    {/* ACTION ROW */}
+                    <div className="flex items-center gap-4 shrink-0 pb-2">
+                        {/* Reset (Small) */}
+                        <button 
+                            onClick={handleReset} 
+                            className="h-14 w-14 flex items-center justify-center border border-[#3e2f26] rounded-xl hover:border-[#b91c1c] text-[#57534e] hover:text-[#b91c1c] transition-colors bg-[#1a120e] group"
+                            title="Сброс"
+                        >
+                            <RotateCcw size={20} className="group-hover:-rotate-180 transition-transform duration-500" />
+                        </button>
+
+                        {/* Save (Big) */}
+                        <button 
+                            onClick={handleSaveWrapper}
+                            className="flex-1 relative h-14 bg-gradient-to-b from-[#6b350f] to-[#451a03] border border-[#78350f] shadow-[0_5px_10px_black] active:shadow-none active:translate-y-1 transition-all group overflow-hidden rounded-xl flex items-center justify-center gap-3"
+                        >
+                             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/wood-pattern.png')] opacity-20 mix-blend-overlay"></div>
+                             <Save size={20} className="text-[#fcd34d] relative z-10" />
+                             <span className="relative z-10 font-serif font-black text-lg text-[#fcd34d] tracking-[0.15em] uppercase drop-shadow-md">
+                                 Применить
+                             </span>
                         </button>
                     </div>
 
                 </div>
-
-                {/* 4. FOOTER */}
-                <div className="shrink-0 relative p-6 bg-[#1a120e] border-t-2 border-[#3a2d25] shadow-inner z-30 pointer-events-auto">
-                    <button 
-                        onClick={handleSaveWrapper}
-                        className="w-full relative h-16 bg-gradient-to-b from-[#6b350f] to-[#451a03] border border-[#78350f] shadow-[0_5px_10px_black] active:shadow-none active:translate-y-1 transition-all group overflow-hidden rounded-2xl flex items-center justify-center gap-3"
-                    >
-                         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/wood-pattern.png')] opacity-20 mix-blend-overlay"></div>
-                         <Save size={20} className="text-[#fcd34d] relative z-10" />
-                         <span className="relative z-10 font-serif font-black text-xl text-[#fcd34d] tracking-[0.15em] uppercase drop-shadow-md">
-                             Применить
-                         </span>
-                         <div className="absolute top-0 left-0 w-full h-[1px] bg-white/20"></div>
-                    </button>
-                </div>
                 
+                {/* DECORATIVE BOTTOM */}
                 <div className="absolute -bottom-2 left-8 right-8 h-2 bg-[#1a120e] border-l border-r border-b border-[#3a2d25] rounded-b-xl shadow-lg"></div>
             </div>
         </div>
