@@ -58,9 +58,21 @@
 - [x] I3: Cinematic Transitions ("Code Rain" Intro).
 - [x] I4: Dieselpunk Button Styling (Convex Glass & Brass).
 
-### Phase J: Infrastructure (IN PROGRESS)
+### Phase J: Infrastructure (DONE)
 - [x] J1: Electron Wrapper & IPC Adapter.
 - [x] J2: MCP (Model Context Protocol) Client Adapter.
+- [x] J3: Runtime Capability Detection.
+
+### Phase K: Stability & Logic Hardening (DONE)
+- [x] K1: Resume Selection Logic.
+- [x] K2: Universal Cover Letter Reset.
+- [x] K3: Pipeline Continuity Fixes (Hydration).
+- [x] K4: UI Visibility Fixes (Orb Race Condition).
+
+### Phase L: Documentation & Handover (DONE)
+- [x] L1: Design Decision Log (Accepted/Rejected patterns).
+- [x] L2: User Preference Mapping.
+- [x] L3: Skill/Invariant Updates (Diegetic UI).
 
 ## Runtime Governance
 - **Adapter Safety**: Browser bundles use Mock/Remote/MCP adapters.
@@ -71,8 +83,8 @@
 - Execution blocked if batch size < 5 (soft limit), unless `endOfResults` is flagged.
 
 ## Current Status
-**Release Candidate 1.4 (Visual Polish & Electron Ready)**
-- Architecture remains strictly Clean.
-- UI: Vertical "Device" format with Cinematic Transitions (Code Rain).
-- **Ready for Deployment**: Can be run as a web app (Mock) or Electron app (Real).
-- **Documentation**: Synchronized at Step 110.
+**Release Candidate 1.5 (Documentation & Stability)**
+- **Architecture**: Hybrid (Web/Electron/MCP).
+- **UX**: Fully realized Industrial Cyberpunk aesthetic.
+- **Logic**: Robust against refresh/restart thanks to hydration fixes.
+- **Documentation**: Fully synchronized with codebase (Step 126).

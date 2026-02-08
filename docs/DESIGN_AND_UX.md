@@ -30,15 +30,21 @@ The interface of **AgentSeeker** (aka "Кузница Кадров") is designed
     *   **Frame**: Dark bronze/leather texture with side piping.
     *   **Header**: Contains an **Analog Gauge** (left) and an **LED Counter** (right, showing application count).
     *   **Footer**: Flanked by two **Vacuum Tubes** (Orange/Green) that pulse to indicate system readiness.
-*   **Inputs**: Form fields are styled as inset "slots" within the chassis.
+*   **Inputs (The "Slots")**:
+    *   **Salary**: Numeric tumbler-style input. Maps to `AgentConfig.minSalary`.
+    *   **Location**: Dropdown menu ("Москва", "СПБ", "Global"). Maps to `AgentConfig.city`.
+    *   **Mode Switch**: 3-state toggle (Remote/Hybrid/Office). Maps to `AgentConfig.targetWorkModes`.
+    *   **Letter Generator**: A physical switch toggling between "Manual" (Typewriter) and "Auto" (AI Brain). Includes a **Refresh Button** to purge and regenerate the AI letter.
+    *   **Resume Selector**: A text input allowing the user to specify the *exact title* of the resume to use on the target site (e.g., "Frontend Developer"). Maps to `AgentConfig.targetResumeTitle`.
 
 ### 2. The Orb ("Valera")
 *   **Role**: The personification of the Agent.
 *   **Behavior**:
-    *   **Idle**: Pulses gently in the upper dock of the Tablet.
-    *   **Wake Up**: When the "Call" button is pressed, the Orb activates.
+    *   **Idle**: Pulses gently in the upper dock of the Tablet (Loop Video).
+    *   **Wake Up**: When the "Call" button is pressed, the Orb activates (Intro Video).
     *   **Transition (The "Code Rain")**: A video overlay of falling code floods the bottom of the screen during the transition from the Tablet to the Agent Runner, symbolizing the connection to the digital matrix.
     *   **Runner Mode**: Relocates to the corner to oversee the browser work.
+    *   **Amnesia Mode**: When wiping memory, the Orb expands to fill the screen, creating a dramatic "Mind Wipe" effect.
 
 ### 3. The Browser Viewport
 *   **Visuals**: Styled like an old OS window (`Win95` meets `Fallout`).
@@ -57,30 +63,21 @@ The interface of **AgentSeeker** (aka "Кузница Кадров") is designed
 
 ---
 
-## User Flows
+## Decision Log & Design Decisions
 
-### Flow A: Quick Start (The Device)
-1.  **Launch**: User opens the app. The "Steampunk Tablet" is presented.
-2.  **Parameters**: User adjusts the form slots:
-    *   **Quick Start**: Shows target site (`hh.ru`).
-    *   **Salary**: Numeric input.
-    *   **Location**: Dropdown.
-    *   **Mode**: 3-button toggle (Remote/Hybrid/Office).
-    *   **Letter**: Steampunk Switch (Manual/Auto).
-3.  **Validation**:
-    *   The **Start Button** (Power Icon) sits between the vacuum tubes. It remains gray until valid inputs are provided.
-4.  **Call (Wake Up)**:
-    *   User presses the floating **Call Button** (Convex Glass style).
-    *   *Result*: The Orb pulses, "Code Rain" video plays at the bottom, then the entire UI transitions to the Agent Runner.
+### Accepted Design Patterns
+1.  **Vertical Device Layout**: Instead of a full-screen dashboard, the main control interface is constrained to a vertical "Tablet" container (`max-w-[600px]`). This creates a focused, mobile-first aesthetic even on desktop.
+2.  **Video-Based Transitions**: Using `<video>` elements for the "Orb" states (Idle/Wake/Standby) instead of CSS animations allowed for higher fidelity and a "cinematic" feel.
+3.  **Diegetic Controls**: Buttons look like physical objects (convex glass, metal rims). Inputs look like "slots" in a machine.
+4.  **Dark Humor**: The `JokeService` acts as the "soul" of the machine, mocking the user's salary expectations. This was accepted to increase user engagement and retention.
 
-### Flow B: Advanced Setup
-1.  **Access**: User clicks the **Gear Icon** in the Tablet header.
-2.  **Settings**: Full configuration for LLM providers and Runtime.
+### Rejected / Deprecated Patterns
+1.  **Standard Material/Bootstrap UI**: Rejected as "Soulless SaaS".
+2.  **Horizontal Stepper**: Initially considered for the setup flow, but rejected in favor of a "One-Page Dashboard" to minimize clicks.
+3.  **Light Mode**: Strict prohibition on light themes. The cyberpunk aesthetic demands high contrast on dark backgrounds.
+4.  **Passive Loading Spinners**: Replaced with "Active" indicators (pulsing Vacuum Tubes, rotating Gears) to maintain immersion during async operations.
 
-### Flow C: The Autonomous Loop
-1.  **Login** -> **Profiling** -> **Search** -> **Scanning** -> **Apply**.
-2.  **Visuals**: The scanning list auto-scrolls, visually indicating "Processing".
-
-### Flow D: Post-Run & Amnesia
-1.  **Stop**: User interrupts the session via the "Stop" button.
-2.  **Amnesia**: User clicks **Brain Icon** to wipe session memory. The Orb expands to fill the screen during this confirmation.
+### User Preference Logic (Persistence)
+*   **LocalStorage**: All UI preferences (Salary, City, Mode) are persisted immediately to `AgentConfig` in `localStorage`.
+*   **Reactive**: The UI listens to `AgentState` changes. If the Agent is "Wiped" (Amnesia), the UI components reset visual state but *Config* remains (unless fully purged).
+*   **Validation**: The "Start" button (`PowerIcon`) remains physically disabled (grayed out, non-interactive) until critical "Slots" (Mode, Letter) are filled. This provides immediate visual feedback on readiness.

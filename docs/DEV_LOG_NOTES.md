@@ -2,7 +2,7 @@
 # Dev Log Notes & Handover Manifesto
 
 **Date**: 06.02.2026
-**Author**: Senior Agent Architect (Release Candidate 1.4)
+**Author**: Senior Agent Architect (Release Candidate 1.5)
 **Status**: CRITICAL ARCHITECTURAL AUDIT & HANDOVER
 
 ---
@@ -91,42 +91,28 @@ Focus your next sprint purely on **Infrastructure**, not Logic. The Logic is don
 
 ---
 
-## 6. Post-Handover Polish (Steps 60-68)
+## 6. Lessons Learned (Steps 123-126)
 
-Since the original audit, several UX issues were resolved to improve the "Game Feel" of the application:
+Following the implementation of Electron/MCP support and subsequent stabilization fixes, several critical architectural lessons were observed:
 
-### 6.1. Videophone State Logic (Steps 65-66)
-*   **Issue**: The intro video ("Wake Up") was playing every time the user navigated back to the dashboard, creating fatigue.
-*   **Fix**: Introduced `skipIntro` state in `App.tsx`.
-    *   **Reset**: Clicking "Reset" explicitly sets `skipIntro=true` to bypass the wake-up sequence and land directly on the configuration panel.
-    *   **WakeUp**: Separated from "Run". Users must now "Call" the agent (Wake Up) before they can "Start Search".
+### 6.1. The "Invisible Orb" (UI/State Race Condition)
+*   **Problem**: The "Orb" (Valera) would sometimes disappear or misalign when transitioning from the `ModeSelectionScreen` (Tablet) to the `AgentStatusScreen` (Runner).
+*   **Cause**: The Orb's position is calculated using `getBoundingClientRect()` relative to a DOM element (`avatarRef`). However, the parent container (`Main Panel`) was animating its opacity and scale (CSS `animate-switch-on`) at the same time. The layout calculation often fired *before* the browser had finished the layout reflow of the appearing panel, resulting in `0,0` coordinates or stale positions.
+*   **Fix**: Introduced `useLayoutEffect` combined with a `setTimeout` inside the component to force a recalculation *after* the paint cycle and a slight delay to allow CSS transitions to settle.
+*   **Lesson**: When animating complex "Portal" elements that move between screens (like the Orb), never trust the initial render ref. Always double-check position after the transition completes.
 
-### 6.2. Input Validation (Step 67)
-*   **Issue**: Users could start a search without selecting a Work Mode or providing a Cover Letter, leading to logic errors later.
-*   **Fix**: The "Start Search" button is now visually disabled (grayed out) until:
-    1.  At least one **Work Mode** is selected.
-    2.  Either a **Cover Letter** is pasted OR **Auto-Generation** is enabled.
+### 6.2. The "Amnesiac Pipeline" (State Hydration)
+*   **Problem**: The agent would successfully capture a profile, but if the page was refreshed or the agent restarted, the pipeline would stall at `VACANCIES_EXTRACTED` -> `EVALUATING_CANDIDATES`.
+*   **Cause**: The `AgentUseCase` relies on `state.activeProfileSnapshot` to generate prompts for the LLM. While `profile` was saved to `LocalStorage`, the `AgentState` object rehydrated from storage *did not* automatically populate this field in every scenario (it was treated as a transient reference in some paths).
+*   **Fix**: Updated `checkAndCaptureProfile` and `executeProfileCapture` to explicitly write the loaded/captured profile into `AgentState.activeProfileSnapshot` immediately.
+*   **Lesson**: Critical context data required for LLM prompts (Profile, Targeting Spec) must be treated as **First-Class State Citizens**, not just side-loaded artifacts in Storage. If it's not in `AgentState`, the automaton cannot "see" it.
 
-### 6.3. Steampunk Controls (Step 68)
-*   **Feature**: Replaced standard checkbox with a custom **Steampunk Toggle Switch** for the Cover Letter mode.
-*   **Visuals**:
-    *   **Manual Mode**: Slides down a textarea for input.
-    *   **Auto Mode**: Displays a "Brain Writing" animation (Brain + PenTool icons) to signify AI generation.
-*   **Lore**: Added 100 new lines of dialogue to `JokeService` specifically mocking the user's writing skills (`CL_MANUAL`) or complaining about the AI's workload (`CL_AUTO`).
+### 6.3. The Cost of Immersion (Performance)
+*   **Observation**: The addition of `Three.js` (Steam Engine), `Atropos` (3D Tilt), and multiple `<video>` layers creates a significant GPU load. On lower-end devices, this can cause input lag.
+*   **Trade-off**: We accepted this cost to achieve the "Industrial Cyberpunk" aesthetic (`Diegetic UI`), reasoning that the target user (Job Seeker) is likely on a desktop environment.
+*   **Mitigation**: `SteamEngineBackground` is memoized and runs outside the React render cycle, but browser compositing is still heavy. Future optimization: Add a "Low Quality" toggle in Settings.
 
----
-
-## 7. The Visual Overhaul (Steps 100-108)
-
-To align with the "Dieselpunk" aesthetic requested by stakeholders, a massive UI redesign was undertaken.
-
-### 7.1. Steampunk Tablet Layout
-*   **Refactor**: `ModeSelectionScreen.tsx` was rewritten to render a vertical, tablet-like chassis.
-*   **Details**: Added top-mounted Gauge (Pressure) and LED Display (Application Count). Added bottom-mounted Vacuum Tubes (Orange/Green) reacting to form state.
-
-### 7.2. Button Redesign
-*   **Call Button**: Redesigned as a convex glass lens with a heavy brass rim. Position moved vertically to align with background chassis art.
-*   **Settings Button**: Redesigned as an inset brass gear.
-
-### 7.3. Cinematic Immersion
-*   **Code Rain**: Implemented a "Code Rain" video overlay that triggers specifically during the "Wake Up" sequence, enhancing the transition between the Tablet and the Agent Runner.
+### 6.4. Resume Selection Logic
+*   **Challenge**: Job sites often have multiple resumes. The agent needs to know *which* one to pick.
+*   **Solution**: Added `targetResumeTitle` to `AgentConfig`. Updated `BrowserPort` with `selectOption`.
+*   **Lesson**: Simple text input is often robust enough for matching. We don't need complex AI matching for the resume dropdown; a substring match ("Frontend") works perfectly for "Frontend Developer". Keep adapters simple.

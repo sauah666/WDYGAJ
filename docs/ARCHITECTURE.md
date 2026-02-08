@@ -26,24 +26,27 @@
     *   **Resilience & Ops**: `ApplyAttemptState`, `DOMFingerprintV1`, `CompactionSummaryV1`, `PruningPolicyV1`.
 *   **Contracts**: `TargetingSpecV1`, `ProfileSummaryV1`, `SearchUIAnalysisInputV1`, `LLMScreeningInputV1`, `EvaluateExtractsInputV1`.
 *   **Logic**:
-    *   `runtime.ts`: Detection of execution environment (Node vs Browser) and capability validation.
+    *   `runtime.ts`: Detection of execution environment (Node vs Browser vs Electron).
     *   `llm_registry.ts`: Definitions of supported AI providers and their configuration requirements.
-*   **Config**: `AgentConfig` includes `autoCoverLetter` (boolean) to toggle between template-based and LLM-generated cover letters.
+*   **Config**: `AgentConfig` includes `autoCoverLetter`, `targetResumeTitle`.
 *   **Запрещено**: Импорты из `react`, `fs`, браузерных API.
 
 ### 2. Use Cases (`core/usecases/`)
 *   **AgentUseCase**: Оркестратор. Содержит бизнес-логику переходов между статусами.
 *   Реализует: Governance (Context Health), Deduplication, Telemetry, Retry Policies, Rotation Logic, Amnesia.
 *   Управляет: `BrowserPort`, `StoragePort`, `LLMPort`, `UIPort`.
+*   **Invariant Fix (v1.4)**: Ensures `activeProfileSnapshot` is populated in `AgentState` immediately after capture/load to prevent pipeline stalls during LLM evaluation phases.
 
 ### 3. Ports (`core/ports/`)
 *   Интерфейсы. Определяют, ЧТО нужно системе, но не КАК это делать.
+*   Updated: `BrowserPort` now includes `selectOption` for handling dropdowns (e.g. Resume Selector).
 
 ### 4. Adapters (`adapters/`)
 *   **BrowserAdapter**:
-    *   `MockBrowserAdapter`: Fully simulated browser environment for development/demo. Generates realistic mock data (50 items) for UI visualization.
-    *   `RemoteBrowserAdapter`: Client for connecting to a remote Node.js runner (HTTP/WebSocket).
-    *   `PlaywrightBrowserAdapter` (Node-only): Direct control of Chromium via Playwright.
+    *   `MockBrowserAdapter`: Fully simulated browser environment. Supports `selectOption` mock logic.
+    *   `ElectronIPCAdapter` (New): Bridges Renderer process to Main process via `window.electronAPI`. Allows `Playwright` execution in a desktop context.
+    *   `McpBrowserAdapter` (New): Connects to a Model Context Protocol server via SSE/HTTP to control external browsers.
+    *   `PlaywrightBrowserAdapter` (Node-only): Direct control of Chromium via Playwright (used by Electron Main).
 *   **StorageAdapter**: `LocalStorageAdapter` with namespace isolation and legacy fallback support.
 *   **LLMAdapter**:
     *   `MockLLMAdapter`: Simulated deterministic AI responses.
@@ -54,47 +57,31 @@
 ## Presentation Layer & Infrastructure
 
 ### Presentation Services
-*   **JokeService**: Manages the "personality" of the agent (`Valera`). Handles dynamic text generation based on salary inputs, location, agent status, and cover letter mode (`CL_MANUAL` vs `CL_AUTO`).
-    *   *Storage*: Uses `localStorage` directly (`sys_seen_jokes_v1`) to persist joke history and avoid repetition. This is a deliberate architectural deviation (see below).
+*   **JokeService**: Manages the "personality" of the agent (`Valera`). Handles dynamic text generation based on salary inputs, location, agent status, and cover letter mode.
 
 ### UI Components
-*   **ModeSelectionScreen**: The main entry point ("Videophone").
-    *   **State**: Manages `skipIntro` locally to handle transitions between "Idle/Intro" and "Configuration Panel".
-    *   **Steampunk Switch**: A custom toggle component for switching `autoCoverLetter` config.
-*   **BrowserViewport**: Visualizes the agent's "vision" (Mock or Remote).
+*   **AgentStatusScreen**: Updated to ensure `Orb` visibility logic recalculates correctly after panel transitions.
+*   **BrowserViewport**: Visualizes the agent's "vision". In Electron mode, polls for screenshots via IPC.
 *   **Three.js Integration**: The `Layout` component hosts a `SteamEngineBackground` subsystem.
-    *   **Purpose**: Atmospherics and visual immersion (rotating gears, fog).
-    *   **Performance**: Runs outside the React render cycle (ref-based) to ensure 60fps without triggering React reconciliation.
 
 ## Runtime Governance (Factory Pattern)
 
-The application uses a dynamic factory in `App.tsx` backed by `core/domain/runtime.ts` to select the correct adapters:
+The application uses a dynamic factory in `App.tsx` backed by `core/domain/runtime.ts`:
 
-1.  **Runtime Capability Analysis**: Detects if running in a Browser or Node.js environment.
-2.  **Config Validation**: Checks if `apiKey` or `localGatewayUrl` are present for the selected LLM provider.
-3.  **Adapter Instantiation**:
-    *   If `browserProvider='playwright'` but runtime is Browser -> Fallback to `Remote` or `Mock`.
-    *   If `activeLLMProviderId='local_llm'` -> Configures `OpenAILLMAdapter` with custom `baseUrl`.
-
-## Routing vs State Machine
-
-*   **AppRoute (UI Router)**: Controls which *Screen* is visible to the user.
-    *   `MODE_SELECTION` (Videophone Dashboard) -> `JOB_PREFERENCES` (Advanced) -> `SETTINGS` -> `AGENT_RUNNER`.
-    *   Managed by React State (`route`).
-*   **AgentStatus (Business Logic)**: Controls what the *Agent* is doing.
-    *   `IDLE` -> `STARTING` -> `SEARCH...` -> `APPLY...`.
-    *   Managed by `AgentState` (Redux-like).
-    *   *Interaction*: The `AGENT_RUNNER` route is the only screen that visualizes the active `AgentStatus`. All other routes are for configuration while the agent is `IDLE`.
+1.  **Runtime Capability Analysis**: Detects Browser vs Electron (`window.electronAPI`).
+2.  **Adapter Instantiation**:
+    *   Priority: Config Force Mock -> Electron IPC -> Native Node -> Fallback Mock.
 
 ## Reset & Memory Matrix
 
-| Action | Clears State | Clears Config | Clears Profile | Clears Cache (Targeting/UI) | Reset Seen Index |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Reset Session** | YES (New Object) | NO | NO | NO | NO |
-| **Reset Profile** | YES | NO | YES | YES (Targeting) | NO |
-| **Reset Config** | NO | YES | NO | NO | NO |
-| **Amnesia Mode** | YES (History Only) | NO | NO | YES (Batches) | **YES** |
-| **Full Wipe** | YES | YES | YES | YES | YES |
+| Action | Clears State | Clears Config | Clears Profile | Clears Cache (Targeting/UI) | Reset Seen Index | Reset Universal Letter |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Reset Session** | YES (New Object) | NO | NO | NO | NO | NO |
+| **Reset Profile** | YES | NO | YES | YES (Targeting) | NO | NO |
+| **Reset Config** | NO | YES | NO | NO | NO | NO |
+| **Amnesia Mode** | YES (History Only) | NO | NO | YES (Batches/Specs) | **YES** | NO |
+| **Clear Letter** | NO | NO | NO | NO | NO | **YES** |
+| **Full Wipe** | YES | YES | YES | YES | YES | YES |
 
 ## State Machine (`AgentStatus`)
 
@@ -104,7 +91,7 @@ The application uses a dynamic factory in `App.tsx` backed by `core/domain/runti
 4.  **Search Prep**: `TARGETING_READY` -> `NAVIGATING_TO_SEARCH` -> `SEARCH_PAGE_READY`.
 5.  **Search Config**: `SEARCH_PAGE_READY` -> `SEARCH_DOM_READY` -> `ANALYZING_SEARCH_UI` -> `WAITING_FOR_SEARCH_PREFS` -> `SEARCH_PREFS_SAVED` -> `APPLY_PLAN_READY`.
 6.  **Pipeline Loop**:
-    *   `SEARCH_READY` -> `VACANCIES_CAPTURED` (Batch 50) -> `VACANCIES_DEDUPED`.
+    *   `SEARCH_READY` -> `VACANCIES_CAPTURED` (Batch 15) -> `VACANCIES_DEDUPED`.
     *   `VACANCIES_DEDUPED` -> `PREFILTER_DONE`.
     *   `PREFILTER_DONE` -> `LLM_SCREENING_DONE`.
     *   `LLM_SCREENING_DONE` -> `EXTRACTING_VACANCIES` -> `VACANCIES_EXTRACTED`.
@@ -119,24 +106,16 @@ The application uses a dynamic factory in `App.tsx` backed by `core/domain/runti
     *   `COMPLETED` -> `TARGETING_READY` (Next Role) OR `IDLE` (Finished).
     *   `FAILED`, `PAUSED`, `RUNTIME_CONFIG_ERROR`, `LLM_CONFIG_ERROR`, `CONTEXT_OVER_LIMIT`.
 
-## Context Governance (Phase G3)
-
-*   **Token Ledger**: Tracks input/output tokens per session.
-*   **Pruning**: `pruneInput()` recursivley removes raw HTML tags from LLM payloads to save context window.
-*   **Compaction**: When `AgentState` size > `softTokenLimit` (30k chars), older logs are compressed into a `CompactionSummary` entry, keeping only the head and tail of the session log.
-
 ## Batch Enforcement Policy
-*   **Batch Size**: 15 items (Safe Default) to ensure LLM stability and prevent rate limiting. Can be increased to 50 for visualization in `Scanner Mode` if infrastructure permits.
+*   **Batch Size**: 15 items (Safe Default) to ensure LLM stability.
 *   **Dedup**: Strictly filters out previously seen external IDs.
 
 ## Technical Deviations & Debt
 
-1.  **JokeService Persistence**: 
-    *   *Issue*: `JokeService` accesses `localStorage` directly instead of going through `StoragePort`.
-    *   *Reason*: Purely UI concern (preventing repeating jokes), loosely coupled from core Agent logic.
-    *   *Mitigation*: Isolated in `presentation/services`.
-2.  **Node Runner Dependency**:
-    *   *Issue*: `RemoteBrowserAdapter` implements the client side of the protocol, but the Server (Node Runner) code is not part of this client bundle.
-    *   *Mitigation*: Adapter throws explicit error if connection fails, guiding user to use Mock or Playwright (if in Node).
-3.  **Resilience Logic Stubs**:
-    *   *Issue*: Advanced retry states (`APPLY_RETRYING`) are defined in types but the current UseCase implementation defaults to "Skip & Continue" (Failover) strategy on submission failure to avoid infinite loops during demos.
+1.  **JokeService Persistence**: Directly accesses `localStorage`.
+2.  **Remote Runner Stub**: `RemoteBrowserAdapter` expects an external server not currently provided in the repo (Electron is the preferred path).
+3.  **External Asset Dependency**: The "Valera" Orb videos (`valera_merged.mp4`, etc.) are hotlinked from a raw GitHub repository. This is a fragility risk (CORS/Uptime). Production builds should bundle these assets.
+4.  **Selector Strategy**:
+    *   `MockBrowserAdapter` uses synthetic selectors (e.g., `mock://vacancy/apply-button`).
+    *   `PlaywrightBrowserAdapter` uses real CSS/XPath selectors.
+    *   *Implication*: LLM-generated `SearchUISpec` must be aware of the context, or the Adapter must handle translation. Currently, logic favors the specific implementation of the active adapter.
