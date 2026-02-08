@@ -2,7 +2,7 @@
 # Dev Log Notes & Handover Manifesto
 
 **Date**: 06.02.2026
-**Author**: Senior Agent Architect (Release Candidate 1.1)
+**Author**: Senior Agent Architect (Release Candidate 1.3)
 **Status**: CRITICAL ARCHITECTURAL AUDIT & HANDOVER
 
 ---
@@ -88,5 +88,52 @@ Build a separate Node.js microservice (`agent-runner`).
 This system is a Porsche engine mounted on a wooden cart. It looks fast and sounds loud, but it needs a chassis (Electron/Server) to actually hit the road. 
 
 Focus your next sprint purely on **Infrastructure**, not Logic. The Logic is done.
+
+---
+
+## 6. Post-Handover Polish (Steps 60-68)
+
+Since the original audit, several UX issues were resolved to improve the "Game Feel" of the application:
+
+### 6.1. Videophone State Logic (Steps 65-66)
+*   **Issue**: The intro video ("Wake Up") was playing every time the user navigated back to the dashboard, creating fatigue.
+*   **Fix**: Introduced `skipIntro` state in `App.tsx`.
+    *   **Reset**: Clicking "Reset" explicitly sets `skipIntro=true` to bypass the wake-up sequence and land directly on the configuration panel.
+    *   **WakeUp**: Separated from "Run". Users must now "Call" the agent (Wake Up) before they can "Start Search".
+
+### 6.2. Input Validation (Step 67)
+*   **Issue**: Users could start a search without selecting a Work Mode or providing a Cover Letter, leading to logic errors later.
+*   **Fix**: The "Start Search" button is now visually disabled (grayed out) until:
+    1.  At least one **Work Mode** is selected.
+    2.  Either a **Cover Letter** is pasted OR **Auto-Generation** is enabled.
+
+### 6.3. Steampunk Controls (Step 68)
+*   **Feature**: Replaced standard checkbox with a custom **Steampunk Toggle Switch** for the Cover Letter mode.
+*   **Visuals**:
+    *   **Manual Mode**: Slides down a textarea for input.
+    *   **Auto Mode**: Displays a "Brain Writing" animation (Brain + PenTool icons) to signify AI generation.
+*   **Lore**: Added 100 new lines of dialogue to `JokeService` specifically mocking the user's writing skills (`CL_MANUAL`) or complaining about the AI's workload (`CL_AUTO`).
+
+---
+
+## 7. Final System Audit (Step 70)
+
+**Date**: 06.02.2026 
+**Target**: Release Candidate 1.3 Codebase
+
+A complete re-verification of the codebase against documentation was performed to ensure consistency after recent UI enhancements.
+
+*   **Design & UX**: `DESIGN_AND_UX.md` has been updated to explicitly describe the "Slide/Swap" animation mechanism for the Cover Letter configuration, ensuring future frontend engineers understand the `slide-down` CSS class usage in `ModeSelectionScreen`.
+*   **Entities**: `AgentConfig` in `types.ts` correctly reflects the `autoCoverLetter` boolean property.
+*   **Services**: `JokeService` population (`CL_MANUAL` / `CL_AUTO`) verified against `DEV_LOG_NOTES`.
+*   **Status**: **PASSED**. The project documentation is now 100% synchronous with the implementation state (RC 1.3).
+
+## 7.1. The Re-Audit (Step 71)
+
+A secondary audit revealed a drift in `DEV_CONTEXT.md` where the "Last Updated" field lagged behind the actual progress.
+
+*   **Fix**: Updated `DEV_CONTEXT.md` to point to Step 71.
+*   **Verification**: All documentation files (`PROJECT_DOCUMENTATION`, `DEV_CONTEXT`, `DEV_LOG_NOTES`, `DESIGN_AND_UX`) now share the same version timestamp.
+*   **Code Integrity**: Confirmed no regression in `ModeSelectionScreen` or `JokeService` during the documentation sync.
 
 *End of Log.*

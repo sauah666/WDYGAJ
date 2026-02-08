@@ -28,6 +28,7 @@
 *   **Logic**:
     *   `runtime.ts`: Detection of execution environment (Node vs Browser) and capability validation.
     *   `llm_registry.ts`: Definitions of supported AI providers and their configuration requirements.
+*   **Config**: `AgentConfig` includes `autoCoverLetter` (boolean) to toggle between template-based and LLM-generated cover letters.
 *   **Запрещено**: Импорты из `react`, `fs`, браузерных API.
 
 ### 2. Use Cases (`core/usecases/`)
@@ -53,10 +54,14 @@
 ## Presentation Layer & Infrastructure
 
 ### Presentation Services
-*   **JokeService**: Manages the "personality" of the agent (`Valera`). Handles dynamic text generation based on salary inputs, location, and agent status.
+*   **JokeService**: Manages the "personality" of the agent (`Valera`). Handles dynamic text generation based on salary inputs, location, agent status, and cover letter mode (`CL_MANUAL` vs `CL_AUTO`).
     *   *Storage*: Uses `localStorage` directly (`sys_seen_jokes_v1`) to persist joke history and avoid repetition. This is a deliberate architectural deviation (see below).
 
-### Visual Infrastructure
+### UI Components
+*   **ModeSelectionScreen**: The main entry point ("Videophone").
+    *   **State**: Manages `skipIntro` locally to handle transitions between "Idle/Intro" and "Configuration Panel".
+    *   **Steampunk Switch**: A custom toggle component for switching `autoCoverLetter` config.
+*   **BrowserViewport**: Visualizes the agent's "vision" (Mock or Remote).
 *   **Three.js Integration**: The `Layout` component hosts a `SteamEngineBackground` subsystem.
     *   **Purpose**: Atmospherics and visual immersion (rotating gears, fog).
     *   **Performance**: Runs outside the React render cycle (ref-based) to ensure 60fps without triggering React reconciliation.
@@ -121,7 +126,7 @@ The application uses a dynamic factory in `App.tsx` backed by `core/domain/runti
 *   **Compaction**: When `AgentState` size > `softTokenLimit` (30k chars), older logs are compressed into a `CompactionSummary` entry, keeping only the head and tail of the session log.
 
 ## Batch Enforcement Policy
-*   **Max Batch Size**: 50 items (updated from 15) to enable realistic scrolling visualization and broader context for the agent.
+*   **Batch Size**: 15 items (Safe Default) to ensure LLM stability and prevent rate limiting. Can be increased to 50 for visualization in `Scanner Mode` if infrastructure permits.
 *   **Dedup**: Strictly filters out previously seen external IDs.
 
 ## Technical Deviations & Debt
@@ -133,3 +138,5 @@ The application uses a dynamic factory in `App.tsx` backed by `core/domain/runti
 2.  **Node Runner Dependency**:
     *   *Issue*: `RemoteBrowserAdapter` implements the client side of the protocol, but the Server (Node Runner) code is not part of this client bundle.
     *   *Mitigation*: Adapter throws explicit error if connection fails, guiding user to use Mock or Playwright (if in Node).
+3.  **Resilience Logic Stubs**:
+    *   *Issue*: Advanced retry states (`APPLY_RETRYING`) are defined in types but the current UseCase implementation defaults to "Skip & Continue" (Failover) strategy on submission failure to avoid infinite loops during demos.

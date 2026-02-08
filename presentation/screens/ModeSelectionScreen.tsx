@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import Atropos from 'atropos/react';
 import { Layout } from '../components/Layout';
-import { Phone, ChevronDown, Settings, Archive, Sliders, Power } from 'lucide-react';
+import { Phone, ChevronDown, Settings, Archive, Power, Sparkles, Brain, PenTool, FileEdit, Cpu } from 'lucide-react';
 import { AgentConfig, WorkMode } from '../../types';
 import { JokeService } from '../services/JokeService';
 import { AppliedVacancyRecord } from '../../core/domain/entities';
@@ -14,11 +14,12 @@ interface Props {
   onSiteSelect?: (site: string) => void;
   onConfigChange: (key: keyof AgentConfig, value: any) => void;
   onRun: () => void;
-  onSelect: (mode: string) => void; // Used for "Advanced Setup" now
+  onSelect: (mode: string) => void; 
   onSettingsClick?: () => void;
   onNavigate?: (route: string) => void;
   appliedHistory?: AppliedVacancyRecord[]; 
-  onWipeMemory?: () => void; 
+  onWipeMemory?: () => void;
+  skipIntro?: boolean; 
 }
 
 const INTRO_VIDEO = "https://raw.githubusercontent.com/sauah666/WDYGAJ/9adbbc991fa9b9c12d54d6d435407de65c428635/valera_merged.mp4";
@@ -36,17 +37,16 @@ export const ModeSelectionScreen: React.FC<Props> = ({
     config, 
     onConfigChange, 
     onRun, 
-    onSelect, 
     onSettingsClick, 
     onNavigate,
     appliedHistory = [],
-    onWipeMemory
+    onWipeMemory,
+    skipIntro = false
 }) => {
-  const [videoPhase, setVideoPhase] = useState<VideoPhase>('IDLE');
-  const [isRelocated, setIsRelocated] = useState(false);
-  const [showPanel, setShowPanel] = useState(false);
+  const [videoPhase, setVideoPhase] = useState<VideoPhase>(skipIntro ? 'LOOP' : 'IDLE');
+  const [isRelocated, setIsRelocated] = useState(skipIntro);
+  const [showPanel, setShowPanel] = useState(skipIntro);
   const [loopStarted, setLoopStarted] = useState(false);
-  const [isReady, setIsReady] = useState(false);
   
   const [showArchive, setShowArchive] = useState(false);
 
@@ -67,6 +67,13 @@ export const ModeSelectionScreen: React.FC<Props> = ({
   const [typedMessage, setTypedMessage] = useState<string>("");
   
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Validation Logic
+  const currentModes = config.targetWorkModes || [];
+  const isAutoCoverLetter = !!config.autoCoverLetter;
+  const hasCoverLetter = !!config.coverLetterTemplate && config.coverLetterTemplate.trim().length > 0;
+  
+  const canStart = currentModes.length > 0 && (isAutoCoverLetter || hasCoverLetter);
 
   // Typewriter
   useEffect(() => {
@@ -125,8 +132,6 @@ export const ModeSelectionScreen: React.FC<Props> = ({
 
   useEffect(() => {
     if (config.minSalary === undefined) onConfigChange('minSalary', 0);
-    const timer = setTimeout(() => setIsReady(true), 100);
-    return () => clearTimeout(timer);
   }, []);
 
   const updateOrbTarget = () => {
@@ -143,12 +148,17 @@ export const ModeSelectionScreen: React.FC<Props> = ({
 
   useLayoutEffect(() => {
       updateOrbTarget();
-      window.addEventListener('resize', updateOrbTarget);
-      if (showPanel) setTimeout(updateOrbTarget, 100);
-      return () => window.removeEventListener('resize', updateOrbTarget);
+      const handleResize = () => updateOrbTarget();
+      window.addEventListener('resize', handleResize);
+      if (showPanel) {
+          requestAnimationFrame(updateOrbTarget);
+          setTimeout(updateOrbTarget, 200);
+      }
+      return () => window.removeEventListener('resize', handleResize);
   }, [showPanel]);
 
   useEffect(() => {
+    if (skipIntro) return; 
     let timer: ReturnType<typeof setTimeout>;
     if (isRelocated) {
         timer = setTimeout(() => setShowPanel(true), 1200); 
@@ -156,9 +166,9 @@ export const ModeSelectionScreen: React.FC<Props> = ({
         setShowPanel(false);
     }
     return () => clearTimeout(timer);
-  }, [isRelocated]);
+  }, [isRelocated, skipIntro]);
 
-  const handleCall = () => {
+  const handleWakeUp = () => {
       if (videoPhase !== 'IDLE') return;
       updateOrbTarget();
       setIsRelocated(false);
@@ -173,13 +183,6 @@ export const ModeSelectionScreen: React.FC<Props> = ({
           loopVideoRef.current.currentTime = 0;
           loopVideoRef.current.pause();
       }
-  };
-
-  const handleBackToIdle = () => {
-      setShowPanel(false);
-      setIsRelocated(false);
-      setVideoPhase('IDLE');
-      setLoopStarted(false);
   };
 
   const handleIntroEnd = () => {
@@ -199,18 +202,12 @@ export const ModeSelectionScreen: React.FC<Props> = ({
       }
   };
 
-  const handleAdvancedSetup = () => {
-      // Directs to JobPreferencesScreen via App.tsx callback
-      onSelect('JOB_SEARCH');
-  };
-
   const handleWipeWrapper = () => {
       if(onWipeMemory) onWipeMemory();
       setShowArchive(false);
   };
 
   const isPlaying = videoPhase !== 'IDLE';
-  const currentModes = config.targetWorkModes || [];
   
   const toggleMode = (mode: WorkMode) => {
       let newModes = [...currentModes];
@@ -227,6 +224,17 @@ export const ModeSelectionScreen: React.FC<Props> = ({
       }
   };
 
+  const handleStartSearch = () => {
+      if (canStart) onRun();
+  };
+
+  // Switch Toggle Logic
+  const handleCoverLetterModeSwitch = (mode: 'MANUAL' | 'AUTO') => {
+      const isAuto = mode === 'AUTO';
+      onConfigChange('autoCoverLetter', isAuto);
+      setAgentMessage(JokeService.getJoke(isAuto ? 'CL_AUTO' : 'CL_MANUAL'));
+  };
+
   return (
     <Layout title="" hideSidebar={true} onSettingsClick={onSettingsClick} onNavigate={onNavigate}>
       <style>{`
@@ -238,6 +246,17 @@ export const ModeSelectionScreen: React.FC<Props> = ({
             animation: switchOn 0.5s ease-out forwards;
         }
         @keyframes blink { 50% { opacity: 0; } }
+        
+        .slide-down-enter {
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transition: max-height 0.5s ease-out, opacity 0.5s ease-out;
+        }
+        .slide-down-enter-active {
+            max-height: 200px;
+            opacity: 1;
+        }
       `}</style>
 
       {/* ARCHIVE OVERLAY */}
@@ -254,9 +273,8 @@ export const ModeSelectionScreen: React.FC<Props> = ({
 
       <div className="flex flex-col items-center justify-center h-full w-full relative pt-0 pb-0 overflow-hidden bg-[#0a0503]">
         
-        {/* --- MAIN PANEL --- */}
+        {/* --- MAIN PANEL (SETTINGS) --- */}
         <div className={`absolute inset-0 z-20 flex items-center justify-center pointer-events-none`}>
-            {/* FULL SCREEN CONTAINER */}
             <div 
                 className={`relative w-[98%] h-[98%] md:w-[600px] md:h-auto md:max-h-[95vh] bg-[#2a2420] border-[3px] border-[#4a3b32] shadow-[0_0_100px_rgba(0,0,0,0.8)] rounded-xl md:rounded-3xl overflow-hidden flex flex-col font-serif ${showPanel ? 'pointer-events-auto animate-switch-on' : 'opacity-0'}`}
                 style={{ 
@@ -273,7 +291,6 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                 {/* 1. HEADER (Fixed) */}
                 <div className="shrink-0 relative h-14 bg-[#1a120e] border-b-4 border-[#3a2d25] flex items-center justify-between px-4 shadow-md z-30">
                     <div className="flex gap-2">
-                        {/* Archive Button */}
                         <button 
                             onClick={() => setShowArchive(true)}
                             className="text-[#78716c] hover:text-[#fcd34d] transition-colors p-2 rounded-full hover:bg-[#2a2018] relative group"
@@ -290,23 +307,13 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                         Параметры Поиска
                     </h2>
                     
-                    {/* Advanced Params Button (Sliders) */}
-                    <button 
-                        onClick={handleAdvancedSetup}
-                        className="text-[#78716c] hover:text-[#fbbf24] transition-colors p-2 rounded-full hover:bg-[#2a2018] relative group"
-                        title="Расширенные Настройки"
-                    >
-                        <Sliders size={20} />
-                    </button>
+                    <div className="w-8"></div>
                 </div>
 
                 {/* 2. ORB ROW */}
                 <div className="shrink-0 p-4 pb-2 bg-[#2a2420] z-20 relative">
                     <div className="flex gap-4 items-stretch h-28">
-                        {/* Avatar Placeholder (Target) */}
                         <div ref={avatarRef} className="w-28 shrink-0 relative opacity-0"></div>
-
-                        {/* Message Screen */}
                         <div className="flex-1 bg-[#1a1512] rounded-xl border-2 border-[#3a2d25] shadow-[inset_0_2px_10px_black] relative overflow-hidden p-3 flex flex-col justify-center">
                              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cardboard.png')] opacity-10"></div>
                              <div className="relative z-10 font-mono text-[#d97706] text-sm leading-tight drop-shadow-md break-words pl-1">
@@ -319,9 +326,9 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                 </div>
 
                 {/* 3. INPUTS AREA */}
-                <div className="flex-1 overflow-y-auto px-6 pb-4 custom-scrollbar relative z-10 flex flex-col justify-evenly">
+                <div className="flex-1 overflow-y-auto px-6 pb-4 custom-scrollbar relative z-10 flex flex-col justify-start gap-6">
                      {/* Divider */}
-                    <div className="relative flex items-center justify-center py-2 opacity-50 shrink-0">
+                    <div className="relative flex items-center justify-center py-2 opacity-50 shrink-0 mt-4">
                         <div className="h-px bg-[#4a3b32] flex-1"></div>
                         <div className="px-3 text-[#8c7b70] font-serif text-[10px] font-bold tracking-widest uppercase">
                             Быстрый Старт ({config.targetSite || 'hh.ru'})
@@ -329,86 +336,163 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                         <div className="h-px bg-[#4a3b32] flex-1"></div>
                     </div>
 
-                    <div className="space-y-6 flex-1 flex flex-col justify-center">
-                        {/* Salary */}
-                        <div className="flex flex-col gap-2">
-                             <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">Минимальная Зарплата</label>
-                             <input 
+                    {/* Salary & Currency */}
+                    <div className="flex flex-col gap-2">
+                            <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">Минимальная Зарплата</label>
+                            <div className="flex gap-2 h-16">
+                            <input 
                                 type="number"
                                 value={config.minSalary !== undefined ? config.minSalary : 0}
                                 placeholder="0"
                                 onChange={(e) => handleSalaryChange(parseInt(e.target.value) || 0)}
-                                className="w-full h-16 bg-[#140c08] text-[#e7e5e4] font-mono text-3xl text-center outline-none border-2 border-[#3e2f26] rounded-2xl focus:border-[#d97706] transition-all shadow-[inset_0_2px_5px_black] placeholder-[#2a2018]"
-                             />
-                        </div>
-
-                        {/* Location */}
-                        <div className="flex flex-col gap-2 relative z-20" ref={locationRef}>
-                            <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">Где Искать</label>
-                            <div className="relative">
-                                <button 
-                                    onClick={() => setIsLocationOpen(!isLocationOpen)}
-                                    className="w-full h-16 flex items-center justify-between bg-[#0c0a08] border-2 border-[#3e2f26] rounded-2xl px-5 text-[#cdbba7] font-mono text-lg shadow-[inset_0_2px_5px_black] outline-none active:bg-[#1a120e] transition-all"
-                                >
-                                    <span className="truncate">{config.city || "Весь Мир (Global)"}</span>
-                                    <ChevronDown size={20} className={`text-[#d97706] transition-transform ${isLocationOpen ? 'rotate-180' : ''}`} />
-                                </button>
-                                {isLocationOpen && (
-                                    <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a120e] border border-[#4a3b32] rounded-2xl shadow-[0_10px_40px_black] overflow-hidden z-50">
-                                        {LOCATIONS.map((loc) => (
-                                            <button
-                                                key={loc.value}
-                                                onClick={() => handleLocationSelect(loc.value)}
-                                                className="w-full text-left px-5 py-4 text-[#a8a29e] hover:bg-[#2a1a0f] hover:text-[#d97706] font-mono text-base border-b border-[#292524] last:border-0 transition-colors"
-                                            >
-                                                {loc.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
+                                className="flex-1 bg-[#140c08] text-[#e7e5e4] font-mono text-3xl text-center outline-none border-2 border-[#3e2f26] rounded-2xl focus:border-[#d97706] transition-all shadow-[inset_0_2px_5px_black] placeholder-[#2a2018]"
+                            />
+                            <button 
+                                onClick={() => onConfigChange('currency', config.currency === 'RUB' ? 'USD' : 'RUB')}
+                                className="w-20 bg-[#1a120e] border-2 border-[#3e2f26] rounded-2xl text-[#cdbba7] font-bold font-serif text-lg hover:border-[#d97706] transition-all"
+                            >
+                                {config.currency || 'RUB'}
+                            </button>
                             </div>
+                    </div>
+
+                    {/* Location */}
+                    <div className="flex flex-col gap-2 relative z-20" ref={locationRef}>
+                        <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">Где Искать</label>
+                        <div className="relative">
+                            <button 
+                                onClick={() => setIsLocationOpen(!isLocationOpen)}
+                                className="w-full h-16 flex items-center justify-between bg-[#0c0a08] border-2 border-[#3e2f26] rounded-2xl px-5 text-[#cdbba7] font-mono text-lg shadow-[inset_0_2px_5px_black] outline-none active:bg-[#1a120e] transition-all"
+                            >
+                                <span className="truncate">{config.city || "Весь Мир (Global)"}</span>
+                                <ChevronDown size={20} className={`text-[#d97706] transition-transform ${isLocationOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {isLocationOpen && (
+                                <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a120e] border border-[#4a3b32] rounded-2xl shadow-[0_10px_40px_black] overflow-hidden z-50">
+                                    {LOCATIONS.map((loc) => (
+                                        <button
+                                            key={loc.value}
+                                            onClick={() => handleLocationSelect(loc.value)}
+                                            className="w-full text-left px-5 py-4 text-[#a8a29e] hover:bg-[#2a1a0f] hover:text-[#d97706] font-mono text-base border-b border-[#292524] last:border-0 transition-colors"
+                                        >
+                                            {loc.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Work Mode */}
+                    <div className="flex flex-col gap-2">
+                        <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">Режим</label>
+                        <div className="grid grid-cols-3 gap-3">
+                                {[WorkMode.REMOTE, WorkMode.HYBRID, WorkMode.OFFICE].map((mode) => {
+                                    const active = currentModes.includes(mode);
+                                    return (
+                                        <button 
+                                        key={mode}
+                                        onClick={() => toggleMode(mode)}
+                                        className={`relative h-14 border-2 bg-[#140f0c] shadow-[inset_0_0_5px_black] group overflow-hidden transition-all duration-200 active:scale-95 rounded-2xl flex items-center justify-center ${
+                                            active ? 'border-[#d97706] bg-[#2a1a0f]' : 'border-[#3e2f26]'
+                                        }`}
+                                        >
+                                        <div className="flex flex-col items-center gap-1 relative z-10">
+                                            {active && <div className="w-1.5 h-1.5 rounded-full bg-[#d97706] shadow-[0_0_5px_orange]"></div>}
+                                            <span className={`text-[10px] font-bold font-serif uppercase tracking-wider ${active ? 'text-[#d97706]' : 'text-[#4a3b32] group-hover:text-[#6b5548]'}`}>
+                                                {mode === 'REMOTE' ? 'Удаленно' : mode === 'HYBRID' ? 'Гибрид' : 'Офис'}
+                                            </span>
+                                        </div>
+                                        </button>
+                                    );
+                                })}
+                        </div>
+                    </div>
+
+                    {/* Cover Letter Section */}
+                    <div className="flex flex-col gap-3 pb-4">
+                        <div className="flex justify-between items-center">
+                            <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">Сопроводительное Письмо</label>
+                        </div>
+                        
+                        {/* Steampunk Switch / Tabs */}
+                        <div className="relative h-12 bg-[#0c0a08] rounded-xl border border-[#3e2f26] p-1 flex shadow-inner">
+                            <div 
+                                className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-[#2a1a0f] border border-[#d97706] rounded-lg transition-all duration-300 shadow-[0_0_10px_rgba(217,119,6,0.3)] ${
+                                    isAutoCoverLetter ? 'left-[calc(50%+2px)]' : 'left-1'
+                                }`}
+                            ></div>
+                            
+                            <button 
+                                onClick={() => handleCoverLetterModeSwitch('MANUAL')}
+                                className={`relative z-10 flex-1 flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider transition-colors ${
+                                    !isAutoCoverLetter ? 'text-[#d97706]' : 'text-[#57534e] hover:text-[#a8a29e]'
+                                }`}
+                            >
+                                <FileEdit size={14} />
+                                Ручной Шаблон
+                            </button>
+                            
+                            <button 
+                                onClick={() => handleCoverLetterModeSwitch('AUTO')}
+                                className={`relative z-10 flex-1 flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider transition-colors ${
+                                    isAutoCoverLetter ? 'text-[#d97706]' : 'text-[#57534e] hover:text-[#a8a29e]'
+                                }`}
+                            >
+                                <Sparkles size={14} />
+                                Авто-генерация
+                            </button>
                         </div>
 
-                        {/* Work Mode */}
-                        <div className="flex flex-col gap-2">
-                            <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">Режим</label>
-                            <div className="grid grid-cols-3 gap-3">
-                                 {[WorkMode.REMOTE, WorkMode.HYBRID, WorkMode.OFFICE].map((mode) => {
-                                     const active = currentModes.includes(mode);
-                                     return (
-                                         <button 
-                                            key={mode}
-                                            onClick={() => toggleMode(mode)}
-                                            className={`relative h-14 border-2 bg-[#140f0c] shadow-[inset_0_0_5px_black] group overflow-hidden transition-all duration-200 active:scale-95 rounded-2xl flex items-center justify-center ${
-                                                active ? 'border-[#d97706] bg-[#2a1a0f]' : 'border-[#3e2f26]'
-                                            }`}
-                                         >
-                                            <div className="flex flex-col items-center gap-1 relative z-10">
-                                                {active && <div className="w-1.5 h-1.5 rounded-full bg-[#d97706] shadow-[0_0_5px_orange]"></div>}
-                                                <span className={`text-[10px] font-bold font-serif uppercase tracking-wider ${active ? 'text-[#d97706]' : 'text-[#4a3b32] group-hover:text-[#6b5548]'}`}>
-                                                    {mode === 'REMOTE' ? 'Удаленно' : mode === 'HYBRID' ? 'Гибрид' : 'Офис'}
-                                                </span>
-                                            </div>
-                                         </button>
-                                     );
-                                 })}
+                        {/* Content Area */}
+                        <div className="relative min-h-[140px] overflow-hidden">
+                            {/* Manual Mode: Textarea */}
+                            <div className={`absolute inset-0 transition-all duration-500 transform ${
+                                !isAutoCoverLetter ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
+                            }`}>
+                                <textarea 
+                                    value={config.coverLetterTemplate || ''}
+                                    onChange={(e) => onConfigChange('coverLetterTemplate', e.target.value)}
+                                    className="w-full h-full bg-[#140c08] border-2 border-[#3e2f26] rounded-2xl p-4 text-[#e7e5e4] font-mono text-sm outline-none focus:border-[#d97706] shadow-inner resize-none custom-scrollbar placeholder-[#2a2018]"
+                                    placeholder="Здравствуйте! Меня заинтересовала вакансия..."
+                                />
+                            </div>
+
+                            {/* Auto Mode: Brain Icon */}
+                            <div className={`absolute inset-0 flex items-center justify-center transition-all duration-500 transform ${
+                                isAutoCoverLetter ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
+                            }`}>
+                                <div className="w-full h-full bg-[#140c08] border-2 border-[#2a1a0f] border-dashed rounded-2xl flex flex-col items-center justify-center gap-3">
+                                    <div className="relative">
+                                        <Brain size={48} className="text-[#d97706] animate-pulse" />
+                                        <PenTool size={24} className="absolute -bottom-1 -right-2 text-[#a8a29e] drop-shadow-md" />
+                                    </div>
+                                    <span className="text-[#57534e] font-mono text-xs uppercase tracking-widest text-center px-8">
+                                        Нейросеть составляет поэму о ваших талантах...
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* 4. FOOTER (Fixed) */}
+                {/* 4. FOOTER (Fixed) - PANEL BUTTON */}
                 <div className="shrink-0 relative p-6 bg-[#1a120e] border-t-2 border-[#3a2d25] shadow-inner z-30">
                     <button 
-                        onClick={onRun}
-                        className="w-full relative h-16 bg-gradient-to-b from-[#6b350f] to-[#451a03] border border-[#78350f] shadow-[0_5px_10px_black] active:shadow-none active:translate-y-1 transition-all group overflow-hidden rounded-2xl flex items-center justify-center gap-4"
+                        onClick={handleStartSearch} 
+                        disabled={!canStart}
+                        className={`w-full relative h-16 border shadow-[0_5px_10px_black] transition-all group overflow-hidden rounded-2xl flex items-center justify-center gap-4 ${
+                            canStart 
+                                ? 'bg-gradient-to-b from-[#6b350f] to-[#451a03] border-[#78350f] active:shadow-none active:translate-y-1 cursor-pointer' 
+                                : 'bg-[#292524] border-[#1c1917] opacity-60 cursor-not-allowed grayscale'
+                        }`}
                     >
                          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/wood-pattern.png')] opacity-20 mix-blend-overlay"></div>
-                         <div className="h-[2px] w-6 bg-[#d97706]/50"></div>
-                         <span className="relative z-10 font-serif font-black text-xl text-[#fcd34d] tracking-[0.15em] uppercase drop-shadow-md">
+                         <div className={`h-[2px] w-6 ${canStart ? 'bg-[#d97706]/50' : 'bg-[#57534e]/30'}`}></div>
+                         <span className={`relative z-10 font-serif font-black text-xl tracking-[0.15em] uppercase drop-shadow-md ${canStart ? 'text-[#fcd34d]' : 'text-[#78716c]'}`}>
                              Начать Поиск
                          </span>
-                         <div className="h-[2px] w-6 bg-[#d97706]/50"></div>
+                         <div className={`h-[2px] w-6 ${canStart ? 'bg-[#d97706]/50' : 'bg-[#57534e]/30'}`}></div>
                     </button>
                 </div>
             </div>
@@ -416,9 +500,9 @@ export const ModeSelectionScreen: React.FC<Props> = ({
 
         {/* --- ORB --- */}
         <div 
-            className={`fixed z-50 ease-in-out ${isReady ? 'transition-all duration-[1200ms]' : ''} ${
+            className={`fixed z-50 ease-in-out ${
                 isRelocated 
-                    ? "" 
+                    ? (videoPhase !== 'IDLE' ? "transition-all duration-[1200ms]" : "") 
                     : "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] sm:w-[360px] sm:h-[360px]"
             }`}
             style={isRelocated && orbDest ? {
@@ -431,16 +515,16 @@ export const ModeSelectionScreen: React.FC<Props> = ({
         >
             <Atropos activeOffset={10} shadowScale={0.5} className="w-full h-full rounded-full">
                 <div 
-                    className={`relative w-full h-full rounded-full bg-[#1a120e] shadow-[0_20px_60px_rgba(0,0,0,0.9)] flex items-center justify-center overflow-hidden border-[#2e1d15] ease-in-out ${isReady ? 'transition-all duration-[1200ms]' : ''} ${
-                        isRelocated ? "border-[3px]" : "border-[15px]"
+                    className={`relative w-full h-full rounded-full bg-[#1a120e] shadow-[0_20px_60px_rgba(0,0,0,0.9)] flex items-center justify-center overflow-hidden border-[#2e1d15] ease-in-out ${
+                        isRelocated ? (videoPhase !== 'IDLE' ? "transition-all duration-[1200ms]" : "") + " border-[3px]" : "border-[15px]"
                     }`}
                 >
-                    <div className={`absolute inset-0 border-[#b45309] rounded-full opacity-80 pointer-events-none z-50 shadow-[inset_0_0_15px_rgba(0,0,0,0.8)] ease-in-out ${isReady ? 'transition-all duration-[1200ms]' : ''} ${
-                        isRelocated ? "border-[2px]" : "border-[4px]"
+                    <div className={`absolute inset-0 border-[#b45309] rounded-full opacity-80 pointer-events-none z-50 shadow-[inset_0_0_15px_rgba(0,0,0,0.8)] ease-in-out ${
+                        isRelocated ? (videoPhase !== 'IDLE' ? "transition-all duration-[1200ms]" : "") + " border-[2px]" : "border-[4px]"
                     }`}></div>
                     
-                    <div className={`absolute rounded-full bg-black shadow-[inset_0_10px_30px_rgba(255,255,255,0.05)] overflow-hidden isolate z-10 ease-in-out ${isReady ? 'transition-all duration-[1200ms]' : ''} ${
-                        isRelocated ? "inset-0.5" : "inset-4"
+                    <div className={`absolute rounded-full bg-black shadow-[inset_0_10px_30px_rgba(255,255,255,0.05)] overflow-hidden isolate z-10 ease-in-out ${
+                        isRelocated ? (videoPhase !== 'IDLE' ? "transition-all duration-[1200ms]" : "") + " inset-0.5" : "inset-4"
                     }`}>
                         <img 
                             src="https://raw.githubusercontent.com/sauah666/WDYGAJ/678f874bb628e15ef6eea7b2ed1c4b2228d204b6/valera.png"
@@ -471,8 +555,8 @@ export const ModeSelectionScreen: React.FC<Props> = ({
         {/* --- BUTTONS --- */}
         {/* Settings: Top Right */}
         <div 
-            className={`fixed top-6 right-6 z-50 ease-out flex items-center justify-center ${isReady ? 'transition-all duration-[1200ms]' : ''} ${
-                isRelocated ? 'opacity-0 -translate-y-20 pointer-events-none' : 'opacity-100 translate-y-0'
+            className={`fixed top-6 right-6 z-50 ease-out flex items-center justify-center ${
+                isRelocated ? 'opacity-0 -translate-y-20 pointer-events-none transition-all duration-[1200ms]' : 'opacity-100 translate-y-0'
             }`}
         >
             <button 
@@ -485,14 +569,14 @@ export const ModeSelectionScreen: React.FC<Props> = ({
             </button>
         </div>
 
-        {/* Call Button: Bottom Center */}
+        {/* Call Button (Wake Up): Bottom Center */}
         <div 
-            className={`fixed bottom-10 left-1/2 -translate-x-1/2 z-30 ease-out flex items-center justify-center ${isReady ? 'transition-all duration-[1200ms]' : ''} ${
-                isRelocated ? 'opacity-0 translate-y-20 pointer-events-none scale-50' : 'opacity-100 translate-y-0 scale-100'
+            className={`fixed bottom-10 left-1/2 -translate-x-1/2 z-30 ease-out flex items-center justify-center ${
+                isRelocated ? 'opacity-0 translate-y-20 pointer-events-none scale-50 transition-all duration-[1200ms]' : 'opacity-100 translate-y-0 scale-100'
             }`}
         >
             <button 
-                onClick={handleCall}
+                onClick={handleWakeUp}
                 disabled={isPlaying}
                 className={`group relative w-24 h-24 transition-all duration-200 ease-out flex items-center justify-center ${isPlaying ? 'scale-95' : 'active:scale-95'}`}
             >

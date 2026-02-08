@@ -1,13 +1,13 @@
 
 # Developer Context (Save Game)
 
-**Last Updated**: Step 59 (Final Audit & Serialization)
+**Last Updated**: Step 71 (Final Re-Audit & Sync)
 **Role**: Senior Agent Architect
 **Manifesto**: See `docs/PROJECT_DOCUMENTATION.md` (Rule D-01)
 
-## Status: Release Candidate 1.1 (READY FOR HANDOVER)
+## Status: Release Candidate 1.3 (FINAL)
 
-The system is fully functional in **Mock Mode**, architecturally validated, and documented. The UI has been upgraded to the "Retrofuturistic Videophone" standard.
+The system is fully functional in **Mock Mode**, architecturally validated, and documented. The UI has been upgraded to the "Retrofuturistic Videophone" standard with advanced input controls.
 
 ---
 
@@ -18,7 +18,7 @@ The system is fully functional in **Mock Mode**, architecturally validated, and 
 #### Mode A: Mock (Simulation) - **DEFAULT**
 *   **Use Case**: Development, UI testing, Flow verification.
 *   **Requires**: Nothing.
-*   **Behavior**: Browser actions are simulated (`MockBrowserAdapter`), LLM answers are hardcoded (`MockLLMAdapter`), Vacancies are generated (50 items/batch).
+*   **Behavior**: Browser actions are simulated (`MockBrowserAdapter`), LLM answers are hardcoded (`MockLLMAdapter`), Vacancies are generated (15 items/batch default).
 *   **Config**: `activeLLMProviderId: 'mock'`, `browserProvider: 'mock'`.
 
 #### Mode B: Real Cloud LLM (Gemini/OpenAI)
@@ -52,9 +52,9 @@ The system is fully functional in **Mock Mode**, architecturally validated, and 
 *   `adapters/browser/mock.browser.adapter.ts`: **The Matrix**. Simulates the external web. **Edit this to change the mock vacancy data**.
 
 ### 🎨 Presentation (UI)
-*   `presentation/screens/ModeSelectionScreen.tsx`: **The Face**. The main Videophone interface. Contains the Orb logic and dashboard inputs.
+*   `presentation/screens/ModeSelectionScreen.tsx`: **The Face**. The main Videophone interface. Contains the Orb logic, dashboard inputs, and the **Steampunk Toggle Switch** for Cover Letters.
 *   `presentation/components/BrowserViewport.tsx`: **The Eyes**. Visualizes the "Scanning" process. Contains the CRT effects and auto-scroll logic.
-*   `presentation/services/JokeService.ts`: **The Soul**. Contains the text generation logic for "Valera".
+*   `presentation/services/JokeService.ts`: **The Soul**. Contains the text generation logic for "Valera", including new categories `CL_MANUAL` and `CL_AUTO`.
 
 ---
 

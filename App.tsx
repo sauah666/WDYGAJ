@@ -16,7 +16,6 @@ import { DEFAULT_LLM_PROVIDER, LLMProviderRegistry } from './core/domain/llm_reg
 // Screens
 import { ModeSelectionScreen } from './presentation/screens/ModeSelectionScreen';
 import { SettingsScreen } from './presentation/screens/SettingsScreen';
-import { JobPreferencesScreen } from './presentation/screens/JobPreferencesScreen'; 
 import { AgentStatusScreen } from './presentation/screens/AgentStatusScreen';
 
 // Core singleton for storage (always local)
@@ -92,6 +91,7 @@ agentPresenter.setUseCase(agentUseCase);
 export default function App() {
   const [route, setRoute] = useState<AppRoute>(AppRoute.MODE_SELECTION);
   const [lastRoute, setLastRoute] = useState<AppRoute>(AppRoute.MODE_SELECTION); 
+  const [skipIntro, setSkipIntro] = useState(false); // Controls videophone animation state
   
   const [config, setConfig] = useState<Partial<AgentConfig>>({
     mode: 'JOB_SEARCH',
@@ -161,12 +161,13 @@ export default function App() {
 
   const handleNavigate = (target: string) => {
       if (target === 'MODE_SELECTION') {
+          // Normal navigation to dashboard doesn't skip intro (unless we want it to?)
+          // Let's keep it consistent: manual nav = no skip (show idle). 
+          setSkipIntro(false);
           setRoute(AppRoute.MODE_SELECTION);
       } else if (target === 'SETTINGS') {
           setLastRoute(route);
           setRoute(AppRoute.SETTINGS);
-      } else if (target === 'JOB_PREFERENCES') {
-          setRoute(AppRoute.JOB_PREFERENCES);
       }
   };
 
@@ -175,9 +176,8 @@ export default function App() {
       setRoute(AppRoute.SETTINGS);
   };
 
-  // Navigates directly to Job Preferences (Advanced Setup)
   const handleAdvancedSetup = () => {
-    setRoute(AppRoute.JOB_PREFERENCES);
+    console.log("Advanced setup deprecated");
   };
 
   const handleSystemConfigSave = async () => {
@@ -190,6 +190,7 @@ export default function App() {
           agentPresenter.setConfig(config); 
           
           alert("Configuration Saved."); 
+          setSkipIntro(true); // Return to settings state, not idle
           setRoute(AppRoute.MODE_SELECTION); 
       } else {
           alert("Configuration Error. " + validation.issues[0].message);
@@ -209,9 +210,12 @@ export default function App() {
 
   const handleStop = () => agentPresenter.cancelSequence(agentState);
   const handleConfirmLogin = () => agentPresenter.confirmLogin(agentState);
+  
   const handleReset = async () => {
       await agentPresenter.resetSession(agentState);
-      setRoute(AppRoute.JOB_PREFERENCES);
+      // When resetting, we want to go straight to the "Search Settings" view (Panel Open)
+      setSkipIntro(true);
+      setRoute(AppRoute.MODE_SELECTION);
   };
   
   const handlePause = () => {
@@ -235,17 +239,8 @@ export default function App() {
                   onNavigate={handleNavigate}
                   appliedHistory={agentState.appliedHistory}
                   onWipeMemory={handleWipeWrapper}
+                  skipIntro={skipIntro}
                />;
-      break;
-    case AppRoute.JOB_PREFERENCES:
-      screen = <JobPreferencesScreen 
-        config={config} 
-        onChange={(k, v) => setConfig(prev => ({ ...prev, [k]: v }))}
-        onRun={handleLaunchAgent}
-        onBack={() => setRoute(AppRoute.MODE_SELECTION)}
-        onSettingsClick={handleGlobalSettingsOpen}
-        onNavigate={handleNavigate}
-      />;
       break;
     case AppRoute.SETTINGS:
       screen = <SettingsScreen 
@@ -283,6 +278,7 @@ export default function App() {
                   onNavigate={handleNavigate}
                   appliedHistory={agentState.appliedHistory}
                   onWipeMemory={handleWipeWrapper}
+                  skipIntro={skipIntro}
                />;
   }
 

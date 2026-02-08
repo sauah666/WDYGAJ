@@ -54,7 +54,7 @@ The interface of **AgentSeeker** (aka "Кузница Кадров") is designed
 ### 5. Atmospherics (Three.js)
 *   **Component**: `SteamEngineBackground` in `Layout.tsx`.
 *   **Effect**: A 3D wireframe steam engine rotates slowly in the background, overlaid with fog and ambient lighting.
-*   **Interaction**: Reacts subtly to mouse movement/window resize.
+*   **Interaction**: Responds to window resize events.
 *   **Tech**: Renders to a dedicated canvas layer behind the main UI, ensuring the "industrial" feel permeates every screen.
 
 ---
@@ -66,9 +66,15 @@ The interface of **AgentSeeker** (aka "Кузница Кадров") is designed
 2.  **Parameters**: User adjusts the "Control Panel" directly on the device:
     *   **Salary**: Numeric input with joke feedback.
     *   **Location**: Dropdown selector.
-    *   **Mode**: Toggles for Remote/Hybrid/Office.
+    *   **Mode**: Toggles for Remote/Hybrid/Office. At least one must be selected.
     *   **Details**: Expandable section for Cover Letter.
-3.  **Call**: User presses the large **"СВЯЗЬ"** (Call) button or **"Начать Поиск"**.
+3.  **Letter Configuration (Steampunk Toggle)**:
+    *   User toggles the **Manual/Auto Switch** (styled as a mechanical slider).
+    *   **Manual Mode (Left)**: A textarea *slides down* into view. User pastes their template.
+    *   **Auto Mode (Right)**: The textarea *slides up/vanishes* and is replaced by a **"Brain Writing" Animation** (Pulsing Brain + Pen Tool), indicating the Agent will generate the text dynamically per vacancy.
+4.  **Validation**:
+    *   The **"Начать Поиск"** button remains visually disabled (gray/faded) until a Work Mode is selected AND (Cover Letter provided OR Auto-Gen enabled).
+5.  **Call**: User presses the active button.
     *   *Result*: "Valera" transitions to the corner, the Browser Viewport opens, and the agent begins the `hh.ru` loop.
 
 ### Flow B: Advanced Setup

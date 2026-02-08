@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import Atropos from 'atropos/react';
 import { Layout } from '../components/Layout';
@@ -53,6 +54,7 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
       return () => cancelAnimationFrame(frameId);
   }, [agentMessage]);
 
+  // Panel Animation Only
   useEffect(() => {
     const timer = setTimeout(() => setShowPanel(true), 100);
     return () => clearTimeout(timer);
@@ -73,9 +75,10 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
   useLayoutEffect(() => {
       updateOrbTarget();
       window.addEventListener('resize', updateOrbTarget);
-      if (showPanel) setTimeout(updateOrbTarget, 100);
+      // Immediate update to ensure no jump
+      if (avatarRef.current) updateOrbTarget();
       return () => window.removeEventListener('resize', updateOrbTarget);
-  }, [showPanel]);
+  }, []); // Run once on mount
 
   const handleProviderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
       const val = e.target.value;
@@ -143,7 +146,7 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
                         <ArrowLeft size={24} />
                     </button>
                     <h2 className="relative z-10 font-serif font-bold text-xl text-[#cdbba7] tracking-widest uppercase text-shadow-md">
-                        Нейроядро
+                        Настройки
                     </h2>
                     <div className="w-8"></div> 
                 </div>
@@ -168,16 +171,17 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
 
                 {/* 3. SETTINGS CONTENT (Maximized) */}
                 <div className="flex-1 overflow-y-auto px-6 pb-4 custom-scrollbar relative z-10 flex flex-col">
-                    {/* Divider */}
+                    
+                    {/* SECTION: SYSTEM */}
                     <div className="relative flex items-center justify-center py-4 opacity-50 shrink-0">
                         <div className="h-px bg-[#4a3b32] flex-1"></div>
                         <div className="px-3 text-[#8c7b70] font-serif text-[10px] font-bold tracking-widest uppercase flex items-center gap-2">
-                            <Cpu size={12} /> Конфигурация
+                            <Cpu size={12} /> Нейроядро
                         </div>
                         <div className="h-px bg-[#4a3b32] flex-1"></div>
                     </div>
 
-                    <div className="space-y-6 flex-1 flex flex-col justify-center">
+                    <div className="space-y-6">
                         {/* LLM Provider */}
                         <div className="flex flex-col gap-2">
                              <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">Модель Интеллекта</label>
@@ -227,15 +231,16 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
                                     </div>
                                 </div>
                             )}
-                            
-                            {/* Reset */}
-                            <div className="pt-4 flex justify-center border-t border-[#3e2f26]/30 mt-2">
-                                <button onClick={handleReset} className="text-[10px] text-[#57534e] hover:text-[#b91c1c] uppercase tracking-widest flex items-center gap-2 transition-colors border-b border-transparent hover:border-[#b91c1c] pb-1">
-                                    <RotateCcw size={12} /> Сброс Настроек
-                                </button>
-                            </div>
                         </div>
                     </div>
+
+                    {/* Reset */}
+                    <div className="pt-8 flex justify-center border-t border-[#3e2f26]/30 mt-6 mb-4">
+                        <button onClick={handleReset} className="text-[10px] text-[#57534e] hover:text-[#b91c1c] uppercase tracking-widest flex items-center gap-2 transition-colors border-b border-transparent hover:border-[#b91c1c] pb-1">
+                            <RotateCcw size={12} /> Сброс Настроек
+                        </button>
+                    </div>
+
                 </div>
 
                 {/* 4. FOOTER */}
@@ -257,14 +262,10 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
             </div>
         </div>
 
-        {/* --- ORB --- */}
+        {/* --- ORB (FIXED STATIC) --- */}
         <div 
-            className={`fixed z-50 ease-in-out transition-all duration-[800ms] ${
-                showPanel && orbDest
-                    ? "" 
-                    : "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px]"
-            }`}
-            style={showPanel && orbDest ? {
+            className={`fixed z-50 ${orbDest ? 'opacity-100' : 'opacity-0'}`}
+            style={orbDest ? {
                 top: orbDest.top,
                 left: orbDest.left,
                 width: orbDest.width,
@@ -274,17 +275,11 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
         >
             <Atropos activeOffset={10} shadowScale={0.5} className="w-full h-full rounded-full">
                 <div 
-                    className={`relative w-full h-full rounded-full bg-[#1a120e] shadow-[0_20px_60px_rgba(0,0,0,0.9)] flex items-center justify-center overflow-hidden border-[#2e1d15] ease-in-out transition-all duration-[800ms] ${
-                        showPanel ? "border-[3px]" : "border-[15px]"
-                    }`}
+                    className="relative w-full h-full rounded-full bg-[#1a120e] shadow-[0_20px_60px_rgba(0,0,0,0.9)] flex items-center justify-center overflow-hidden border-[#2e1d15] border-[3px]"
                 >
-                    <div className={`absolute inset-0 border-[#b45309] rounded-full opacity-80 pointer-events-none z-50 shadow-[inset_0_0_15px_rgba(0,0,0,0.8)] ease-in-out transition-all duration-[800ms] ${
-                        showPanel ? "border-[2px]" : "border-[4px]"
-                    }`}></div>
+                    <div className="absolute inset-0 border-[#b45309] rounded-full opacity-80 pointer-events-none z-50 shadow-[inset_0_0_15px_rgba(0,0,0,0.8)] border-[2px]"></div>
                     
-                    <div className={`absolute rounded-full bg-black shadow-[inset_0_10px_30px_rgba(255,255,255,0.05)] overflow-hidden isolate z-10 ease-in-out transition-all duration-[800ms] ${
-                        showPanel ? "inset-0.5" : "inset-4"
-                    }`}>
+                    <div className="absolute rounded-full bg-black shadow-[inset_0_10px_30px_rgba(255,255,255,0.05)] overflow-hidden isolate z-10 inset-0.5">
                         <video 
                             ref={loopVideoRef}
                             src={LOOP_VIDEO}

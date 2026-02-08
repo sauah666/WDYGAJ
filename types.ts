@@ -133,7 +133,6 @@ export enum HumanGateSignal {
 export enum AppRoute {
   MODE_SELECTION = 'MODE_SELECTION',
   SITE_SELECTION = 'SITE_SELECTION',
-  JOB_PREFERENCES = 'JOB_PREFERENCES', // New Route
   SETTINGS = 'SETTINGS',
   AGENT_RUNNER = 'AGENT_RUNNER'
 }
@@ -166,4 +165,5 @@ export interface AgentConfig {
   targetLanguages?: string[];
   // User Templates
   coverLetterTemplate?: string;
+  autoCoverLetter?: boolean; // New in Phase H
 }

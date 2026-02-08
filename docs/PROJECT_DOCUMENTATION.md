@@ -48,6 +48,9 @@
 - [x] H3: Advanced Flow Control (Pause, Stop, Amnesia).
 - [x] H4: Documentation Audit (Complete).
 - [x] H5: Videophone Interface & Visual Scanning.
+- [x] H6: Input Validation & Auto-Cover Letter (New).
+- [x] H7: Steampunk Toggle & Joke Expansion (New).
+- [x] H8: Final Integrity Re-Audit (DONE - Step 71).
 
 ## Runtime Governance
 - **Adapter Safety**: Browser bundles use Mock/Remote adapters. Playwright is Node-only.
@@ -58,7 +61,11 @@
 - Execution blocked if batch size < 5 (soft limit), unless `endOfResults` is flagged.
 
 ## Current Status
-**Release Candidate 1.1**
+**Release Candidate 1.3 (Validated)**
 - Architecture is fully audited.
 - UI/UX implements the "Retrofuturistic Videophone" concept.
-- Documentation is 100% compliant with the codebase.
+- **Input Validation**: Search blocked until Work Mode is selected and Cover Letter is configured.
+- **Auto-Cover Letter**: Steampunk toggle switch implemented. "Manual" mode shows textarea, "Auto" mode shows "Brain Writing" visualization.
+- **Deep Lore**: Added 100 new jokes covering Manual vs Auto generation scenarios.
+- **State Management**: Fixed Videophone intro loops; "Reset" now correctly skips intro animation.
+- Documentation is 100% compliant with the codebase (checked at Step 71).
