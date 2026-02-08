@@ -2,7 +2,7 @@
 # Dev Log Notes & Handover Manifesto
 
 **Date**: 06.02.2026
-**Author**: Senior Agent Architect (Release Candidate 1.3)
+**Author**: Senior Agent Architect (Release Candidate 1.4)
 **Status**: CRITICAL ARCHITECTURAL AUDIT & HANDOVER
 
 ---
@@ -116,24 +116,17 @@ Since the original audit, several UX issues were resolved to improve the "Game F
 
 ---
 
-## 7. Final System Audit (Step 70)
+## 7. The Visual Overhaul (Steps 100-108)
 
-**Date**: 06.02.2026 
-**Target**: Release Candidate 1.3 Codebase
+To align with the "Dieselpunk" aesthetic requested by stakeholders, a massive UI redesign was undertaken.
 
-A complete re-verification of the codebase against documentation was performed to ensure consistency after recent UI enhancements.
+### 7.1. Steampunk Tablet Layout
+*   **Refactor**: `ModeSelectionScreen.tsx` was rewritten to render a vertical, tablet-like chassis.
+*   **Details**: Added top-mounted Gauge (Pressure) and LED Display (Application Count). Added bottom-mounted Vacuum Tubes (Orange/Green) reacting to form state.
 
-*   **Design & UX**: `DESIGN_AND_UX.md` has been updated to explicitly describe the "Slide/Swap" animation mechanism for the Cover Letter configuration, ensuring future frontend engineers understand the `slide-down` CSS class usage in `ModeSelectionScreen`.
-*   **Entities**: `AgentConfig` in `types.ts` correctly reflects the `autoCoverLetter` boolean property.
-*   **Services**: `JokeService` population (`CL_MANUAL` / `CL_AUTO`) verified against `DEV_LOG_NOTES`.
-*   **Status**: **PASSED**. The project documentation is now 100% synchronous with the implementation state (RC 1.3).
+### 7.2. Button Redesign
+*   **Call Button**: Redesigned as a convex glass lens with a heavy brass rim. Position moved vertically to align with background chassis art.
+*   **Settings Button**: Redesigned as an inset brass gear.
 
-## 7.1. The Re-Audit (Step 71)
-
-A secondary audit revealed a drift in `DEV_CONTEXT.md` where the "Last Updated" field lagged behind the actual progress.
-
-*   **Fix**: Updated `DEV_CONTEXT.md` to point to Step 71.
-*   **Verification**: All documentation files (`PROJECT_DOCUMENTATION`, `DEV_CONTEXT`, `DEV_LOG_NOTES`, `DESIGN_AND_UX`) now share the same version timestamp.
-*   **Code Integrity**: Confirmed no regression in `ModeSelectionScreen` or `JokeService` during the documentation sync.
-
-*End of Log.*
+### 7.3. Cinematic Immersion
+*   **Code Rain**: Implemented a "Code Rain" video overlay that triggers specifically during the "Wake Up" sequence, enhancing the transition between the Tablet and the Agent Runner.

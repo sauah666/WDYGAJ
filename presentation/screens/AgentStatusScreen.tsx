@@ -1,13 +1,14 @@
 
 import React, { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import Atropos from 'atropos/react';
-import { Play, Pause, Square, RotateCcw, ArrowLeft, ScrollText, X, Check, FileText, Brain } from 'lucide-react';
+import { Play, Pause, Square, RotateCcw, ArrowLeft, ScrollText, X, Check, FileText, Brain, Cpu, Crosshair } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { AgentStatus, AppRoute } from '../../types';
 import { AgentState } from '../../core/domain/entities';
 import { BrowserViewport } from '../components/BrowserViewport';
 import { VacancyHistoryOverlay } from '../components/VacancyHistoryOverlay';
 import { JokeService } from '../services/JokeService';
+import { BrowserPort } from '../../core/ports/browser.port';
 
 interface Props {
   state: AgentState;
@@ -22,9 +23,11 @@ interface Props {
   onNavigate?: (route: string) => void;
   isMock: boolean;
   onWipeMemory?: () => void; 
+  browserAdapter?: BrowserPort; // New prop for screenshot access
 }
 
 const LOOP_VIDEO = "https://raw.githubusercontent.com/sauah666/WDYGAJ/98771fc49589081d334b431a618452b72c0c450e/valera_idle_merged.mp4";
+const STANDBY_VIDEO = "https://raw.githubusercontent.com/sauah666/WDYGAJ/e3e1c61224d4c30fb39e8a939df0f4d6a304a908/please_standby.mp4";
 
 export const AgentStatusScreen: React.FC<Props> = ({ 
   state, 
@@ -34,12 +37,14 @@ export const AgentStatusScreen: React.FC<Props> = ({
   onPause,
   onResume,
   onNavigate,
-  isMock
+  isMock,
+  browserAdapter
 }) => {
   const [showPanel, setShowPanel] = useState(false);
   const [showLogsOverlay, setShowLogsOverlay] = useState(false);
   const [showSummaryOverlay, setShowSummaryOverlay] = useState(false); 
   const [showAmnesiaConfirm, setShowAmnesiaConfirm] = useState(false);
+  const [isOrbExpanded, setIsOrbExpanded] = useState(false); // NEW: Expansion State
   
   // Custom navigation within viewport
   const [overrideUrl, setOverrideUrl] = useState<string | null>(null);
@@ -52,6 +57,15 @@ export const AgentStatusScreen: React.FC<Props> = ({
   const avatarRef = useRef<HTMLDivElement>(null);
   const loopVideoRef = useRef<HTMLVideoElement>(null);
   const [orbDest, setOrbDest] = useState<{top: number, left: number, width: number, height: number} | null>(null);
+
+  // Status Check for LLM Activity
+  const isLLMActive = [
+      AgentStatus.ANALYZING_PROFILE,
+      AgentStatus.ANALYZING_SEARCH_UI,
+      AgentStatus.LLM_SCREENING_IN_PROGRESS,
+      AgentStatus.EVALUATING_CANDIDATES,
+      AgentStatus.GENERATING_QUESTIONNAIRE_ANSWERS
+  ].includes(state.status);
 
   // Sync Logs to Message Box
   useEffect(() => {
@@ -147,6 +161,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
   const handleWipeMemory = () => {
       window.dispatchEvent(new CustomEvent('AGENT_WIPE_MEMORY'));
       setShowAmnesiaConfirm(false);
+      setIsOrbExpanded(false);
   };
 
   const handleVisitVacancy = (url: string) => {
@@ -154,7 +169,39 @@ export const AgentStatusScreen: React.FC<Props> = ({
       setShowSummaryOverlay(false);
   };
 
+  const handleOrbClick = () => {
+      setIsOrbExpanded(true);
+  };
+
+  const handleOrbClose = () => {
+      setIsOrbExpanded(false);
+  };
+
   const isCompleted = state.status === AgentStatus.COMPLETED;
+
+  // Determine Orb Style
+  let orbStyle: React.CSSProperties = {};
+  let orbClasses = "";
+
+  if (isOrbExpanded) {
+      orbClasses = "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] h-[350px] md:w-[500px] md:h-[500px] z-[60] transition-all duration-500 ease-out";
+  } else if (orbDest) {
+      orbStyle = {
+          top: orbDest.top,
+          left: orbDest.left,
+          width: orbDest.width,
+          height: orbDest.height,
+          transform: 'none'
+      };
+      orbClasses = "fixed z-50 transition-all duration-[1200ms] ease-in-out cursor-pointer hover:brightness-110";
+  } else {
+      orbClasses = "fixed opacity-0 pointer-events-none"; // Fallback if no dest
+  }
+
+  // Current Role Display
+  const currentRole = state.activeTargetingSpec 
+      ? [...state.activeTargetingSpec.targetRoles.ruTitles, ...state.activeTargetingSpec.targetRoles.enTitles][state.currentRoleIndex || 0] 
+      : "Не определено";
 
   return (
     <Layout title="" hideSidebar={true} onSettingsClick={() => {}} onNavigate={onNavigate}>
@@ -167,11 +214,25 @@ export const AgentStatusScreen: React.FC<Props> = ({
             animation: switchOn 0.5s ease-out forwards;
         }
         @keyframes blink { 50% { opacity: 0; } }
+        @keyframes fluoresce {
+            0% { box-shadow: 0 0 10px #8b5cf6, inset 0 0 10px #8b5cf6; }
+            50% { box-shadow: 0 0 40px #8b5cf6, inset 0 0 20px #8b5cf6; border-color: #a78bfa; }
+            100% { box-shadow: 0 0 10px #8b5cf6, inset 0 0 10px #8b5cf6; }
+        }
+        .animate-fluoresce {
+            animation: fluoresce 2s infinite ease-in-out;
+        }
       `}</style>
+
+      {/* BACKDROP FOR EXPANDED ORB */}
+      <div 
+          className={`fixed inset-0 bg-black/80 backdrop-blur-sm z-[55] transition-opacity duration-500 ${isOrbExpanded ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+          onClick={handleOrbClose}
+      ></div>
 
       {/* AMNESIA CONFIRM OVERLAY */}
       {showAmnesiaConfirm && (
-          <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center animate-switch-on p-4">
+          <div className="absolute inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center animate-switch-on p-4">
               <div className="bg-[#1a120e] border-[3px] border-[#b91c1c] rounded-2xl p-8 max-w-sm w-full shadow-[0_0_50px_rgba(185,28,28,0.5)] flex flex-col items-center text-center">
                   <Brain size={48} className="text-[#ef4444] mb-4 animate-pulse" />
                   <h3 className="text-xl font-bold text-[#fca5a5] uppercase tracking-widest mb-2 font-sans">Режим Амнезии</h3>
@@ -180,7 +241,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                   </p>
                   <div className="flex gap-4 w-full">
                       <button 
-                          onClick={() => setShowAmnesiaConfirm(false)}
+                          onClick={() => { setShowAmnesiaConfirm(false); setIsOrbExpanded(false); }}
                           className="flex-1 py-3 border border-[#44403c] rounded-xl hover:bg-[#292524] text-[#a8a29e] font-bold font-sans"
                       >
                           Отмена
@@ -196,9 +257,9 @@ export const AgentStatusScreen: React.FC<Props> = ({
           </div>
       )}
 
-      {/* LOG OVERLAY */}
+      {/* LOG OVERLAY - High Z-Index to stay on top */}
       {showLogsOverlay && (
-          <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-switch-on">
+          <div className="absolute inset-0 z-[80] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-switch-on">
               <div className="w-full max-w-4xl h-[90%] bg-[#1a120e] border-[3px] border-[#4a3b32] shadow-[0_0_50px_black] rounded-2xl flex flex-col overflow-hidden">
                   <div className="shrink-0 h-16 bg-[#0c0a08] border-b border-[#3a2d25] flex items-center justify-between px-6">
                       <h2 className="text-xl font-bold text-[#e7e5e4] tracking-widest uppercase font-sans">
@@ -229,6 +290,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
           <VacancyHistoryOverlay 
               title="Отчет о Работе"
               items={state.appliedHistory}
+              tokenLedger={state.tokenLedger} // PASS LEDGER
               onClose={() => setShowSummaryOverlay(false)}
               onReset={onReset}
               onVisit={handleVisitVacancy}
@@ -253,18 +315,9 @@ export const AgentStatusScreen: React.FC<Props> = ({
                     <div className="flex items-center gap-2">
                         <button 
                             onClick={() => onNavigate?.(AppRoute.MODE_SELECTION)} 
-                            className="text-[#78716c] hover:text-[#d97706] transition-colors p-2 rounded-full hover:bg-[#2a2018]"
+                            className="text-[#78716c] hover:text-[#d97706] transition-colors p-2 rounded-full hover:bg-[#2a2018] pointer-events-auto"
                         >
                             <ArrowLeft size={24} />
-                        </button>
-                        
-                        {/* AMNESIA BUTTON */}
-                        <button 
-                            onClick={() => setShowAmnesiaConfirm(true)}
-                            className="text-[#7f1d1d] hover:text-[#ef4444] transition-colors p-2 rounded-full hover:bg-[#2a1a0f] relative group"
-                            title="Сброс памяти"
-                        >
-                            <Brain size={22} />
                         </button>
                     </div>
                     
@@ -274,7 +327,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                     
                     <button 
                         onClick={handleOpenLogs} 
-                        className="text-[#78716c] hover:text-[#d97706] transition-colors p-2 rounded-full hover:bg-[#2a2018]"
+                        className="text-[#78716c] hover:text-[#d97706] transition-colors p-2 rounded-full hover:bg-[#2a2018] pointer-events-auto"
                         title="Полный Журнал"
                     >
                         <ScrollText size={22} />
@@ -283,7 +336,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
 
                 {/* 2. ORB ROW (Status & Logs) */}
                 <div className="shrink-0 p-4 pb-2 bg-[#2a2420] z-20 relative">
-                    <div className="flex gap-4 items-stretch h-28">
+                    <div className="flex gap-4 items-stretch h-28 relative">
                         {/* Avatar Placeholder */}
                         <div ref={avatarRef} className="w-28 shrink-0 relative opacity-0"></div>
 
@@ -305,8 +358,22 @@ export const AgentStatusScreen: React.FC<Props> = ({
                     </div>
                 </div>
 
+                {/* 2.5. INFO BAR (Tokens & Strategy) */}
+                <div className="shrink-0 px-4 pb-2 flex justify-between gap-2 z-20 pointer-events-auto text-[10px] font-mono text-[#78716c]">
+                    <div className="flex items-center gap-1 bg-[#1a120e] px-2 py-1 rounded border border-[#3a2d25]">
+                        <Cpu size={12} className={isLLMActive ? "text-purple-400 animate-pulse" : ""} />
+                        <span>LLM: {state.tokenLedger.calls} Calls</span>
+                        <span className="text-[#57534e]">|</span>
+                        <span>TK: {state.tokenLedger.inputTokens + state.tokenLedger.outputTokens}</span>
+                    </div>
+                    <div className="flex items-center gap-1 bg-[#1a120e] px-2 py-1 rounded border border-[#3a2d25] truncate max-w-[50%]">
+                        <Crosshair size={12} />
+                        <span className="truncate" title={currentRole}>{currentRole}</span>
+                    </div>
+                </div>
+
                 {/* 3. BROWSER VIEWPORT (Main Content) */}
-                <div className="flex-1 overflow-hidden px-4 pb-2 relative z-10 flex flex-col">
+                <div className="flex-1 overflow-hidden px-4 pb-2 relative z-10 flex flex-col pointer-events-auto">
                     <div className="flex-1 border-[3px] border-[#1c1917] rounded-lg overflow-hidden bg-black shadow-inner relative">
                         <BrowserViewport 
                             url={overrideUrl || state.currentUrl || 'about:blank'}
@@ -316,6 +383,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                             activeSearchPrefs={state.activeSearchPrefs}
                             activeVacancyBatch={state.activeVacancyBatch}
                             activePrefilterBatch={state.activePrefilterBatch}
+                            browserAdapter={browserAdapter}
                         />
                         {/* CRT Effects */}
                         <div className="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-20 bg-[length:100%_2px,3px_100%] pointer-events-none opacity-20"></div>
@@ -324,7 +392,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 </div>
 
                 {/* 4. CONTROLS FOOTER */}
-                <div className="shrink-0 relative p-4 bg-[#1a120e] border-t-2 border-[#3a2d25] shadow-inner z-30">
+                <div className="shrink-0 relative p-4 bg-[#1a120e] border-t-2 border-[#3a2d25] shadow-inner z-30 pointer-events-auto">
                     <div className="flex items-center justify-center gap-6">
                         
                         {/* Pause/Resume */}
@@ -370,22 +438,28 @@ export const AgentStatusScreen: React.FC<Props> = ({
 
         {/* --- ORB (FIXED STATIC) --- */}
         <div 
-            className={`fixed z-50 ${orbDest ? 'opacity-100' : 'opacity-0'}`}
-            style={orbDest ? {
-                top: orbDest.top,
-                left: orbDest.left,
-                width: orbDest.width,
-                height: orbDest.height,
-                transform: 'none'
-            } : {}}
+            className={orbClasses}
+            style={orbStyle}
+            onClick={handleOrbClick}
         >
             <Atropos activeOffset={10} shadowScale={0.5} className="w-full h-full rounded-full">
                 <div 
-                    className="relative w-full h-full rounded-full bg-[#1a120e] shadow-[0_20px_60px_rgba(0,0,0,0.9)] flex items-center justify-center overflow-hidden border-[#2e1d15] border-[3px]"
+                    className={`relative w-full h-full rounded-full bg-[#1a120e] shadow-[0_20px_60px_rgba(0,0,0,0.9)] flex items-center justify-center overflow-hidden border-[#2e1d15] ease-in-out ${
+                        isLLMActive ? "border-[3px] border-purple-500 animate-fluoresce" : "border-[3px]"
+                    }`}
                 >
                     <div className="absolute inset-0 border-[#b45309] rounded-full opacity-80 pointer-events-none z-50 shadow-[inset_0_0_15px_rgba(0,0,0,0.8)] border-[2px]"></div>
                     
                     <div className="absolute rounded-full bg-black shadow-[inset_0_10px_30px_rgba(255,255,255,0.05)] overflow-hidden isolate z-10 inset-0.5">
+                        
+                        {/* LLM ACTIVE LAYER */}
+                        <video 
+                            src={STANDBY_VIDEO}
+                            className={`absolute inset-0 w-full h-full object-cover z-30 transition-opacity duration-300 ${isLLMActive ? 'opacity-100' : 'opacity-0'}`}
+                            playsInline muted loop autoPlay
+                        />
+
+                        {/* BASE LOOP LAYER */}
                         <video 
                             ref={loopVideoRef}
                             src={LOOP_VIDEO}
@@ -397,6 +471,21 @@ export const AgentStatusScreen: React.FC<Props> = ({
                 </div>
             </Atropos>
         </div>
+
+        {/* EXPANDED ORB CONTROLS - FIXED ABOVE ORB */}
+        {isOrbExpanded && (
+            <div className="fixed left-1/2 -translate-x-1/2 top-[calc(50%-270px)] flex flex-col items-center gap-3 z-[70] pointer-events-auto">
+                <button 
+                    onClick={(e) => { e.stopPropagation(); setShowAmnesiaConfirm(true); }}
+                    className="w-16 h-16 rounded-full bg-[#1a120e] border-2 border-[#ef4444] text-[#ef4444] hover:bg-[#450a0a] hover:scale-110 transition-all shadow-[0_0_30px_rgba(239,68,68,0.6)] flex items-center justify-center group"
+                >
+                    <Brain size={32} className="animate-pulse group-hover:animate-none" />
+                </button>
+                <div className="px-3 py-1 bg-black/80 border border-[#ef4444]/50 rounded text-[#ef4444] font-bold text-xs tracking-[0.2em] uppercase backdrop-blur-sm shadow-lg">
+                    Амнезия
+                </div>
+            </div>
+        )}
 
       </div>
     </Layout>

@@ -24,6 +24,9 @@ interface Props {
 
 const INTRO_VIDEO = "https://raw.githubusercontent.com/sauah666/WDYGAJ/9adbbc991fa9b9c12d54d6d435407de65c428635/valera_merged.mp4";
 const LOOP_VIDEO = "https://raw.githubusercontent.com/sauah666/WDYGAJ/98771fc49589081d334b431a618452b72c0c450e/valera_idle_merged.mp4";
+const STANDBY_VIDEO = "https://raw.githubusercontent.com/sauah666/WDYGAJ/e3e1c61224d4c30fb39e8a939df0f4d6a304a908/please_standby.mp4";
+const CHASSIS_BG = "https://raw.githubusercontent.com/sauah666/WDYGAJ/ed61ef26ca4add352beecc389c7c40e7d8e7893d/valera_framed.png";
+const STEAM_VIDEO = "https://raw.githubusercontent.com/sauah666/WDYGAJ/f1d8a52d7fee04b41bfab56be7375f83bf7ac959/steam.mp4";
 
 type VideoPhase = 'IDLE' | 'INTRO' | 'LOOP';
 
@@ -45,10 +48,12 @@ export const ModeSelectionScreen: React.FC<Props> = ({
 }) => {
   const [videoPhase, setVideoPhase] = useState<VideoPhase>(skipIntro ? 'LOOP' : 'IDLE');
   const [isRelocated, setIsRelocated] = useState(skipIntro);
+  const [isOrbExpanded, setIsOrbExpanded] = useState(false); // NEW: Expansion State
   const [showPanel, setShowPanel] = useState(skipIntro);
   const [loopStarted, setLoopStarted] = useState(false);
   
   const [showArchive, setShowArchive] = useState(false);
+  const [showAmnesiaConfirm, setShowAmnesiaConfirm] = useState(false);
 
   // Orb Positioning
   const avatarRef = useRef<HTMLDivElement>(null);
@@ -57,6 +62,7 @@ export const ModeSelectionScreen: React.FC<Props> = ({
   // Video Refs
   const introVideoRef = useRef<HTMLVideoElement>(null);
   const loopVideoRef = useRef<HTMLVideoElement>(null);
+  const standbyVideoRef = useRef<HTMLVideoElement>(null);
   
   // Location
   const [isLocationOpen, setIsLocationOpen] = useState(false);
@@ -174,6 +180,11 @@ export const ModeSelectionScreen: React.FC<Props> = ({
       setIsRelocated(false);
       setLoopStarted(false);
       setVideoPhase('INTRO');
+      
+      // Pause standby, start intro
+      if (standbyVideoRef.current) {
+          standbyVideoRef.current.pause();
+      }
       if (introVideoRef.current) {
           introVideoRef.current.currentTime = 0;
           introVideoRef.current.playbackRate = 1.2; 
@@ -205,6 +216,19 @@ export const ModeSelectionScreen: React.FC<Props> = ({
   const handleWipeWrapper = () => {
       if(onWipeMemory) onWipeMemory();
       setShowArchive(false);
+      setShowAmnesiaConfirm(false);
+      setIsOrbExpanded(false); 
+  };
+
+  const handleOrbClick = () => {
+      // Only expand if currently relocated (minimized in dashboard)
+      if (isRelocated && videoPhase !== 'IDLE') {
+          setIsOrbExpanded(true);
+      }
+  };
+
+  const handleOrbClose = () => {
+      setIsOrbExpanded(false);
   };
 
   const isPlaying = videoPhase !== 'IDLE';
@@ -235,6 +259,27 @@ export const ModeSelectionScreen: React.FC<Props> = ({
       setAgentMessage(JokeService.getJoke(isAuto ? 'CL_AUTO' : 'CL_MANUAL'));
   };
 
+  // Determine Orb Style
+  let orbStyle: React.CSSProperties = {};
+  let orbClasses = "";
+
+  if (isOrbExpanded) {
+      orbClasses = "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] h-[350px] md:w-[500px] md:h-[500px] z-[60] transition-all duration-500 ease-out";
+  } else if (isRelocated && orbDest) {
+      orbStyle = {
+          top: orbDest.top,
+          left: orbDest.left,
+          width: orbDest.width,
+          height: orbDest.height,
+          transform: 'none'
+      };
+      orbClasses = "fixed z-50 transition-all duration-[1200ms] ease-in-out cursor-pointer hover:brightness-110";
+  } else {
+      // CENTERED IDLE STATE - Behind Chassis (z-5)
+      // Scaled up slightly (+10px) and moved down (33%)
+      orbClasses = "fixed top-[33%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[265px] h-[265px] md:w-[315px] md:h-[315px] z-[5] ease-in-out";
+  }
+
   return (
     <Layout title="" hideSidebar={true} onSettingsClick={onSettingsClick} onNavigate={onNavigate}>
       <style>{`
@@ -259,6 +304,39 @@ export const ModeSelectionScreen: React.FC<Props> = ({
         }
       `}</style>
 
+      {/* BACKDROP FOR EXPANDED ORB */}
+      <div 
+          className={`fixed inset-0 bg-black/80 backdrop-blur-sm z-[55] transition-opacity duration-500 ${isOrbExpanded ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+          onClick={handleOrbClose}
+      ></div>
+
+      {/* AMNESIA CONFIRM OVERLAY */}
+      {showAmnesiaConfirm && (
+          <div className="absolute inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center animate-switch-on p-4">
+              <div className="bg-[#1a120e] border-[3px] border-[#b91c1c] rounded-2xl p-8 max-w-sm w-full shadow-[0_0_50px_rgba(185,28,28,0.5)] flex flex-col items-center text-center">
+                  <Brain size={48} className="text-[#ef4444] mb-4 animate-pulse" />
+                  <h3 className="text-xl font-bold text-[#fca5a5] uppercase tracking-widest mb-2 font-sans">Режим Амнезии</h3>
+                  <p className="text-[#a8a29e] font-mono text-sm mb-6">
+                      Вы действительно хотите стереть память агента? Он забудет все просмотренные вакансии и отправленные отклики.
+                  </p>
+                  <div className="flex gap-4 w-full">
+                      <button 
+                          onClick={() => { setShowAmnesiaConfirm(false); setIsOrbExpanded(false); }}
+                          className="flex-1 py-3 border border-[#44403c] rounded-xl hover:bg-[#292524] text-[#a8a29e] font-bold font-sans"
+                      >
+                          Отмена
+                      </button>
+                      <button 
+                          onClick={handleWipeWrapper}
+                          className="flex-1 py-3 bg-[#7f1d1d] hover:bg-[#991b1b] border border-[#ef4444] rounded-xl text-white font-bold font-sans shadow-[0_0_15px_rgba(239,68,68,0.4)]"
+                      >
+                          Стереть
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* ARCHIVE OVERLAY */}
       {showArchive && (
           <VacancyHistoryOverlay 
@@ -273,6 +351,27 @@ export const ModeSelectionScreen: React.FC<Props> = ({
 
       <div className="flex flex-col items-center justify-center h-full w-full relative pt-0 pb-0 overflow-hidden bg-[#0a0503]">
         
+        {/* STEAM VIDEO LAYER (Behind Chassis) */}
+        <div className={`absolute bottom-0 w-full h-[33%] z-5 pointer-events-none transition-all duration-700 ease-in-out flex justify-center items-end ${isRelocated ? 'opacity-0' : 'opacity-100'}`}>
+             <video 
+                src={STEAM_VIDEO} 
+                className="w-full h-full object-cover opacity-80"
+                autoPlay 
+                loop 
+                muted 
+                playsInline 
+             />
+        </div>
+
+        {/* BACKGROUND CHASSIS (Main Page Only) */}
+        <div className={`absolute inset-0 z-10 pointer-events-none flex items-center justify-center transition-all duration-700 ease-in-out ${isRelocated ? 'opacity-0 brightness-0' : 'opacity-100 brightness-100'}`}>
+            <img 
+                src={CHASSIS_BG}
+                alt="Chassis"
+                className="w-full h-full object-cover object-center scale-105" 
+            />
+        </div>
+
         {/* --- MAIN PANEL (SETTINGS) --- */}
         <div className={`absolute inset-0 z-20 flex items-center justify-center pointer-events-none`}>
             <div 
@@ -293,7 +392,7 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                     <div className="flex gap-2">
                         <button 
                             onClick={() => setShowArchive(true)}
-                            className="text-[#78716c] hover:text-[#fcd34d] transition-colors p-2 rounded-full hover:bg-[#2a2018] relative group"
+                            className="text-[#78716c] hover:text-[#fcd34d] transition-colors p-2 rounded-full hover:bg-[#2a2018] relative group pointer-events-auto"
                             title="Архив"
                         >
                             <Archive size={22} />
@@ -307,13 +406,25 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                         Параметры Поиска
                     </h2>
                     
-                    <div className="w-8"></div>
+                    {/* GLOBAL SETTINGS BUTTON */}
+                    <div className="flex gap-2">
+                        <button 
+                            onClick={onSettingsClick}
+                            className="text-[#78716c] hover:text-[#fcd34d] transition-colors p-2 rounded-full hover:bg-[#2a2018] relative group pointer-events-auto"
+                            title="Настройки Агента"
+                        >
+                            <Settings size={22} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* 2. ORB ROW */}
                 <div className="shrink-0 p-4 pb-2 bg-[#2a2420] z-20 relative">
-                    <div className="flex gap-4 items-stretch h-28">
+                    <div className="flex gap-4 items-stretch h-28 relative">
+                        {/* Orb Placeholder (Invisible Target) */}
                         <div ref={avatarRef} className="w-28 shrink-0 relative opacity-0"></div>
+                        
+                        {/* Message Screen */}
                         <div className="flex-1 bg-[#1a1512] rounded-xl border-2 border-[#3a2d25] shadow-[inset_0_2px_10px_black] relative overflow-hidden p-3 flex flex-col justify-center">
                              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cardboard.png')] opacity-10"></div>
                              <div className="relative z-10 font-mono text-[#d97706] text-sm leading-tight drop-shadow-md break-words pl-1">
@@ -326,7 +437,9 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                 </div>
 
                 {/* 3. INPUTS AREA */}
-                <div className="flex-1 overflow-y-auto px-6 pb-4 custom-scrollbar relative z-10 flex flex-col justify-start gap-6">
+                <div className="flex-1 overflow-y-auto px-6 pb-4 custom-scrollbar relative z-10 flex flex-col justify-start gap-6 pointer-events-auto">
+                     {/* ... (Existing inputs remain same) ... */}
+                     
                      {/* Divider */}
                     <div className="relative flex items-center justify-center py-2 opacity-50 shrink-0 mt-4">
                         <div className="h-px bg-[#4a3b32] flex-1"></div>
@@ -338,7 +451,7 @@ export const ModeSelectionScreen: React.FC<Props> = ({
 
                     {/* Salary & Currency */}
                     <div className="flex flex-col gap-2">
-                            <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">Минимальная Зарплата</label>
+                            <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">Минимальная Зарплата (руб.)</label>
                             <div className="flex gap-2 h-16">
                             <input 
                                 type="number"
@@ -347,12 +460,6 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                                 onChange={(e) => handleSalaryChange(parseInt(e.target.value) || 0)}
                                 className="flex-1 bg-[#140c08] text-[#e7e5e4] font-mono text-3xl text-center outline-none border-2 border-[#3e2f26] rounded-2xl focus:border-[#d97706] transition-all shadow-[inset_0_2px_5px_black] placeholder-[#2a2018]"
                             />
-                            <button 
-                                onClick={() => onConfigChange('currency', config.currency === 'RUB' ? 'USD' : 'RUB')}
-                                className="w-20 bg-[#1a120e] border-2 border-[#3e2f26] rounded-2xl text-[#cdbba7] font-bold font-serif text-lg hover:border-[#d97706] transition-all"
-                            >
-                                {config.currency || 'RUB'}
-                            </button>
                             </div>
                     </div>
 
@@ -477,7 +584,7 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                 </div>
 
                 {/* 4. FOOTER (Fixed) - PANEL BUTTON */}
-                <div className="shrink-0 relative p-6 bg-[#1a120e] border-t-2 border-[#3a2d25] shadow-inner z-30">
+                <div className="shrink-0 relative p-6 bg-[#1a120e] border-t-2 border-[#3a2d25] shadow-inner z-30 pointer-events-auto">
                     <button 
                         onClick={handleStartSearch} 
                         disabled={!canStart}
@@ -500,36 +607,29 @@ export const ModeSelectionScreen: React.FC<Props> = ({
 
         {/* --- ORB --- */}
         <div 
-            className={`fixed z-50 ease-in-out ${
-                isRelocated 
-                    ? (videoPhase !== 'IDLE' ? "transition-all duration-[1200ms]" : "") 
-                    : "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] sm:w-[360px] sm:h-[360px]"
-            }`}
-            style={isRelocated && orbDest ? {
-                top: orbDest.top,
-                left: orbDest.left,
-                width: orbDest.width,
-                height: orbDest.height,
-                transform: 'none'
-            } : {}}
+            className={orbClasses}
+            style={orbStyle}
+            onClick={handleOrbClick}
         >
             <Atropos activeOffset={10} shadowScale={0.5} className="w-full h-full rounded-full">
                 <div 
                     className={`relative w-full h-full rounded-full bg-[#1a120e] shadow-[0_20px_60px_rgba(0,0,0,0.9)] flex items-center justify-center overflow-hidden border-[#2e1d15] ease-in-out ${
-                        isRelocated ? (videoPhase !== 'IDLE' ? "transition-all duration-[1200ms]" : "") + " border-[3px]" : "border-[15px]"
+                        isRelocated ? (videoPhase !== 'IDLE' ? "transition-all duration-[1200ms]" : "") + " border-[3px]" : "border-0"
                     }`}
                 >
                     <div className={`absolute inset-0 border-[#b45309] rounded-full opacity-80 pointer-events-none z-50 shadow-[inset_0_0_15px_rgba(0,0,0,0.8)] ease-in-out ${
-                        isRelocated ? (videoPhase !== 'IDLE' ? "transition-all duration-[1200ms]" : "") + " border-[2px]" : "border-[4px]"
+                        isRelocated ? (videoPhase !== 'IDLE' ? "transition-all duration-[1200ms]" : "") + " border-[2px]" : "border-0"
                     }`}></div>
                     
                     <div className={`absolute rounded-full bg-black shadow-[inset_0_10px_30px_rgba(255,255,255,0.05)] overflow-hidden isolate z-10 ease-in-out ${
-                        isRelocated ? (videoPhase !== 'IDLE' ? "transition-all duration-[1200ms]" : "") + " inset-0.5" : "inset-4"
+                        isRelocated ? (videoPhase !== 'IDLE' ? "transition-all duration-[1200ms]" : "") + " inset-0.5" : "inset-0"
                     }`}>
-                        <img 
-                            src="https://raw.githubusercontent.com/sauah666/WDYGAJ/678f874bb628e15ef6eea7b2ed1c4b2228d204b6/valera.png"
-                            alt="Valera"
-                            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 z-10 ${videoPhase === 'IDLE' ? 'opacity-100' : 'opacity-0'}`}
+                        {/* REPLACED STATIC IMG WITH STANDBY VIDEO */}
+                        <video 
+                            ref={standbyVideoRef}
+                            src={STANDBY_VIDEO}
+                            className={`absolute inset-0 w-full h-full object-cover z-10 transition-opacity duration-500 ${videoPhase === 'IDLE' ? 'opacity-100' : 'opacity-0'}`}
+                            playsInline muted loop autoPlay
                         />
                         <video 
                             ref={loopVideoRef}
@@ -553,49 +653,73 @@ export const ModeSelectionScreen: React.FC<Props> = ({
         </div>
 
         {/* --- BUTTONS --- */}
-        {/* Settings: Top Right */}
-        <div 
-            className={`fixed top-6 right-6 z-50 ease-out flex items-center justify-center ${
-                isRelocated ? 'opacity-0 -translate-y-20 pointer-events-none transition-all duration-[1200ms]' : 'opacity-100 translate-y-0'
-            }`}
-        >
-            <button 
-                onClick={onSettingsClick}
-                disabled={isPlaying}
-                className={`group relative w-14 h-14 transition-all duration-200 ease-out flex items-center justify-center active:scale-95 ${isPlaying ? 'opacity-50' : ''}`}
+        {/* Settings: Top Right - DIESELPUNK STYLE */}
+        {!isRelocated && (
+            <div 
+                className={`fixed top-6 right-6 z-50 ease-out flex items-center justify-center opacity-100 translate-y-0`}
             >
-                 <div className="absolute inset-0 rounded-full bg-[#0c0a08] shadow-md border-2 border-[#44403c] group-hover:border-[#d97706] transition-colors"></div>
-                 <Settings size={22} className="relative z-10 text-[#a8a29e] group-hover:text-[#d97706] group-hover:rotate-90 transition-all duration-500" />
-            </button>
-        </div>
+                <button 
+                    onClick={onSettingsClick}
+                    className={`group relative w-14 h-14 transition-all duration-200 ease-out flex items-center justify-center active:scale-95`}
+                >
+                    {/* Metal Gear Housing */}
+                    <div className="absolute inset-0 rounded-full bg-[#1c1917] shadow-[0_5px_15px_black] border-2 border-[#b45309] group-hover:border-[#fcd34d] transition-colors"></div>
+                    <div className="absolute inset-1 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.05),transparent)] pointer-events-none"></div>
+                    <Settings size={26} className="relative z-10 text-[#fcd34d] drop-shadow-md group-hover:rotate-90 transition-all duration-700 ease-in-out" />
+                </button>
+            </div>
+        )}
 
-        {/* Call Button (Wake Up): Bottom Center */}
+        {/* Call Button (Wake Up): Bottom Center - ADJUSTED POSITION & STYLE */}
         <div 
-            className={`fixed bottom-10 left-1/2 -translate-x-1/2 z-30 ease-out flex items-center justify-center ${
+            className={`fixed bottom-[23%] left-1/2 -translate-x-1/2 z-30 ease-out flex items-center justify-center ${
                 isRelocated ? 'opacity-0 translate-y-20 pointer-events-none scale-50 transition-all duration-[1200ms]' : 'opacity-100 translate-y-0 scale-100'
             }`}
         >
             <button 
                 onClick={handleWakeUp}
                 disabled={isPlaying}
-                className={`group relative w-24 h-24 transition-all duration-200 ease-out flex items-center justify-center ${isPlaying ? 'scale-95' : 'active:scale-95'}`}
+                className={`group relative w-20 h-20 md:w-24 md:h-24 transition-all duration-200 ease-out flex items-center justify-center ${isPlaying ? 'scale-95' : 'active:scale-95'}`}
             >
-                <div className={`absolute inset-0 rounded-full bg-gradient-to-br from-[#1a120e] to-[#0c0a08] shadow-[0_5px_20px_rgba(0,0,0,0.6)] transition-all ${isPlaying ? 'translate-y-1' : ''}`}></div>
-                <div className={`absolute inset-2 rounded-full bg-gradient-to-t from-[#292524] to-[#1a120e] flex items-center justify-center border border-[#3e2f26]`}>
-                    <div className={`relative z-10 p-4 rounded-full border-2 bg-[#1c1917] shadow-lg transition-all duration-500 ${
+                {/* Heavy Metal Rim */}
+                <div className={`absolute inset-0 rounded-full bg-gradient-to-br from-[#1a120e] to-[#0c0a08] shadow-[0_10px_30px_rgba(0,0,0,0.8)] border-[3px] border-[#2a1a0f]`}></div>
+                
+                {/* Inner Socket */}
+                <div className={`absolute inset-1 rounded-full bg-[#0a0503] shadow-[inset_0_2px_5px_black] flex items-center justify-center`}>
+                    
+                    {/* The Convex Button */}
+                    <div className={`relative w-full h-full rounded-full border-2 transition-all duration-500 flex items-center justify-center overflow-hidden ${
                         isPlaying 
-                        ? 'border-green-600 bg-[#064e3b] shadow-[0_0_20px_rgba(22,163,74,0.6)]' 
-                        : 'border-[#44403c] hover:border-[#d97706]'
+                        ? 'bg-gradient-to-t from-[#064e3b] to-[#22c55e] border-[#16a34a] shadow-[0_0_25px_rgba(34,197,94,0.6)]' 
+                        : 'bg-gradient-to-t from-[#451a03] to-[#d97706] border-[#78350f] group-hover:brightness-110 shadow-[inset_0_2px_10px_rgba(255,255,255,0.2)]'
                     }`}>
+                        {/* Glossy Overlay */}
+                        <div className="absolute top-0 left-0 right-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent rounded-t-full pointer-events-none"></div>
+                        
                         {isPlaying ? (
-                            <Power size={30} className="text-white animate-pulse" />
+                            <Power size={36} className="text-white animate-pulse drop-shadow-md relative z-10" />
                         ) : (
-                            <Phone size={30} className="text-[#a8a29e] group-hover:text-[#d6d3d1]" />
+                            <Phone size={36} className="text-[#fef3c7] drop-shadow-md relative z-10" />
                         )}
                     </div>
                 </div>
             </button>
         </div>
+
+        {/* EXPANDED ORB CONTROLS - FIXED ABOVE ORB */}
+        {isOrbExpanded && (
+            <div className="fixed left-1/2 -translate-x-1/2 top-[calc(50%-270px)] flex flex-col items-center gap-3 z-[70] pointer-events-auto">
+                <button 
+                    onClick={(e) => { e.stopPropagation(); setShowAmnesiaConfirm(true); }}
+                    className="w-16 h-16 rounded-full bg-[#1a120e] border-2 border-[#ef4444] text-[#ef4444] hover:bg-[#450a0a] hover:scale-110 transition-all shadow-[0_0_30px_rgba(239,68,68,0.6)] flex items-center justify-center group"
+                >
+                    <Brain size={32} className="animate-pulse group-hover:animate-none" />
+                </button>
+                <div className="px-3 py-1 bg-black/80 border border-[#ef4444]/50 rounded text-[#ef4444] font-bold text-xs tracking-[0.2em] uppercase backdrop-blur-sm shadow-lg">
+                    Амнезия
+                </div>
+            </div>
+        )}
 
       </div>
     </Layout>

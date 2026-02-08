@@ -5,7 +5,9 @@ import { AgentState, createInitialAgentState, UserSearchPrefsV1 } from './core/d
 import { computeRuntimeCapabilities, validateConfigAgainstRuntime, ConfigIssueV1 } from './core/domain/runtime';
 import { MockBrowserAdapter } from './adapters/browser/mock.browser.adapter';
 import { RemoteBrowserAdapter } from './adapters/browser/remote.browser.adapter';
+import { McpBrowserAdapter } from './adapters/browser/mcp.browser.adapter'; // NEW
 import { LocalStorageAdapter } from './adapters/storage/local.storage.adapter';
+import { ElectronIPCAdapter } from './adapters/browser/electron.ipc.adapter';
 import { MockLLMAdapter } from './adapters/llm/mock.llm.adapter';
 import { GeminiLLMAdapter } from './adapters/llm/gemini.llm.adapter';
 import { OpenAILLMAdapter } from './adapters/llm/openai.llm.adapter';
@@ -24,29 +26,24 @@ const runtimeCaps = computeRuntimeCapabilities();
 
 // Factory for dynamic adapters
 const buildAdapters = (config: Partial<AgentConfig>) => {
-  // Browser Adapter Selection
+  // Browser Adapter Selection Strategy:
+  // 1. Force Mock if config.useMockBrowser is explicitly true.
+  // 2. If running in Electron, prefer ElectronIPCAdapter.
+  // 3. Fallback to MockBrowserAdapter.
+  
   let browserAdapter;
-  let activeBrowserProvider = config.browserProvider || 'mock'; // Default to mock for stability
+  let activeBrowserProvider = 'mock'; 
 
-  // 1. Try Native Playwright (Node Env)
-  if (runtimeCaps.supportsPlaywright && activeBrowserProvider === 'playwright') {
-      try {
-          // @ts-ignore
-          const { PlaywrightBrowserAdapter } = require('./adapters/browser/node/playwright.browser.adapter');
-          browserAdapter = new PlaywrightBrowserAdapter();
-      } catch (e) {
-          console.error("Failed to load Playwright in Node env", e);
-          // Fallback to Remote if local fails
-          browserAdapter = new RemoteBrowserAdapter(config.nodeRunnerUrl || 'http://localhost:3000');
-          activeBrowserProvider = 'remote_node';
-      }
-  } 
-  // 2. Remote Node Runner
-  else if (activeBrowserProvider === 'remote_node') {
-      browserAdapter = new RemoteBrowserAdapter(config.nodeRunnerUrl || 'http://localhost:3000');
-  }
-  // 3. Default to Mock
-  else {
+  if (config.useMockBrowser) {
+      console.log("Forced Mock Browser via Config");
+      browserAdapter = new MockBrowserAdapter();
+      activeBrowserProvider = 'mock';
+  } else if (runtimeCaps.hasElectronAPI) {
+      console.log("Electron Runtime Detected. Using IPC Adapter.");
+      browserAdapter = new ElectronIPCAdapter();
+      activeBrowserProvider = 'electron_ipc';
+  } else {
+      console.log("No native runtime detected. Fallback to Mock.");
       browserAdapter = new MockBrowserAdapter();
       activeBrowserProvider = 'mock';
   }
@@ -68,7 +65,7 @@ const buildAdapters = (config: Partial<AgentConfig>) => {
         ? (config.localGatewayUrl || providerDef.defaultBaseUrl) 
         : providerDef.defaultBaseUrl;
       
-      const apiKey = config.apiKey || 'dummy'; // Dummy key for Local LLM if not set
+      const apiKey = config.apiKey || 'dummy'; 
 
       llmAdapter = new OpenAILLMAdapter(
           apiKey,
@@ -82,29 +79,34 @@ const buildAdapters = (config: Partial<AgentConfig>) => {
   return { browserAdapter, llmAdapter, providerId, providerDef, activeBrowserProvider };
 };
 
-// Initial wiring
-const { browserAdapter: initBrowser, llmAdapter: initLLM } = buildAdapters({});
+// Initial wiring - Default to Mock for safety until config loads
+const { browserAdapter: initBrowser, llmAdapter: initLLM, activeBrowserProvider: initProvider } = buildAdapters({ useMockBrowser: true });
 const agentPresenter = new AgentPresenter();
 let agentUseCase = new AgentUseCase(initBrowser, storageAdapter, agentPresenter, initLLM);
 agentPresenter.setUseCase(agentUseCase);
 
+// Helper to keep the current adapter instance accessible to UI
+let currentBrowserAdapter = initBrowser;
+// Track active provider for UI rendering logic
+let currentBrowserProvider = initProvider;
+
 export default function App() {
   const [route, setRoute] = useState<AppRoute>(AppRoute.MODE_SELECTION);
   const [lastRoute, setLastRoute] = useState<AppRoute>(AppRoute.MODE_SELECTION); 
-  const [skipIntro, setSkipIntro] = useState(false); // Controls videophone animation state
+  const [skipIntro, setSkipIntro] = useState(false); 
   
   const [config, setConfig] = useState<Partial<AgentConfig>>({
     mode: 'JOB_SEARCH',
     targetSite: 'hh.ru',
     activeLLMProviderId: DEFAULT_LLM_PROVIDER,
-    browserProvider: 'mock', // Default to Mock
+    useMockBrowser: true, 
     localGatewayUrl: 'http://localhost:1234/v1',
+    mcpServerUrl: 'http://localhost:3000/sse', 
     minSalary: 100000,
     currency: 'RUB'
   });
   const [agentState, setAgentState] = useState<AgentState>(createInitialAgentState());
   
-  // Ref to track state for Event Listeners without causing re-renders/re-binds
   const agentStateRef = useRef(agentState);
   useEffect(() => { agentStateRef.current = agentState; }, [agentState]);
 
@@ -119,13 +121,16 @@ export default function App() {
         let mergedConfig = config;
         if (c) {
             mergedConfig = { ...config, ...c };
-            if (!mergedConfig.browserProvider) {
-                 mergedConfig.browserProvider = 'mock';
+            if (mergedConfig.useMockBrowser === undefined) {
+                mergedConfig.useMockBrowser = true;
             }
             setConfig(mergedConfig);
         }
         
-        const { browserAdapter, llmAdapter } = buildAdapters(mergedConfig);
+        const { browserAdapter, llmAdapter, activeBrowserProvider } = buildAdapters(mergedConfig);
+        currentBrowserAdapter = browserAdapter; 
+        currentBrowserProvider = activeBrowserProvider;
+        
         agentUseCase = new AgentUseCase(browserAdapter, storageAdapter, agentPresenter, llmAdapter);
         agentPresenter.setUseCase(agentUseCase);
         agentPresenter.setConfig(mergedConfig);
@@ -145,7 +150,7 @@ export default function App() {
   // 3. EVENT LISTENERS
   useEffect(() => {
     const handleWipe = () => {
-        agentPresenter.wipeMemory(agentStateRef.current);
+        handleWipeWrapper();
     };
     window.addEventListener('AGENT_WIPE_MEMORY', handleWipe);
     return () => {
@@ -155,14 +160,16 @@ export default function App() {
 
   // --- Actions ---
 
-  const handleWipeWrapper = () => {
-      agentPresenter.wipeMemory(agentStateRef.current);
+  const handleWipeWrapper = async () => {
+      // Execute logic via presenter
+      await agentPresenter.wipeMemory(agentStateRef.current);
+      // Force reload state from storage to ensure UI sync
+      const freshState = await storageAdapter.getAgentState();
+      if (freshState) setAgentState(freshState);
   };
 
   const handleNavigate = (target: string) => {
       if (target === 'MODE_SELECTION') {
-          // Normal navigation to dashboard doesn't skip intro (unless we want it to?)
-          // Let's keep it consistent: manual nav = no skip (show idle). 
           setSkipIntro(false);
           setRoute(AppRoute.MODE_SELECTION);
       } else if (target === 'SETTINGS') {
@@ -184,13 +191,17 @@ export default function App() {
       const validation = validateConfigAgainstRuntime(config, runtimeCaps);
       if (validation.ok) {
           await storageAdapter.saveConfig(config as AgentConfig);
-          const { browserAdapter, llmAdapter } = buildAdapters(config);
+          const { browserAdapter, llmAdapter, activeBrowserProvider } = buildAdapters(config);
+          
+          currentBrowserAdapter = browserAdapter; 
+          currentBrowserProvider = activeBrowserProvider;
+
           agentUseCase = new AgentUseCase(browserAdapter, storageAdapter, agentPresenter, llmAdapter);
           agentPresenter.setUseCase(agentUseCase);
           agentPresenter.setConfig(config); 
           
           alert("Configuration Saved."); 
-          setSkipIntro(true); // Return to settings state, not idle
+          setSkipIntro(true); 
           setRoute(AppRoute.MODE_SELECTION); 
       } else {
           alert("Configuration Error. " + validation.issues[0].message);
@@ -213,7 +224,6 @@ export default function App() {
   
   const handleReset = async () => {
       await agentPresenter.resetSession(agentState);
-      // When resetting, we want to go straight to the "Search Settings" view (Panel Open)
       setSkipIntro(true);
       setRoute(AppRoute.MODE_SELECTION);
   };
@@ -225,7 +235,8 @@ export default function App() {
       agentUseCase.setPauseState(agentState, false);
   };
 
-  // Router
+  const isMockActive = currentBrowserProvider === 'mock';
+
   let screen;
   switch (route) {
     case AppRoute.MODE_SELECTION:
@@ -249,6 +260,8 @@ export default function App() {
         onSave={handleSystemConfigSave} 
         onBack={() => setRoute(lastRoute)}
         onNavigate={handleNavigate}
+        runtimeCaps={runtimeCaps}
+        onWipeMemory={handleWipeWrapper}
       />;
       break;
     case AppRoute.AGENT_RUNNER:
@@ -263,7 +276,8 @@ export default function App() {
           onPause={handlePause}
           onResume={handleResume}
           onNavigate={handleNavigate}
-          isMock={config.browserProvider === 'mock'}
+          isMock={isMockActive}
+          browserAdapter={currentBrowserAdapter}
         />
       );
       break;

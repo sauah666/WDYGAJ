@@ -18,8 +18,9 @@ export class PlaywrightBrowserAdapter implements BrowserPort {
     console.log('[PlaywrightAdapter] Initialized. Expecting Node.js environment.');
   }
 
-  async launch(): Promise<void> {
+  async launch(headless: boolean = false): Promise<void> {
     try {
+      this.isHeadless = headless;
       // @ts-ignore
       const { chromium } = require('playwright'); 
       this.browser = await chromium.launch({ headless: this.isHeadless });
@@ -50,6 +51,18 @@ export class PlaywrightBrowserAdapter implements BrowserPort {
   async getDomSnapshot(): Promise<string> {
     if (!this.page) return "";
     return await this.page.content();
+  }
+
+  async captureScreenshot(): Promise<string | null> {
+      if (!this.page) return null;
+      try {
+          // Playwright returns Buffer, we convert to base64 string
+          const buffer = await this.page.screenshot({ type: 'jpeg', quality: 50 });
+          return "data:image/jpeg;base64," + buffer.toString('base64');
+      } catch (e) {
+          console.error("Screenshot error", e);
+          return null;
+      }
   }
 
   async getCurrentUrl(): Promise<string> {

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { X, ExternalLink, ChevronDown, Trash2, BatteryWarning } from 'lucide-react';
-import { AppliedVacancyRecord } from '../../core/domain/entities';
+import { X, ExternalLink, ChevronDown, Trash2, BatteryWarning, Cpu } from 'lucide-react';
+import { AppliedVacancyRecord, TokenLedger } from '../../core/domain/entities';
 
 interface Props {
     title: string;
@@ -11,6 +11,7 @@ interface Props {
     onReset?: () => void; // Reset Agent context
     onVisit?: (url: string) => void;
     mode: 'RUN_SUMMARY' | 'ARCHIVE';
+    tokenLedger?: TokenLedger;
 }
 
 export const VacancyHistoryOverlay: React.FC<Props> = ({ 
@@ -20,7 +21,8 @@ export const VacancyHistoryOverlay: React.FC<Props> = ({
     onClear, 
     onReset, 
     onVisit,
-    mode 
+    mode,
+    tokenLedger
 }) => {
     const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -144,6 +146,28 @@ export const VacancyHistoryOverlay: React.FC<Props> = ({
                         </div>
                     )}
                 </div>
+
+                {/* RESOURCE REPORT */}
+                {mode === 'RUN_SUMMARY' && tokenLedger && (
+                    <div className="shrink-0 p-4 bg-[#140c08] border-t border-[#3a2d25] text-xs font-mono text-[#78716c] grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="flex flex-col">
+                            <span className="uppercase text-[#57534e] mb-1">Токены (Вход)</span>
+                            <span className="text-[#d97706] font-bold text-lg">{tokenLedger.inputTokens}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="uppercase text-[#57534e] mb-1">Токены (Выход)</span>
+                            <span className="text-[#d97706] font-bold text-lg">{tokenLedger.outputTokens}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="uppercase text-[#57534e] mb-1">Вызовы LLM</span>
+                            <span className="text-[#e7e5e4] font-bold text-lg">{tokenLedger.calls}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="uppercase text-[#57534e] mb-1">Кеш (Hit/Miss)</span>
+                            <span className="text-[#e7e5e4] font-bold text-lg">{tokenLedger.cacheHits} / {tokenLedger.cacheMisses}</span>
+                        </div>
+                    </div>
+                )}
 
                 {/* Footer */}
                 {mode === 'RUN_SUMMARY' && onReset && (

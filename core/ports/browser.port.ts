@@ -1,3 +1,4 @@
+
 // Layer: PORTS
 // Purpose: Define contracts for external services (secondary adapters).
 
@@ -36,9 +37,10 @@ export interface RawApplyFormSnapshot {
 
 export interface BrowserPort {
   /**
-   * Initializes the browser environment (or connects to one).
+   * Initializes the browser environment.
+   * @param headless - If true, runs without visible window (for embedding).
    */
-  launch(): Promise<void>;
+  launch(headless?: boolean): Promise<void>;
 
   /**
    * Navigates the browser to a specific URL.
@@ -54,6 +56,12 @@ export interface BrowserPort {
    * Captures the current DOM snapshot of the active page.
    */
   getDomSnapshot(): Promise<string>;
+
+  /**
+   * Captures a screenshot of the current page.
+   * @returns Base64 encoded image string (data:image/jpeg;base64,...)
+   */
+  captureScreenshot(): Promise<string | null>;
 
   /**
    * Returns the current active URL.

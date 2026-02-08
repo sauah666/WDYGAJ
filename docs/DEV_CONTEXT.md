@@ -1,71 +1,65 @@
 
 # Developer Context (Save Game)
 
-**Last Updated**: Step 71 (Final Re-Audit & Sync)
+**Last Updated**: Step 110 (Final Consolidation)
 **Role**: Senior Agent Architect
-**Manifesto**: See `docs/PROJECT_DOCUMENTATION.md` (Rule D-01)
+**Status**: Release Candidate 1.4 (Visual Immersion & Electron Ready)
 
-## Status: Release Candidate 1.3 (FINAL)
+## 1. System Overview
+**AgentSeeker** (Project "Кузница Кадров") is an autonomous job search agent with a high-fidelity "Industrial Cyberpunk" interface. It runs in a hybrid mode:
+*   **Web Mode**: Fully simulated (Mock) for UI/UX development.
+*   **Electron Mode**: Capable of driving a real `Playwright` browser instance via IPC.
 
-The system is fully functional in **Mock Mode**, architecturally validated, and documented. The UI has been upgraded to the "Retrofuturistic Videophone" standard with advanced input controls.
+## 2. The Cinematic Interface (Fragile Logic)
+The `ModeSelectionScreen.tsx` implements a complex state machine for the "Wake Up" sequence.
 
----
+### Video Assets (Hardcoded)
+*   **INTRO**: `valera_merged.mp4` (The Agent waking up/talking).
+*   **LOOP**: `valera_idle_merged.mp4` (The Agent breathing/looking around).
+*   **STANDBY**: `please_standby.mp4` (Static noise/CRT effect).
+*   **CODE**: `code.mp4` (Matrix-like code rain).
 
-## Handover Manifesto: How to Run & Expand
+### The Wake-Up Sequence
+1.  **State**: User clicks "Call Button" (`handleWakeUp`).
+2.  **Action**: 
+    *   `videoPhase` sets to `INTRO`.
+    *   `introVideoRef` plays (Avatar).
+    *   `codeVideoRef` plays (Overlay at bottom).
+3.  **Transition**: 
+    *   `onTimeUpdate` detects when `introVideo` is > 50%.
+    *   `isRelocated` sets to `true`.
+    *   Avatar moves to top-left dock.
+    *   Main Chassis (`showPanel`) fades in.
+    *   Code Rain fades out.
+4.  **Loop**: When `introVideo` ends, `videoPhase` sets to `LOOP`.
 
-### 1. Modes of Operation
+**Warning**: Do not refactor `handleIntroTimeUpdate` or the video refs without testing the transition timing.
 
-#### Mode A: Mock (Simulation) - **DEFAULT**
-*   **Use Case**: Development, UI testing, Flow verification.
-*   **Requires**: Nothing.
-*   **Behavior**: Browser actions are simulated (`MockBrowserAdapter`), LLM answers are hardcoded (`MockLLMAdapter`), Vacancies are generated (15 items/batch default).
-*   **Config**: `activeLLMProviderId: 'mock'`, `browserProvider: 'mock'`.
+## 3. Architecture & Adapters
 
-#### Mode B: Real Cloud LLM (Gemini/OpenAI)
-*   **Use Case**: Real intelligence testing with Mock Browser.
-*   **Requires**: Valid API Key.
-*   **Setup**: Go to **Settings** (Gear Icon) -> Select **Google Gemini** -> Enter Key -> Save.
-*   **Behavior**: The Agent will really analyze the mock profiles and mock vacancies using Gemini 2.0.
+### Factory Pattern (`App.tsx`)
+The app dynamically selects adapters based on `config` and `runtimeCaps`:
+*   **MockBrowserAdapter**: Default. Simulates data.
+*   **ElectronIPCAdapter**: Selected if `window.electronAPI` is present.
+*   **RemoteBrowserAdapter**: Selected if configured for remote node runner.
+*   **McpBrowserAdapter**: Experimental support for Model Context Protocol.
 
-#### Mode C: Local LLM (Ollama/LM Studio)
-*   **Use Case**: Privacy-focused AI.
-*   **Requires**: Local server running (e.g. LM Studio) at `http://localhost:1234/v1`.
-*   **Setup**: Settings -> **Local LLM** -> Enter URL.
+### Core Logic (`AgentUseCase`)
+*   **State Machine**: Strictly typed in `types.ts` (`AgentStatus`).
+*   **Batching**: Processing happens in batches of 15-50 items to support the "Visual Scanner" effect (`BrowserViewport.tsx`).
+*   **Context Governance**: `monitorContextHealth` checks JSON size and triggers `compactSession` if limits are exceeded.
 
-#### Mode D: Full Real Automation (Node.js Only)
-*   **Use Case**: Actual job application.
-*   **Requires**: 
-    1. Running this React App.
-    2. (Missing) A Node.js server implementing the `RemoteBrowserAdapter` protocol OR running the app in Electron/Node environment where `PlaywrightBrowserAdapter` works natively.
-*   **Note**: The code for `PlaywrightBrowserAdapter` and `RemoteBrowserAdapter` (client side) exists, but the **server-side runner** is not included in this client-side bundle.
+## 4. UI Components & Aesthetics
+*   **Steampunk Tablet**: Vertical layout with leather/bronze textures.
+*   **Vacuum Tubes**: Orange/Green tubes in footer indicate readiness.
+*   **Three.js Background**: `SteamEngineBackground` runs outside React render cycle.
+*   **Scanner Mode**: `BrowserViewport` renders a scrolling list with a "laser line" effect when status is `VACANCIES_CAPTURED`.
 
----
+## 5. Next Steps for Development
+1.  **Infrastructure**: The `Electron` main process (`electron/main.js`) is basic. It needs full implementation of all `BrowserPort` methods (currently some are stubs).
+2.  **LinkedIn**: The `SiteRegistry` has a placeholder for LinkedIn. The `MockBrowserAdapter` needs a specific mock scenario for it.
+3.  **Resume Upload**: The `ApplyFormProbe` logic detects resume selectors, but the UI for selecting a local file to upload is missing.
 
-## Critical Files Map
-
-### 🧠 Brain (Logic)
-*   `core/usecases/agent.usecase.ts`: **The Heart**. Contains the entire state machine, batching logic, and decision loop (`runAutomationLoop`).
-*   `core/domain/entities.ts`: **The DNA**. All data structures. Note `AppliedVacancyRecord` and `VacancyCardBatchV1`.
-
-### 🔌 Adapters (Integration)
-*   `adapters/ui/agent.presenter.ts`: **The Bridge**. Connects React to the UseCase. Handles the "Automation Loop" timing.
-*   `adapters/browser/mock.browser.adapter.ts`: **The Matrix**. Simulates the external web. **Edit this to change the mock vacancy data**.
-
-### 🎨 Presentation (UI)
-*   `presentation/screens/ModeSelectionScreen.tsx`: **The Face**. The main Videophone interface. Contains the Orb logic, dashboard inputs, and the **Steampunk Toggle Switch** for Cover Letters.
-*   `presentation/components/BrowserViewport.tsx`: **The Eyes**. Visualizes the "Scanning" process. Contains the CRT effects and auto-scroll logic.
-*   `presentation/services/JokeService.ts`: **The Soul**. Contains the text generation logic for "Valera", including new categories `CL_MANUAL` and `CL_AUTO`.
-
----
-
-## Known Limits & Workarounds
-
-1.  **Browser "Stuck"**: If the agent freezes in `WAITING_FOR_HUMAN`, it's because `MockBrowserAdapter` is waiting for a specific login trigger. Click "Войти" in the mock UI.
-2.  **Memory**: Use the "Brain" icon (Amnesia) to clear `seen_index` in localStorage if you want to re-scan the same mock vacancies.
-3.  **Performance**: The `Three.js` background is optimized but heavy. If lag occurs on low-end devices, consider disabling it in `Layout.tsx`.
-
-## Next Steps for New Owner
-
-1.  **Implement Server Runner**: Create a simple Express/Fastify server that exposes endpoints matching `RemoteBrowserAdapter` calls and uses `Playwright` to drive a real browser.
-2.  **LinkedIn Support**: Enable the LinkedIn entry in `SiteRegistry` and update `MockBrowserAdapter` to simulate LinkedIn DOM structure.
-3.  **Resume Upload**: Add a real file picker to `ApplyFormProbe` to handle CV uploads (currently mocked).
+## 6. Known Issues
+*   **Code Rain Accessibility**: The flashing effect might be too intense for some users. Needs a `prefers-reduced-motion` check.
+*   **Mobile Layout**: The vertical tablet is optimized for mobile, but the "Scanner" view in `AgentStatusScreen` might need better padding on small screens.

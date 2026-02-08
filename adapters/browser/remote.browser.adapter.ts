@@ -31,15 +31,6 @@ export class RemoteBrowserAdapter implements BrowserPort {
 
     console.log(`[RemoteBrowserAdapter] Calling ${action} on ${this.runnerUrl}...`);
     
-    // REAL IMPLEMENTATION for "Stuck Browser" Fix:
-    // We try to actually fetch. If it fails (Network Error), we throw.
-    // If 404 (Endpoint missing), we throw.
-    // For this skeleton, since we don't have the server, we simulate the "Network Error" 
-    // behavior if the URL is localhost but no server is there. 
-    
-    // However, to satisfy the user's "Mock works, Remote fails properly" requirement:
-    // We will assume that if they chose REMOTE, they expect real network traffic.
-    
     try {
         const response = await fetch(`${this.runnerUrl}/api/browser/${action}`, {
             method: 'POST',
@@ -52,15 +43,12 @@ export class RemoteBrowserAdapter implements BrowserPort {
         }
         return await response.json();
     } catch (e: any) {
-        // Fallback for demo purposes if it's just a skeleton run without server:
-        // BUT user specifically said "browser isn't starting" -> implies they want to know WHY.
-        // So we throw the error to let the UI show "Failed".
         throw new Error(`Remote Runner Connection Failed: ${e.message}`);
     }
   }
 
-  async launch(): Promise<void> {
-    await this.callRemote('launch');
+  async launch(headless: boolean = false): Promise<void> {
+    await this.callRemote('launch', { headless });
   }
 
   async navigateTo(url: string): Promise<void> {
@@ -73,6 +61,10 @@ export class RemoteBrowserAdapter implements BrowserPort {
 
   async getDomSnapshot(): Promise<string> {
     return await this.callRemote('getDomSnapshot') || "<html><body><remote>Remote Content</remote></body></html>";
+  }
+
+  async captureScreenshot(): Promise<string | null> {
+      return await this.callRemote('captureScreenshot');
   }
 
   async getCurrentUrl(): Promise<string> {

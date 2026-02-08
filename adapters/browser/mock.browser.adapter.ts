@@ -1,3 +1,4 @@
+
 // Layer: ADAPTERS
 // Purpose: Implementation of ports. External world details.
 
@@ -18,7 +19,7 @@ export class MockBrowserAdapter implements BrowserPort {
   // PATCH P1.11: Track success state after submit
   private isSuccessState: boolean = false;
 
-  async launch(): Promise<void> {
+  async launch(headless: boolean = false): Promise<void> {
     console.log('[BrowserAdapter] Launching virtual browser session...');
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
@@ -41,6 +42,11 @@ export class MockBrowserAdapter implements BrowserPort {
     console.log('[BrowserAdapter] SNAPSHOT: Capturing DOM...');
     await new Promise(resolve => setTimeout(resolve, 500));
     return "<html><body><mock>Skeleton Content</mock></body></html>";
+  }
+
+  async captureScreenshot(): Promise<string | null> {
+      // Mock does not return visual screenshots
+      return null;
   }
 
   async getCurrentUrl(): Promise<string> {

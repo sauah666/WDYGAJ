@@ -2,10 +2,11 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import Atropos from 'atropos/react';
 import { Layout } from '../components/Layout';
-import { Save, RotateCcw, ArrowLeft, Key, Network, Cpu, ShieldCheck } from 'lucide-react';
+import { Save, RotateCcw, ArrowLeft, Key, Network, Cpu, ShieldCheck, ToggleLeft, ToggleRight, Monitor, Brain, Globe, HardDrive } from 'lucide-react';
 import { AgentConfig } from '../../types';
 import { listProviders, DEFAULT_LLM_PROVIDER } from '../../core/domain/llm_registry';
 import { JokeService } from '../services/JokeService';
+import { RuntimeCapabilitiesV1 } from '../../core/domain/runtime';
 
 interface Props {
   config: Partial<AgentConfig>;
@@ -13,6 +14,8 @@ interface Props {
   onSave: () => void;
   onBack?: () => void;
   onNavigate?: (route: string) => void;
+  runtimeCaps?: RuntimeCapabilitiesV1;
+  onWipeMemory?: () => void;
 }
 
 const LOOP_VIDEO = "https://raw.githubusercontent.com/sauah666/WDYGAJ/98771fc49589081d334b431a618452b72c0c450e/valera_idle_merged.mp4";
@@ -21,8 +24,10 @@ const LOOP_VIDEO = "https://raw.githubusercontent.com/sauah666/WDYGAJ/98771fc495
 const MSG_INTRO = "Панель управления нейроядром.";
 const MSG_SAVED = "Конфигурация сохранена.";
 
-export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBack, onNavigate }) => {
+export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBack, onNavigate, runtimeCaps, onWipeMemory }) => {
   const [showPanel, setShowPanel] = useState(false);
+  const [showAmnesiaConfirm, setShowAmnesiaConfirm] = useState(false);
+  const [isOrbExpanded, setIsOrbExpanded] = useState(false); 
   
   // Agent Logic
   const [agentMessage, setAgentMessage] = useState<string>(MSG_INTRO);
@@ -54,7 +59,6 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
       return () => cancelAnimationFrame(frameId);
   }, [agentMessage]);
 
-  // Panel Animation Only
   useEffect(() => {
     const timer = setTimeout(() => setShowPanel(true), 100);
     return () => clearTimeout(timer);
@@ -75,16 +79,15 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
   useLayoutEffect(() => {
       updateOrbTarget();
       window.addEventListener('resize', updateOrbTarget);
-      // Immediate update to ensure no jump
       if (avatarRef.current) updateOrbTarget();
       return () => window.removeEventListener('resize', updateOrbTarget);
-  }, []); // Run once on mount
+  }, []); 
 
   const handleProviderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
       const val = e.target.value;
       onChange('activeLLMProviderId', val);
       
-      let jokeCategory = 'LLM_LOBOTOMY'; // default mock
+      let jokeCategory = 'LLM_LOBOTOMY'; 
       if (val.includes('deepseek')) jokeCategory = 'LLM_CHINA_HACKER';
       else if (val.includes('local')) jokeCategory = 'LLM_LOCAL_GPU';
       else if (val.includes('cloud')) jokeCategory = 'LLM_CLOUD_EXPENSIVE';
@@ -94,9 +97,20 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
 
   const handleKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       onChange('apiKey', e.target.value);
-      // Occasional paranoia joke when typing key
       if (Math.random() > 0.8) {
           setAgentMessage(JokeService.getJoke('LLM_CLOUD_EXPENSIVE'));
+      }
+  };
+
+  const handleRegimeToggle = () => {
+      const willBeReal = config.useMockBrowser; 
+      
+      if (willBeReal) { // Switching TO REAL
+          onChange('useMockBrowser', false);
+          setAgentMessage("ВНИМАНИЕ! Режим LIVE. Агент будет использовать реальный браузер (если доступен).");
+      } else { // Switching TO MOCK
+          onChange('useMockBrowser', true);
+          setAgentMessage("Переход в режим симуляции. Безопасно, но скучно.");
       }
   };
 
@@ -109,11 +123,46 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
       onChange('activeLLMProviderId', DEFAULT_LLM_PROVIDER);
       onChange('apiKey', '');
       onChange('localGatewayUrl', '');
+      onChange('useMockBrowser', true);
       setAgentMessage(JokeService.getJoke('LLM_LOBOTOMY'));
+  };
+
+  const handleWipeWrapper = () => {
+      if(onWipeMemory) onWipeMemory();
+      setShowAmnesiaConfirm(false);
+      setIsOrbExpanded(false);
+  };
+
+  const handleOrbClick = () => {
+      setIsOrbExpanded(true);
+  };
+
+  const handleOrbClose = () => {
+      setIsOrbExpanded(false);
   };
 
   const currentProviderId = config.activeLLMProviderId || DEFAULT_LLM_PROVIDER;
   const providers = listProviders();
+  const isMock = !!config.useMockBrowser;
+
+  // Determine Orb Style
+  let orbStyle: React.CSSProperties = {};
+  let orbClasses = "";
+
+  if (isOrbExpanded) {
+      orbClasses = "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] h-[350px] md:w-[500px] md:h-[500px] z-[60] transition-all duration-500 ease-out";
+  } else if (orbDest) {
+      orbStyle = {
+          top: orbDest.top,
+          left: orbDest.left,
+          width: orbDest.width,
+          height: orbDest.height,
+          transform: 'none'
+      };
+      orbClasses = "fixed z-50 transition-all duration-[1200ms] ease-in-out cursor-pointer hover:brightness-110";
+  } else {
+      orbClasses = "fixed opacity-0 pointer-events-none"; 
+  }
 
   return (
     <Layout title="" hideSidebar={true} onSettingsClick={() => {}} onNavigate={onNavigate}>
@@ -128,11 +177,43 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
         @keyframes blink { 50% { opacity: 0; } }
       `}</style>
 
+      {/* BACKDROP */}
+      <div 
+          className={`fixed inset-0 bg-black/80 backdrop-blur-sm z-[55] transition-opacity duration-500 ${isOrbExpanded ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+          onClick={handleOrbClose}
+      ></div>
+
+      {/* AMNESIA CONFIRM OVERLAY */}
+      {showAmnesiaConfirm && (
+          <div className="absolute inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center animate-switch-on p-4">
+              <div className="bg-[#1a120e] border-[3px] border-[#b91c1c] rounded-2xl p-8 max-w-sm w-full shadow-[0_0_50px_rgba(185,28,28,0.5)] flex flex-col items-center text-center">
+                  <Brain size={48} className="text-[#ef4444] mb-4 animate-pulse" />
+                  <h3 className="text-xl font-bold text-[#fca5a5] uppercase tracking-widest mb-2 font-sans">Режим Амнезии</h3>
+                  <p className="text-[#a8a29e] font-mono text-sm mb-6">
+                      Вы действительно хотите стереть память агента? Он забудет все просмотренные вакансии и отправленные отклики.
+                  </p>
+                  <div className="flex gap-4 w-full">
+                      <button 
+                          onClick={() => { setShowAmnesiaConfirm(false); setIsOrbExpanded(false); }}
+                          className="flex-1 py-3 border border-[#44403c] rounded-xl hover:bg-[#292524] text-[#a8a29e] font-bold font-sans"
+                      >
+                          Отмена
+                      </button>
+                      <button 
+                          onClick={handleWipeWrapper}
+                          className="flex-1 py-3 bg-[#7f1d1d] hover:bg-[#991b1b] border border-[#ef4444] rounded-xl text-white font-bold font-sans shadow-[0_0_15px_rgba(239,68,68,0.4)]"
+                      >
+                          Стереть
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       <div className="flex flex-col items-center justify-center h-full w-full relative pt-0 pb-0 overflow-hidden bg-[#0a0503]">
         
         {/* --- SETTINGS PANEL --- */}
         <div className={`absolute inset-0 z-20 flex items-center justify-center pointer-events-none`}>
-            {/* MAXIMIZED CONTAINER */}
             <div 
                 className={`relative w-[98%] h-[98%] md:w-[600px] md:h-auto md:max-h-[95vh] bg-[#2a2420] border-[3px] border-[#4a3b32] shadow-[0_0_100px_rgba(0,0,0,0.8)] rounded-xl md:rounded-3xl overflow-hidden flex flex-col font-serif ${showPanel ? 'pointer-events-auto animate-switch-on' : 'opacity-0'}`}
                 style={{ 
@@ -142,7 +223,7 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
             >
                 {/* 1. HEADER */}
                 <div className="shrink-0 relative h-14 bg-[#1a120e] border-b-4 border-[#3a2d25] flex items-center justify-between px-4 shadow-md z-30">
-                    <button onClick={onBack} className="text-[#78716c] hover:text-[#d97706] transition-colors p-2 rounded-full hover:bg-[#2a2018]">
+                    <button onClick={onBack} className="text-[#78716c] hover:text-[#d97706] transition-colors p-2 rounded-full hover:bg-[#2a2018] pointer-events-auto">
                         <ArrowLeft size={24} />
                     </button>
                     <h2 className="relative z-10 font-serif font-bold text-xl text-[#cdbba7] tracking-widest uppercase text-shadow-md">
@@ -169,10 +250,62 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
                     </div>
                 </div>
 
-                {/* 3. SETTINGS CONTENT (Maximized) */}
-                <div className="flex-1 overflow-y-auto px-6 pb-4 custom-scrollbar relative z-10 flex flex-col">
+                {/* 3. SETTINGS CONTENT */}
+                <div className="flex-1 overflow-y-auto px-6 pb-4 custom-scrollbar relative z-10 flex flex-col pointer-events-auto">
                     
-                    {/* SECTION: SYSTEM */}
+                    {/* SECTION: REGIME */}
+                    <div className="relative flex items-center justify-center py-4 opacity-50 shrink-0">
+                        <div className="h-px bg-[#4a3b32] flex-1"></div>
+                        <div className="px-3 text-[#8c7b70] font-serif text-[10px] font-bold tracking-widest uppercase flex items-center gap-2">
+                            <Monitor size={12} /> Режим Работы
+                        </div>
+                        <div className="h-px bg-[#4a3b32] flex-1"></div>
+                    </div>
+
+                    <div className="p-4 bg-[#140c08] border-2 border-[#3e2f26] rounded-2xl flex items-center justify-between shadow-inner mb-4">
+                        <div>
+                            <div className={`font-bold font-serif text-lg ${isMock ? 'text-[#a8a29e]' : 'text-[#ef4444]'}`}>
+                                {isMock ? 'СИМУЛЯЦИЯ' : 'LIVE / REAL'}
+                            </div>
+                            <div className="text-xs text-[#57534e] mt-1 font-mono">
+                                {isMock ? 'Безопасный режим. Mock Data.' : 'Работа с реальным браузером.'}
+                            </div>
+                        </div>
+                        <button 
+                            onClick={handleRegimeToggle}
+                            className={`p-2 rounded-xl border-2 transition-all ${isMock ? 'border-[#4a3b32] text-[#78716c]' : 'border-[#ef4444] text-[#ef4444] bg-[#450a0a]'}`}
+                        >
+                            {isMock ? <ToggleLeft size={32} /> : <ToggleRight size={32} />}
+                        </button>
+                    </div>
+
+                    {/* BROWSER ENGINE DETECTED */}
+                    {!isMock && (
+                        <div className="mb-6 p-4 bg-[#1a120e] border border-[#4a3b32] rounded-2xl animate-switch-on">
+                            <label className="text-xs text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1 mb-2 block">Движок Браузера</label>
+                            <div className="flex items-center gap-3">
+                                {runtimeCaps?.hasElectronAPI ? (
+                                    <>
+                                        <HardDrive size={18} className="text-[#d97706]" />
+                                        <div>
+                                            <div className="font-bold text-sm text-[#e7e5e4]">Native / Electron</div>
+                                            <div className="text-[10px] text-[#57534e]">Обнаружена поддержка IPC.</div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Globe size={18} className="text-[#57534e]" />
+                                        <div>
+                                            <div className="font-bold text-sm text-[#78716c]">Недоступен</div>
+                                            <div className="text-[10px] text-[#57534e]">Требуется Electron для реального режима.</div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* SECTION: AI */}
                     <div className="relative flex items-center justify-center py-4 opacity-50 shrink-0">
                         <div className="h-px bg-[#4a3b32] flex-1"></div>
                         <div className="px-3 text-[#8c7b70] font-serif text-[10px] font-bold tracking-widest uppercase flex items-center gap-2">
@@ -225,10 +358,6 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
                                             className="w-full h-14 bg-[#140c08] border-2 border-[#3e2f26] rounded-2xl pl-12 pr-4 text-[#e7e5e4] font-mono text-sm outline-none focus:border-[#d97706] shadow-[inset_0_2px_5px_black] placeholder-[#2a2018]"
                                         />
                                     </div>
-                                    <div className="ml-2 text-[10px] text-[#57534e] flex items-center gap-1">
-                                        <ShieldCheck size={12} />
-                                        <span>Только локальное хранение в браузере.</span>
-                                    </div>
                                 </div>
                             )}
                         </div>
@@ -244,7 +373,7 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
                 </div>
 
                 {/* 4. FOOTER */}
-                <div className="shrink-0 relative p-6 bg-[#1a120e] border-t-2 border-[#3a2d25] shadow-inner z-30">
+                <div className="shrink-0 relative p-6 bg-[#1a120e] border-t-2 border-[#3a2d25] shadow-inner z-30 pointer-events-auto">
                     <button 
                         onClick={handleSaveWrapper}
                         className="w-full relative h-16 bg-gradient-to-b from-[#6b350f] to-[#451a03] border border-[#78350f] shadow-[0_5px_10px_black] active:shadow-none active:translate-y-1 transition-all group overflow-hidden rounded-2xl flex items-center justify-center gap-3"
@@ -264,14 +393,9 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
 
         {/* --- ORB (FIXED STATIC) --- */}
         <div 
-            className={`fixed z-50 ${orbDest ? 'opacity-100' : 'opacity-0'}`}
-            style={orbDest ? {
-                top: orbDest.top,
-                left: orbDest.left,
-                width: orbDest.width,
-                height: orbDest.height,
-                transform: 'none'
-            } : {}}
+            className={orbClasses}
+            style={orbStyle}
+            onClick={handleOrbClick}
         >
             <Atropos activeOffset={10} shadowScale={0.5} className="w-full h-full rounded-full">
                 <div 
@@ -291,6 +415,21 @@ export const SettingsScreen: React.FC<Props> = ({ config, onChange, onSave, onBa
                 </div>
             </Atropos>
         </div>
+
+        {/* EXPANDED ORB CONTROLS - FIXED ABOVE ORB */}
+        {isOrbExpanded && (
+            <div className="fixed left-1/2 -translate-x-1/2 top-[calc(50%-270px)] flex flex-col items-center gap-3 z-[70] pointer-events-auto">
+                <button 
+                    onClick={(e) => { e.stopPropagation(); setShowAmnesiaConfirm(true); }}
+                    className="w-16 h-16 rounded-full bg-[#1a120e] border-2 border-[#ef4444] text-[#ef4444] hover:bg-[#450a0a] hover:scale-110 transition-all shadow-[0_0_30px_rgba(239,68,68,0.6)] flex items-center justify-center group"
+                >
+                    <Brain size={32} className="animate-pulse group-hover:animate-none" />
+                </button>
+                <div className="px-3 py-1 bg-black/80 border border-[#ef4444]/50 rounded text-[#ef4444] font-bold text-xs tracking-[0.2em] uppercase backdrop-blur-sm shadow-lg">
+                    Амнезия
+                </div>
+            </div>
+        )}
 
       </div>
     </Layout>

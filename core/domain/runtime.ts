@@ -4,14 +4,15 @@
 
 import { AgentConfig } from '../../types';
 
-export type RuntimeEnvKind = 'BROWSER_UI' | 'NODE_RUNNER';
+export type RuntimeEnvKind = 'BROWSER_UI' | 'NODE_RUNNER' | 'ELECTRON_RENDERER';
 
 export interface RuntimeCapabilitiesV1 {
   kind: RuntimeEnvKind;
   hasNodeRuntime: boolean;
   hasRequire: boolean; 
   supportsPlaywright: boolean;
-  supportsLocalLLMGateway: boolean; 
+  supportsLocalLLMGateway: boolean;
+  hasElectronAPI: boolean; // New capability
 }
 
 export interface ConfigIssueV1 {
@@ -26,13 +27,20 @@ export const computeRuntimeCapabilities = (): RuntimeCapabilitiesV1 => {
   const isNode = typeof process !== 'undefined' && (process as any).versions != null && (process as any).versions.node != null;
   // @ts-ignore
   const hasRequire = typeof require === 'function';
+  // @ts-ignore
+  const hasElectronAPI = typeof window !== 'undefined' && !!window.electronAPI;
   
+  let kind: RuntimeEnvKind = 'BROWSER_UI';
+  if (isNode) kind = 'NODE_RUNNER';
+  if (hasElectronAPI) kind = 'ELECTRON_RENDERER';
+
   return {
-    kind: isNode ? 'NODE_RUNNER' : 'BROWSER_UI',
+    kind,
     hasNodeRuntime: isNode,
     hasRequire: hasRequire,
     supportsPlaywright: isNode && hasRequire,
-    supportsLocalLLMGateway: true // Browsers can fetch to localhost if CORS allowed
+    supportsLocalLLMGateway: true,
+    hasElectronAPI
   };
 };
 
@@ -41,12 +49,15 @@ export const validateConfigAgainstRuntime = (config: Partial<AgentConfig>, caps:
 
     // Browser Runtime Validation
     if (config.browserProvider === 'playwright') {
-        if (!caps.supportsPlaywright) {
+        // If we are in Electron Renderer, Playwright is supported VIA IPC, not directly.
+        // But the "playwright" provider in App.tsx usually means "Native Node". 
+        // We will treat Electron as a separate valid path or alias it.
+        if (!caps.supportsPlaywright && !caps.hasElectronAPI) {
             issues.push({
                 code: 'UNSUPPORTED_BROWSER_RUNTIME',
                 scope: 'BROWSER',
-                message: 'Playwright is not available in this environment. System will fall back to Simulator.',
-                blocking: false // WARN only, auto-fallback handled in App.tsx
+                message: 'Playwright is not available directly in this browser. Use Electron or Mock.',
+                blocking: false // WARN only
             });
         }
     }

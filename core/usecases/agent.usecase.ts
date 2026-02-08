@@ -1,5 +1,4 @@
 
-
 // ... existing imports ...
 import { BrowserPort, RawVacancyCard } from '../ports/browser.port';
 import { StoragePort } from '../ports/storage.port';
@@ -49,7 +48,6 @@ export class AgentUseCase {
     return nextState;
   }
 
-  // ... (omitted compaction logic, same as before) ...
   private monitorContextHealth(state: AgentState): AgentState {
       const jsonStr = JSON.stringify(state);
       const estimatedTokens = Math.ceil(jsonStr.length / 4);
@@ -273,10 +271,6 @@ export class AgentUseCase {
       return this.updateState({ ...state, status: AgentStatus.PROFILE_CAPTURED, logs: [...state.logs, `Профиль захвачен! Хеш: ${hash.substring(0, 8)}`] });
   }
 
-  // ... (generateTargetingSpec, navigateToSearchPage, scanSearchPageDOM, performSearchUIAnalysis, submitSearchPrefs, buildSearchApplyPlan, executeSearchPlanStep, executeApplyPlanCycle, verifyAppliedFilters, collectVacancyCardsBatch, dedupAndSelectVacancyBatch, runScriptPrefilter, runLLMBatchScreening, runVacancyExtraction - UNCHANGED) ...
-  
-  // Omitted for brevity: These methods are unchanged. 
-  
   async generateTargetingSpec(state: AgentState, siteId: string): Promise<AgentState> {
       const profile = await this.storage.getProfile(siteId);
       if (!profile) return this.failSession(state, "Профиль не найден для таргетинга.");
@@ -295,6 +289,9 @@ export class AgentUseCase {
       };
       const roleIndex = state.currentRoleIndex || 0;
       try {
+          // LLM Transition
+          await this.updateState({ ...state, status: AgentStatus.ANALYZING_PROFILE, logs: [...state.logs, "🧠 Анализирую профиль и формирую стратегию..."] });
+          
           const spec = await this.llm.analyzeProfile(this.pruneInput(summary));
           let nextState = state;
           if (spec.tokenUsage) {
@@ -303,12 +300,14 @@ export class AgentUseCase {
                nextState = this.addTokenUsage(state, 1000, 500, false); 
           }
           await this.storage.saveTargetingSpec(siteId, spec);
+          
+          const roles = [...spec.targetRoles.ruTitles, ...spec.targetRoles.enTitles];
           return this.updateState({ 
               ...nextState, 
               status: AgentStatus.TARGETING_READY, 
               activeTargetingSpec: spec, 
               currentRoleIndex: roleIndex, 
-              logs: [...nextState.logs, `Стратегия поиска сгенерирована. Ролей: ${spec.targetRoles.ruTitles.length + spec.targetRoles.enTitles.length}.`] 
+              logs: [...nextState.logs, `Стратегия поиска сгенерирована.`, `🔍 Выявлены роли: ${roles.slice(0, 3).join(', ')}...`] 
           });
       } catch (e: any) {
           return this.updateState({ ...state, status: AgentStatus.TARGETING_ERROR, logs: [...state.logs, `Ошибка LLM: ${e.message}`] });
@@ -348,6 +347,10 @@ export class AgentUseCase {
            const initialPrefs = this.createDraftPrefs(siteId, cachedSpec, state.activeTargetingSpec, await this.storage.getConfig() || {}, state.currentRoleIndex);
            return this.updateState({ ...state, status: AgentStatus.WAITING_FOR_SEARCH_PREFS, activeSearchUISpec: cachedSpec, activeSearchPrefs: initialPrefs, logs: [...state.logs, "Спецификация UI загружена из кеша."] });
       }
+      
+      // LLM Transition
+      await this.updateState({ ...state, status: AgentStatus.ANALYZING_SEARCH_UI, logs: [...state.logs, "🧠 Интерпретирую интерфейс поиска..."] });
+
       const input: SearchUIAnalysisInputV1 = {
           siteId,
           domSnapshot: { pageUrl: state.activeSearchDOMSnapshot.pageUrl, fields: state.activeSearchDOMSnapshot.fields },
@@ -609,13 +612,8 @@ export class AgentUseCase {
           return this.updateState({ ...state, status: AgentStatus.LLM_SCREENING_DONE, activeLLMBatch: emptyLLMBatch, logs: [...state.logs, `Батч пуст. Пропуск LLM.`] });
       }
 
-      // FIX: DEADLOCK PREVENTION
-      // Previously, this blocked if length < MIN_BATCH_SIZE (10). 
-      // Now we just log and proceed, ensuring the loop continues even with small batches.
-      if (candidates.length < 5) { // Lowered warning threshold
-          // Just a log, no return
-          // console.log(`Small batch: ${candidates.length} candidates. Processing anyway.`);
-      }
+      // LLM Transition
+      await this.updateState({ ...state, status: AgentStatus.LLM_SCREENING_IN_PROGRESS, logs: [...state.logs, `🧠 Оцениваю ${candidates.length} вакансий...`] });
 
       const targeting = state.activeTargetingSpec!;
       const input: LLMScreeningInputV1 = { siteId, targetingSpec: { targetRoles: [...targeting.targetRoles.ruTitles, ...targeting.targetRoles.enTitles], seniority: targeting.seniorityLevels, matchWeights: targeting.titleMatchWeights }, cards: candidates.map(c => ({ id: c.id, title: c.title, company: c.company, salary: c.salary ? `${c.salary.min}-${c.salary.max}` : null, workMode: c.workMode, url: c.url })) };
@@ -663,6 +661,10 @@ export class AgentUseCase {
            await this.storage.saveLLMVacancyEvalBatch(siteId, emptyEvalBatch);
            return this.updateState({ ...state, status: AgentStatus.EVALUATION_DONE, activeEvalBatch: emptyEvalBatch, logs: [...state.logs, "Нет данных для оценки."] });
       }
+
+      // LLM Transition
+      await this.updateState({ ...state, status: AgentStatus.EVALUATING_CANDIDATES, logs: [...state.logs, "🧠 Принимаю финальные решения..."] });
+
       const input: EvaluateExtractsInputV1 = { profileSummary: profile.rawContent.substring(0, 3000), targetingRules: { targetRoles: targeting.targetRoles.enTitles, workModeRules: targeting.workModeRules, minSalary: targeting.userConstraints.minSalary }, candidates: extractBatch.results.map(e => ({ id: e.vacancyId, title: "Unknown", sections: e.sections, derived: { salary: e.sections.salary, workMode: e.sections.workMode } })) };
       const output = await this.llm.evaluateVacancyExtractsBatch(this.pruneInput(input));
       let nextState = this.addTokenUsage(state, output.tokenUsage.input, output.tokenUsage.output, false);

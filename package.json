@@ -1,24 +1,25 @@
+
 {
-  "name": "why-don't-you-get-a-job",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "name": "agent-seeker-electron",
+  "version": "1.3.0",
+  "description": "Autonomous Job Search Agent (Electron Wrapper)",
+  "main": "electron/main.js",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "start": "electron .",
+    "postinstall": "playwright install chromium"
+  },
+  "keywords": [
+    "agent",
+    "ai",
+    "job-search",
+    "electron"
+  ],
+  "author": "Agent Architect",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0"
   },
   "dependencies": {
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "lucide-react": "0.294.0",
-    "three": "0.160.0",
-    "atropos": "^2.0.2"
-  },
-  "devDependencies": {
-    "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "playwright": "^1.40.0"
   }
 }

@@ -24,8 +24,9 @@ export class PlaywrightBrowserAdapter implements BrowserPort {
     console.log('[PlaywrightAdapter] Initialized. Expecting Node.js environment.');
   }
 
-  async launch(): Promise<void> {
+  async launch(headless: boolean = false): Promise<void> {
     try {
+      this.isHeadless = headless;
       // Dynamic require to avoid bundling issues
       const { chromium } = require('playwright'); 
       this.browser = await chromium.launch({ headless: this.isHeadless });
@@ -62,6 +63,17 @@ export class PlaywrightBrowserAdapter implements BrowserPort {
   async getDomSnapshot(): Promise<string> {
     if (!this.page) return "";
     return await this.page.content();
+  }
+
+  async captureScreenshot(): Promise<string | null> {
+    if (!this.page) return null;
+    try {
+      const buffer = await this.page.screenshot({ type: 'jpeg', quality: 50 });
+      return "data:image/jpeg;base64," + buffer.toString('base64');
+    } catch (e) {
+      console.error('[PlaywrightAdapter] Screenshot failed:', e);
+      return null;
+    }
   }
 
   async getCurrentUrl(): Promise<string> {
@@ -163,7 +175,7 @@ export class PlaywrightBrowserAdapter implements BrowserPort {
 
     // Real scraping logic would use specific selectors for hh.ru
     // Here we use generic placeholders as per "Real Adapter Skeleton" requirement
-    const cards = await this.page.evaluate((l) => {
+    const cards = await this.page.evaluate((l: number) => {
       const nodes = Array.from(document.querySelectorAll('[data-qa="vacancy-serp__vacancy"]')).slice(0, l);
       return nodes.map(n => {
         const titleEl = n.querySelector('[data-qa="serp-item__title"]');

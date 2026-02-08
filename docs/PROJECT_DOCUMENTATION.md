@@ -48,24 +48,31 @@
 - [x] H3: Advanced Flow Control (Pause, Stop, Amnesia).
 - [x] H4: Documentation Audit (Complete).
 - [x] H5: Videophone Interface & Visual Scanning.
-- [x] H6: Input Validation & Auto-Cover Letter (New).
-- [x] H7: Steampunk Toggle & Joke Expansion (New).
-- [x] H8: Final Integrity Re-Audit (DONE - Step 71).
+- [x] H6: Input Validation & Auto-Cover Letter.
+- [x] H7: Steampunk Toggle & Joke Expansion.
+- [x] H8: Final Integrity Re-Audit.
+
+### Phase I: Visual Immersion (DONE)
+- [x] I1: Vertical "Steampunk Tablet" Layout.
+- [x] I2: Diegetic UI Elements (Vacuum Tubes, Analog Gauges, LED Counters).
+- [x] I3: Cinematic Transitions ("Code Rain" Intro).
+- [x] I4: Dieselpunk Button Styling (Convex Glass & Brass).
+
+### Phase J: Infrastructure (IN PROGRESS)
+- [x] J1: Electron Wrapper & IPC Adapter.
+- [x] J2: MCP (Model Context Protocol) Client Adapter.
 
 ## Runtime Governance
-- **Adapter Safety**: Browser bundles use Mock/Remote adapters. Playwright is Node-only.
-- **Env Detection**: `RuntimeCapabilities` logic automatically detects Browser vs Node Runner environment.
+- **Adapter Safety**: Browser bundles use Mock/Remote/MCP adapters.
+- **Native Support**: Electron runtime detected via `window.electronAPI`.
 
 ## Batch Enforcement Policy
 - **Strict 50 item window** for Vacancy Batches to support realistic scrolling visualization and LLM context efficiency.
 - Execution blocked if batch size < 5 (soft limit), unless `endOfResults` is flagged.
 
 ## Current Status
-**Release Candidate 1.3 (Validated)**
-- Architecture is fully audited.
-- UI/UX implements the "Retrofuturistic Videophone" concept.
-- **Input Validation**: Search blocked until Work Mode is selected and Cover Letter is configured.
-- **Auto-Cover Letter**: Steampunk toggle switch implemented. "Manual" mode shows textarea, "Auto" mode shows "Brain Writing" visualization.
-- **Deep Lore**: Added 100 new jokes covering Manual vs Auto generation scenarios.
-- **State Management**: Fixed Videophone intro loops; "Reset" now correctly skips intro animation.
-- Documentation is 100% compliant with the codebase (checked at Step 71).
+**Release Candidate 1.4 (Visual Polish & Electron Ready)**
+- Architecture remains strictly Clean.
+- UI: Vertical "Device" format with Cinematic Transitions (Code Rain).
+- **Ready for Deployment**: Can be run as a web app (Mock) or Electron app (Real).
+- **Documentation**: Synchronized at Step 110.

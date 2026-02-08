@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Globe, Lock, ArrowLeft, ArrowRight, RotateCw, User, LogIn, Search, MapPin, Briefcase, FileText, CheckCircle2, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { Globe, Lock, ArrowLeft, ArrowRight, RotateCw, User, LogIn, Search, MapPin, Briefcase, FileText, CheckCircle2, XCircle, AlertCircle, RefreshCw, Eye } from 'lucide-react';
 import { AgentStatus } from '../../types';
 import { UserSearchPrefsV1, VacancyCardBatchV1, PreFilterResultBatchV1 } from '../../core/domain/entities';
+import { BrowserPort } from '../../core/ports/browser.port';
 
 interface BrowserViewportProps {
   url: string;
@@ -12,6 +13,7 @@ interface BrowserViewportProps {
   activeSearchPrefs?: UserSearchPrefsV1;
   activeVacancyBatch?: VacancyCardBatchV1; // Added for visual
   activePrefilterBatch?: PreFilterResultBatchV1; // Added for visual
+  browserAdapter?: BrowserPort; // Used for polling screenshots in Real mode
 }
 
 export const BrowserViewport: React.FC<BrowserViewportProps> = ({ 
@@ -21,29 +23,47 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({
     onLoginSubmit, 
     activeSearchPrefs,
     activeVacancyBatch,
-    activePrefilterBatch
+    activePrefilterBatch,
+    browserAdapter
 }) => {
   const [fakeUser, setFakeUser] = useState("user@example.com");
   const [fakePass, setFakePass] = useState("");
+  const [screenshot, setScreenshot] = useState<string | null>(null);
   
-  // Auto-scroll logic
+  // Auto-scroll logic for mock list
   const listRef = useRef<HTMLDivElement>(null);
   
+  // REAL MODE: Screenshot Polling
   useEffect(() => {
-      // Auto-scroll when batch is active
-      if (activeVacancyBatch && listRef.current) {
+      if (isMock || !browserAdapter) return;
+
+      let active = true;
+      const poll = async () => {
+          if (!active) return;
+          try {
+              const shot = await browserAdapter.captureScreenshot();
+              if (active && shot) setScreenshot(shot);
+          } catch (e) {
+              console.error("Poll failed", e);
+          }
+          if (active) setTimeout(poll, 1000); // 1 FPS polling
+      };
+      
+      poll();
+      return () => { active = false; };
+  }, [isMock, browserAdapter, status]);
+
+  // MOCK MODE: Auto-scroll
+  useEffect(() => {
+      if (isMock && activeVacancyBatch && listRef.current) {
           const scrollInterval = setInterval(() => {
               if (listRef.current) {
-                  listRef.current.scrollTop += 2; // Slow scroll down
-                  // Loop back for effect if needed, or just stop at bottom
-                  if (listRef.current.scrollTop >= listRef.current.scrollHeight - listRef.current.clientHeight) {
-                      // listRef.current.scrollTop = 0; 
-                  }
+                  listRef.current.scrollTop += 2; 
               }
           }, 50);
           return () => clearInterval(scrollInterval);
       }
-  }, [activeVacancyBatch, status]);
+  }, [activeVacancyBatch, status, isMock]);
 
   const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
@@ -388,16 +408,20 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({
         {/* Viewport Content */}
         <div className="flex-1 bg-white relative overflow-auto font-sans">
             {!isMock ? (
-                <div className="flex flex-col items-center justify-center h-full text-[#404040] space-y-4 p-8 text-center bg-[url('https://www.transparenttextures.com/patterns/graphy.png')]">
-                    <Globe size={64} className="text-[#a0a0a0]" strokeWidth={1} />
-                    <div className="bg-[#f0f0f0] p-4 border border-[#808080] shadow-md">
-                        <h3 className="text-lg font-bold uppercase tracking-widest mb-2 font-sans">Удаленный Канал Установлен</h3>
-                        <p className="text-lg">Видеопоток перехвачен с внешнего автоматона.</p>
-                        <div className="mt-4 h-1 w-full bg-[#d4d0c8] overflow-hidden">
-                             <div className="h-full bg-green-600 animate-pulse w-1/3"></div>
+                screenshot ? (
+                    <img src={screenshot} alt="Remote Browser View" className="w-full h-auto min-h-full object-contain bg-black" />
+                ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-[#404040] space-y-4 p-8 text-center bg-[url('https://www.transparenttextures.com/patterns/graphy.png')]">
+                        <Globe size={64} className="text-[#a0a0a0]" strokeWidth={1} />
+                        <div className="bg-[#f0f0f0] p-4 border border-[#808080] shadow-md">
+                            <h3 className="text-lg font-bold uppercase tracking-widest mb-2 font-sans">Удаленный Канал</h3>
+                            <p className="text-lg">Ожидание видеопотока...</p>
+                            <div className="mt-4 h-1 w-full bg-[#d4d0c8] overflow-hidden">
+                                <div className="h-full bg-green-600 animate-pulse w-1/3"></div>
+                            </div>
                         </div>
                     </div>
-                </div>
+                )
             ) : renderMockContent()}
         </div>
     </div>
