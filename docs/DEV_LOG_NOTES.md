@@ -2,7 +2,7 @@
 # Dev Log Notes & Handover Manifesto
 
 **Date**: 06.02.2026
-**Author**: Senior Agent Architect (Release Candidate 1.5)
+**Author**: Senior Agent Architect (Release Candidate 1.6)
 **Status**: CRITICAL ARCHITECTURAL AUDIT & HANDOVER
 
 ---
@@ -23,14 +23,15 @@ As of today, **AgentSeeker** (Project "Кузница Кадров") is a highly
 ### 2.1. Backend Logic (Core)
 *   **Domain Layer**:
     *   *Strength*: Strong typing and separation of concerns. `AgentState` is comprehensive.
-    *   *Risk*: **Batching Policy**. We increased batch size to 50 for visual effect ("Scanner Mode"). `VacancyCardBatchV1` stores full objects. `AgentState` might hit the browser's 5MB `localStorage` limit after 3-4 runs if logs aren't aggressively pruned.
+    *   *Risk*: **Batching Policy**. **[DEPRECATED / RESOLVED: See Step 128]**. We initially increased batch size to 50 for visual effect ("Scanner Mode"). However, `VacancyCardBatchV1` stores full objects, and `AgentState` risks hitting the browser's 5MB `localStorage` limit.
+    *   *Current Status*: Batch size is strictly limited to **15** in `DEFAULT_PRUNING_POLICY` (Step 128) to ensure stability.
     *   *Observation*: `AgentUseCase` is approaching "God Object" status. It handles navigation, parsing, LLM orchestration, and memory management. It should be split in v2.0.
 
 ### 2.2. Adapters (The Integration Gap)
 *   **BrowserPort (Critical)**:
     *   `MockBrowserAdapter`: Excellent implementation. It simulates latency, DOM structures, and even specific CSS selectors for the "Scanner" UI.
     *   `PlaywrightBrowserAdapter`: Technically correct code, but dead weight in a web build. It requires Node.js bindings.
-    *   `RemoteBrowserAdapter`: A client-side stub. It expects a server at `http://localhost:3000` which *does not exist* in this repository.
+    *   `RemoteBrowserAdapter`: **[DEPRECATED]**. A client-side stub for HTTP-controlled browsers. Superseded by `ElectronIPCAdapter` in the current architecture.
 *   **LLMAdapter**:
     *   `GeminiLLMAdapter`: Functional but naive. It lacks **Rate Limiting**. Scanning 50 vacancies in parallel (or even serially without delays) will trigger HTTP 429 errors from Google immediately.
 
@@ -45,32 +46,28 @@ As of today, **AgentSeeker** (Project "Кузница Кадров") is a highly
 
 ## 3. Road to Real Launch (The "Body" Project)
 
-To make this agent functional in the real world, you must choose one of two paths:
+To make this agent functional in the real world, you must choose one of two paths. **Latest Architecture decision: Path A is the Winner.**
 
-### Path A: The Electron Shell (Recommended)
+### Path A: The Electron Shell (IMPLEMENTED)
 Wrap this entire React application in **Electron**.
 1.  **Main Process**: Runs Node.js. Import `playwright` here.
 2.  **Renderer Process**: Runs this React App.
-3.  **IPC Bridge**: Replace `RemoteBrowserAdapter` with an `ElectronBrowserAdapter` that sends IPC messages to the Main Process to execute Playwright commands.
-*   *Pros*: Zero latency, full control, no CORS issues, no separate server.
-*   *Cons*: App becomes a desktop binary, not a website.
+3.  **IPC Bridge**: `ElectronIPCAdapter` sends messages to Main Process.
+*   *Status*: **ACTIVE**. See `electron/main.js` and `adapters/browser/electron.ipc.adapter.ts`.
 
-### Path B: The Companion Server
-Build a separate Node.js microservice (`agent-runner`).
-1.  **API**: Expose endpoints like `POST /navigate`, `POST /scan`, `POST /click`.
-2.  **Implementation**: Map these endpoints to the existing `PlaywrightBrowserAdapter`.
-*   *Pros*: Keeps the UI as a web app.
-*   *Cons*: Security nightmare (sending cookies/sessions over HTTP), latency, complexity of running two apps.
+### Path B: The Companion Server (DEPRECATED)
+**[DEPRECATED / SEE PATH A]**
+Build a separate Node.js microservice (`agent-runner`) to expose Playwright via HTTP.
+*   *Status*: **OBSOLETE**. While `RemoteBrowserAdapter` exists in the codebase, it is no longer the primary strategy. The complexity of managing CORS and separate processes was deemed unnecessary given the Electron solution.
 
 ---
 
 ## 4. Hidden Traps for the Next Agent
 
 1.  **The 50-Item Batch**:
-    *   The UI expects 50 items to look cool (scrolling matrix effect).
-    *   The LLM (Gemini 2.0 Flash) has a massive context window, so it *can* handle screening 50 items.
-    *   **Trap**: The network cannot. Fetching 50 vacancy pages for "Extraction" (Phase D) will take forever or get banned by `hh.ru` anti-bot protection.
-    *   *Fix*: Implement a "Sliding Window" in `AgentUseCase`. Process items in sub-batches of 5, even if the main batch is 50.
+    *   **[DEPRECATED / RESOLVED]**: This trap was mitigated in Step 128 by enforcing a strict 15-item limit in the Logic Layer (`DEFAULT_PRUNING_POLICY`).
+    *   *Context*: The UI expects 50 items to look cool (scrolling matrix effect). The LLM can handle it, but the Network cannot.
+    *   *Fix Applied*: The Logic now enforces a slice of 15 items regardless of UI capacity.
 
 2.  **The "Pause" Race Condition**:
     *   If the user clicks "Pause" while an LLM request is in flight, the `AgentUseCase` might update the state *after* the pause, potentially overwriting the "Paused" status or triggering the next step automatically.
@@ -91,9 +88,7 @@ Focus your next sprint purely on **Infrastructure**, not Logic. The Logic is don
 
 ---
 
-## 6. Lessons Learned (Steps 123-126)
-
-Following the implementation of Electron/MCP support and subsequent stabilization fixes, several critical architectural lessons were observed:
+## 6. Lessons Learned (Steps 123-127)
 
 ### 6.1. The "Invisible Orb" (UI/State Race Condition)
 *   **Problem**: The "Orb" (Valera) would sometimes disappear or misalign when transitioning from the `ModeSelectionScreen` (Tablet) to the `AgentStatusScreen` (Runner).
@@ -112,7 +107,15 @@ Following the implementation of Electron/MCP support and subsequent stabilizatio
 *   **Trade-off**: We accepted this cost to achieve the "Industrial Cyberpunk" aesthetic (`Diegetic UI`), reasoning that the target user (Job Seeker) is likely on a desktop environment.
 *   **Mitigation**: `SteamEngineBackground` is memoized and runs outside the React render cycle, but browser compositing is still heavy. Future optimization: Add a "Low Quality" toggle in Settings.
 
-### 6.4. Resume Selection Logic
-*   **Challenge**: Job sites often have multiple resumes. The agent needs to know *which* one to pick.
-*   **Solution**: Added `targetResumeTitle` to `AgentConfig`. Updated `BrowserPort` with `selectOption`.
-*   **Lesson**: Simple text input is often robust enough for matching. We don't need complex AI matching for the resume dropdown; a substring match ("Frontend") works perfectly for "Frontend Developer". Keep adapters simple.
+### 6.4. LLM JSON Reliability (Hardening)
+*   **Problem**: Gemini would occasionally return a JSON object where `targetRoles.ruTitles` was `null` or undefined instead of an array, causing the app to crash with "ruTitles is not iterable".
+*   **Cause**: Weak prompting and lack of runtime validation in the Adapter layer. LLMs are probabilistic, not deterministic.
+*   **Fix**:
+    1.  Updated `GeminiLLMAdapter` prompt with a strict JSON schema example.
+    2.  Added runtime checks *after* JSON parsing to force-initialize missing arrays (`if (!Array.isArray(x)) x = []`).
+*   **Lesson**: Never trust LLM output structure. Always sanitize and normalize it at the Adapter boundary before passing it to the Domain.
+
+### 6.5. UX: Modes vs Limits
+*   **Problem**: Users might confuse "Work Mode" (Remote/Hybrid) with "Search Regime" (How many applications). Buttons for "10/50/Inf" were cluttered.
+*   **Fix**: Separated "Regime" and "Limit" into distinct visual blocks. Replaced Limit buttons with a **Slider** (1-100) that snaps to "Infinity" at the max end.
+*   **Lesson**: Grouping related controls visually reduces cognitive load. Sliders are better than multiple buttons for quantitative values in "Industrial" interfaces.

@@ -28,13 +28,13 @@
 *   **Logic**:
     *   `runtime.ts`: Detection of execution environment (Node vs Browser vs Electron).
     *   `llm_registry.ts`: Definitions of supported AI providers and their configuration requirements.
-*   **Config**: `AgentConfig` includes `autoCoverLetter`, `targetResumeTitle`.
+*   **Config**: `AgentConfig` includes `autoCoverLetter`, `targetResumeTitle`, `maxApplications` (0 = Infinity).
 *   **Запрещено**: Импорты из `react`, `fs`, браузерных API.
 
 ### 2. Use Cases (`core/usecases/`)
 *   **AgentUseCase**: Оркестратор. Содержит бизнес-логику переходов между статусами.
 *   Реализует: Governance (Context Health), Deduplication, Telemetry, Retry Policies, Rotation Logic, Amnesia.
-*   Управляет: `BrowserPort`, `StoragePort`, `LLMPort`, `UIPort`.
+*   **Limit Enforcement**: `submitApplyForm` checks `state.runAppliesCount` against `config.maxApplications`. If limit reached, status -> `COMPLETED`.
 *   **Invariant Fix (v1.4)**: Ensures `activeProfileSnapshot` is populated in `AgentState` immediately after capture/load to prevent pipeline stalls during LLM evaluation phases.
 
 ### 3. Ports (`core/ports/`)
@@ -44,25 +44,16 @@
 ### 4. Adapters (`adapters/`)
 *   **BrowserAdapter**:
     *   `MockBrowserAdapter`: Fully simulated browser environment. Supports `selectOption` mock logic.
-    *   `ElectronIPCAdapter` (New): Bridges Renderer process to Main process via `window.electronAPI`. Allows `Playwright` execution in a desktop context.
-    *   `McpBrowserAdapter` (New): Connects to a Model Context Protocol server via SSE/HTTP to control external browsers.
+    *   `ElectronIPCAdapter` (Active): Bridges Renderer process to Main process via `window.electronAPI`. Allows `Playwright` execution in a desktop context. **Primary Implementation for Real Mode.**
+    *   `McpBrowserAdapter` (Active): Connects to a Model Context Protocol server via SSE/HTTP to control external browsers.
+    *   `RemoteBrowserAdapter` (**[DEPRECATED]**): A client-side stub for HTTP-controlled remote browsers. Superseded by Electron IPC for desktop, but kept for legacy web-server scenarios.
     *   `PlaywrightBrowserAdapter` (Node-only): Direct control of Chromium via Playwright (used by Electron Main).
 *   **StorageAdapter**: `LocalStorageAdapter` with namespace isolation and legacy fallback support.
 *   **LLMAdapter**:
     *   `MockLLMAdapter`: Simulated deterministic AI responses.
-    *   `GeminiLLMAdapter`: Native Google GenAI integration.
+    *   `GeminiLLMAdapter`: Native Google GenAI integration. **Hardened**: Includes runtime validation to ensure JSON arrays (`ruTitles`) are iterable, preventing crashes on malformed LLM output.
     *   `OpenAILLMAdapter`: Generic client supporting OpenAI, DeepSeek, and Local LLMs (Ollama/LM Studio).
 *   **Presenter**: `AgentPresenter` - Bridges React UI events to UseCase logic and drives the "Automation Loop".
-
-## Presentation Layer & Infrastructure
-
-### Presentation Services
-*   **JokeService**: Manages the "personality" of the agent (`Valera`). Handles dynamic text generation based on salary inputs, location, agent status, and cover letter mode.
-
-### UI Components
-*   **AgentStatusScreen**: Updated to ensure `Orb` visibility logic recalculates correctly after panel transitions.
-*   **BrowserViewport**: Visualizes the agent's "vision". In Electron mode, polls for screenshots via IPC.
-*   **Three.js Integration**: The `Layout` component hosts a `SteamEngineBackground` subsystem.
 
 ## Runtime Governance (Factory Pattern)
 
@@ -71,6 +62,29 @@ The application uses a dynamic factory in `App.tsx` backed by `core/domain/runti
 1.  **Runtime Capability Analysis**: Detects Browser vs Electron (`window.electronAPI`).
 2.  **Adapter Instantiation**:
     *   Priority: Config Force Mock -> Electron IPC -> Native Node -> Fallback Mock.
+    *   **Strict Mode**: If the configuration requests `REAL` mode but the environment lacks the necessary capabilities (Electron API), the app will **throw an error** rather than silently falling back to Mock. This ensures the user is aware of the environment mismatch.
+
+## Configuration & Defaults Strategy (UX Layer)
+
+To improve User Experience, the UI layer (`SettingsScreen.tsx`) implements "Smart Defaults" logic that sits above the Domain configuration:
+
+*   **Macro Regime Switch**: The UI provides a high-level toggle between "Mock" and "Real" regimes.
+*   **Auto-Configuration**:
+    *   **Switching to Real Mode**: Automatically attempts to switch the `activeLLMProviderId` to `local_llm` (if the current one is `mock`), assuming a user enabling Real Browser likely wants Real AI.
+    *   **Switching to Mock Mode**: Forces both Browser and LLM configs to `mock` to ensure a safe, offline, cost-free demonstration environment.
+*   This logic ensures that users don't accidentally run a Real Browser with a Mock LLM (useless) or vice-versa, unless they explicitly override it in the detailed settings.
+
+## Resilience & Safety Nets
+
+### LLM Output Hardening
+To prevent crashes due to malformed JSON from stochastic LLMs, Adapters must implement the following safety nets:
+*   **Schema Enforcement**: Prompts must include strict JSON schemas.
+*   **Runtime Patching**: If an expected array (e.g., `targetRoles.ruTitles`) is missing or null, the Adapter must inject a default empty array `[]` before passing data to the Domain.
+*   **Default Fallback**: If critical fields are entirely missing (e.g., no roles extracted), the Adapter should inject a generic safe fallback (e.g., `["Specialist"]`) to allow the pipeline to continue rather than crashing.
+
+### Context Governance Limits (Phase G3)
+*   **Soft Limit**: 30,000 tokens. Triggers "Compact Session" (summarizing logs).
+*   **Hard Limit**: 36,000 tokens. Triggers `CONTEXT_OVER_LIMIT` status, pausing the agent to prevent context window overflow errors.
 
 ## Reset & Memory Matrix
 
@@ -101,6 +115,7 @@ The application uses a dynamic factory in `App.tsx` backed by `core/domain/runti
     *   `FINDING_APPLY_BUTTON` -> `APPLY_BUTTON_FOUND`.
     *   `APPLY_FORM_OPENED` -> `FILLING_QUESTIONNAIRE` (if needed) -> `APPLY_DRAFT_FILLED`.
     *   `SUBMITTING_APPLICATION` -> `APPLY_SUBMIT_SUCCESS` or `APPLY_SUBMIT_FAILED`.
+    *   *Check Limit*: If `runAppliesCount` >= `maxApplications` -> `COMPLETED`.
     *   *Retry/Failover*: `APPLY_RETRYING`, `APPLY_FAILED_HIDDEN`, `APPLY_FAILED_SKIPPED`.
 8.  **Rotation & End**:
     *   `COMPLETED` -> `TARGETING_READY` (Next Role) OR `IDLE` (Finished).
@@ -113,9 +128,11 @@ The application uses a dynamic factory in `App.tsx` backed by `core/domain/runti
 ## Technical Deviations & Debt
 
 1.  **JokeService Persistence**: Directly accesses `localStorage`.
-2.  **Remote Runner Stub**: `RemoteBrowserAdapter` expects an external server not currently provided in the repo (Electron is the preferred path).
+2.  **Remote Runner Stub**: `RemoteBrowserAdapter` expects an external server (deprecated pattern). The preferred path is now **Electron**.
 3.  **External Asset Dependency**: The "Valera" Orb videos (`valera_merged.mp4`, etc.) are hotlinked from a raw GitHub repository. This is a fragility risk (CORS/Uptime). Production builds should bundle these assets.
 4.  **Selector Strategy**:
     *   `MockBrowserAdapter` uses synthetic selectors (e.g., `mock://vacancy/apply-button`).
     *   `PlaywrightBrowserAdapter` uses real CSS/XPath selectors.
     *   *Implication*: LLM-generated `SearchUISpec` must be aware of the context, or the Adapter must handle translation. Currently, logic favors the specific implementation of the active adapter.
+5.  **Electron Apply Handlers**: The `ElectronIPCAdapter` currently uses **stubs** (empty arrays or no-ops) for the Apply flow (`scanApplyEntrypoints`, `submitApplyForm`).
+    *   *Impact*: While `Mock` mode simulates the full cycle, `Real` mode (Electron) can only Search and Extract. It cannot yet click "Apply" or fill forms on `hh.ru` without updating `electron/main.js` with site-specific selectors.

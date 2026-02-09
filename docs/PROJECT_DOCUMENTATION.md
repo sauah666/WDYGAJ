@@ -22,14 +22,15 @@
 ### Phase D: Automation Pipeline (DONE)
 - [x] Search Page Navigation.
 - [x] DOM Analysis & Filter Application.
-- [x] Vacancy Collection Batching (Updated to 50 items).
+- [x] Vacancy Collection Batching.
 - [x] Apply Queue & Execution.
 
-### Phase E: Application Execution (DONE)
+### Phase E: Application Execution (PARTIAL)
 - [x] Apply Entrypoint Probing.
 - [x] Form Filling (Drafts).
 - [x] Questionnaire Handling.
 - [x] Submit & Receipt.
+- *Note*: Fully implemented for `MockBrowserAdapter`. For `ElectronIPCAdapter` (Real Mode), the Apply logic currently contains stubs (`scanApplyEntrypoints` returns empty) and requires further implementation in `main.js`.
 
 ### Phase F: Resilience & Ops (DONE)
 - [x] DOM Drift Detection.
@@ -63,11 +64,13 @@
 - [x] J2: MCP (Model Context Protocol) Client Adapter.
 - [x] J3: Runtime Capability Detection.
 
-### Phase K: Stability & Logic Hardening (DONE)
-- [x] K1: Resume Selection Logic.
+### Phase K: Stability & Logic Hardening (IN PROGRESS)
+- [~] K1: Resume Selection Logic (Detection Implemented, UI/Selection Pending).
 - [x] K2: Universal Cover Letter Reset.
 - [x] K3: Pipeline Continuity Fixes (Hydration).
 - [x] K4: UI Visibility Fixes (Orb Race Condition).
+- [x] K5: JSON Schema Hardening (Gemini Fix).
+- [x] K6: Cycle Limit Slider & Settings Refinement.
 
 ### Phase L: Documentation & Handover (DONE)
 - [x] L1: Design Decision Log (Accepted/Rejected patterns).
@@ -75,16 +78,18 @@
 - [x] L3: Skill/Invariant Updates (Diegetic UI).
 
 ## Runtime Governance
-- **Adapter Safety**: Browser bundles use Mock/Remote/MCP adapters.
+- **Primary Desktop Adapter**: `ElectronIPCAdapter` (prioritized for real browsing).
+- **Web Simulation**: `MockBrowserAdapter` (default for dev/demo).
+- **Legacy/Experimental**: `McpBrowserAdapter` (via Protocol) and `RemoteBrowserAdapter` (Deprecated).
 - **Native Support**: Electron runtime detected via `window.electronAPI`.
 
 ## Batch Enforcement Policy
-- **Strict 50 item window** for Vacancy Batches to support realistic scrolling visualization and LLM context efficiency.
-- Execution blocked if batch size < 5 (soft limit), unless `endOfResults` is flagged.
+- **Strict 15 item window** for Vacancy Batches.
+- *Correction (Step 128)*: While the UI design supports a visual "matrix" of 50 items, the Core Logic enforces a limit of 15 (`DEFAULT_PRUNING_POLICY`) to prevent LLM context overflow and network timeouts.
 
 ## Current Status
-**Release Candidate 1.5 (Documentation & Stability)**
+**Release Candidate 1.6 (UI Refinement & Logic Hardening)**
 - **Architecture**: Hybrid (Web/Electron/MCP).
-- **UX**: Fully realized Industrial Cyberpunk aesthetic.
-- **Logic**: Robust against refresh/restart thanks to hydration fixes.
-- **Documentation**: Fully synchronized with codebase (Step 126).
+- **UX**: Fully realized Industrial Cyberpunk aesthetic with refined limit controls.
+- **Logic**: Hardened against LLM hallucinations and runtime crashes.
+- **Documentation**: Fully synchronized with codebase (Step 128).

@@ -34,10 +34,21 @@ The interface of **AgentSeeker** (aka "Кузница Кадров") is designed
     *   **Salary**: Numeric tumbler-style input. Maps to `AgentConfig.minSalary`.
     *   **Location**: Dropdown menu ("Москва", "СПБ", "Global"). Maps to `AgentConfig.city`.
     *   **Mode Switch**: 3-state toggle (Remote/Hybrid/Office). Maps to `AgentConfig.targetWorkModes`.
+    *   **Limit Slider**: A distinct horizontal slider (1-100) controlling the maximum number of applications per run. 
+        *   *Mapping Logic*: Slider Value `101` visually snaps to the end and activates **Infinity Mode** (∞).
+        *   *Domain Mapping*: UI value `101` converts to `0` in `AgentConfig.maxApplications`, which is interpreted by the Logic layer as "No Limit".
     *   **Letter Generator**: A physical switch toggling between "Manual" (Typewriter) and "Auto" (AI Brain). Includes a **Refresh Button** to purge and regenerate the AI letter.
-    *   **Resume Selector**: A text input allowing the user to specify the *exact title* of the resume to use on the target site (e.g., "Frontend Developer"). Maps to `AgentConfig.targetResumeTitle`.
+    *   **Resume Selector** (in Settings): A text input allowing the user to specify the *exact title* of the resume to use on the target site (e.g., "Frontend Developer"). Maps to `AgentConfig.targetResumeTitle`.
 
-### 2. The Orb ("Valera")
+### 2. The Settings Panel
+*   **Role**: Engine room configuration.
+*   **Browser Mode**: Renamed to "Симуляция" (Simulation) and "Real (Electron)" to clearly distinguish between the Mock Adapter (Web safe) and the Playwright Adapter (Desktop).
+*   **Master Regime Switch** (Status Bar): A set of macro-toggles (`TestTube` vs `Activity` icon) located in the Settings footer/status bar.
+    *   **Mock**: Forces Browser to `Mock` and LLM to `Mock` (virtual environment).
+    *   **Real**: Forces Browser to `Real` and attempts to select a Real LLM (defaults to Local LLM if previously Mock).
+*   **API Key Management**: Input field includes a discreet "Сброс ключа" (Reset Key) text button underneath to allow clearing sensitive data from storage.
+
+### 3. The Orb ("Valera")
 *   **Role**: The personification of the Agent.
 *   **Behavior**:
     *   **Idle**: Pulses gently in the upper dock of the Tablet (Loop Video).
@@ -46,18 +57,18 @@ The interface of **AgentSeeker** (aka "Кузница Кадров") is designed
     *   **Runner Mode**: Relocates to the corner to oversee the browser work.
     *   **Amnesia Mode**: When wiping memory, the Orb expands to fill the screen, creating a dramatic "Mind Wipe" effect.
 
-### 3. The Browser Viewport
+### 4. The Browser Viewport
 *   **Visuals**: Styled like an old OS window (`Win95` meets `Fallout`).
 *   **Modes**:
     *   **Standby**: CRT noise and "WAITING FOR SIGNAL" pulse when the agent is IDLE.
     *   **Mock/Remote**: Displays the simulated or actual web content.
-    *   **Scanner/Terminal**: A special visual mode during `VACANCIES_CAPTURED` status. It renders the batch of 50 found vacancies as a scrolling list with a "laser scan" effect.
+    *   **Scanner/Terminal**: A special visual mode during `VACANCIES_CAPTURED` status. It renders the batch of 15 (previously 50) found vacancies as a scrolling list with a "laser scan" effect.
 
-### 4. The Log/Message Module
+### 5. The Log/Message Module
 *   **Visuals**: Typewriter effect (`typedMessage`) on a cardboard-textured panel.
 *   **Content**: Dark humor provided by `JokeService`.
 
-### 5. Atmospherics (Three.js)
+### 6. Atmospherics (Three.js)
 *   **Component**: `SteamEngineBackground` in `Layout.tsx`.
 *   **Effect**: A 3D wireframe steam engine rotates slowly in the background.
 
@@ -67,9 +78,10 @@ The interface of **AgentSeeker** (aka "Кузница Кадров") is designed
 
 ### Accepted Design Patterns
 1.  **Vertical Device Layout**: Instead of a full-screen dashboard, the main control interface is constrained to a vertical "Tablet" container (`max-w-[600px]`). This creates a focused, mobile-first aesthetic even on desktop.
-2.  **Video-Based Transitions**: Using `<video>` elements for the "Orb" states (Idle/Wake/Standby) instead of CSS animations allowed for higher fidelity and a "cinematic" feel.
-3.  **Diegetic Controls**: Buttons look like physical objects (convex glass, metal rims). Inputs look like "slots" in a machine.
-4.  **Dark Humor**: The `JokeService` acts as the "soul" of the machine, mocking the user's salary expectations. This was accepted to increase user engagement and retention.
+2.  **Slider for Limits**: Instead of buttons ([10], [50], [∞]), a slider provides finer control and a more "analog" feel, consistent with the Steampunk aesthetic. The transition to "Infinity" at the end of the track is a deliberate UX choice to discourage accidental activation of endless token spending.
+3.  **Video-Based Transitions**: Using `<video>` elements for the "Orb" states (Idle/Wake/Standby) instead of CSS animations allowed for higher fidelity and a "cinematic" feel.
+4.  **Diegetic Controls**: Buttons look like physical objects (convex glass, metal rims). Inputs look like "slots" in a machine.
+5.  **Dark Humor**: The `JokeService` acts as the "soul" of the machine, mocking the user's salary expectations. This was accepted to increase user engagement and retention.
 
 ### Rejected / Deprecated Patterns
 1.  **Standard Material/Bootstrap UI**: Rejected as "Soulless SaaS".

@@ -1,20 +1,21 @@
 
 # Developer Context (Save Game)
 
-**Last Updated**: Step 125 (Documentation Sync)
+**Last Updated**: Step 128 (Audit Correction)
 **Role**: Senior Agent Architect
-**Status**: Release Candidate 1.5 (Documentation & Stability)
+**Status**: Release Candidate 1.6 (UI Refinement & Logic Hardening)
 
 ## 1. System Overview
 **AgentSeeker** (Project "Кузница Кадров") is an autonomous job search agent with a high-fidelity "Industrial Cyberpunk" interface. It runs in a hybrid mode:
 *   **Web Mode**: Fully simulated (Mock) for UI/UX development.
 *   **Electron Mode**: Capable of driving a real `Playwright` browser instance via IPC.
 
-## 2. Recent Critical Fixes (v1.4 -> v1.5)
+## 2. Recent Critical Fixes & Features (v1.5 -> v1.6)
+*   **JSON Schema Hardening**: `GeminiLLMAdapter` now injects a strict JSON schema and performs runtime validation to ensure `targetRoles.ruTitles` is always an array, preventing "not iterable" crashes.
+*   **Cycle Limit Control**: Added a generic "Range Slider" to `ModeSelectionScreen` allowing 1-100 applications per run, or "Infinity" (0). Includes visual warning for infinite mode.
+*   **Settings UX**: Renamed browser modes to "Симуляция" (Simulation) vs "Real (Electron)" to clarify intent. Added a "Reset Key" button for easier API key management.
 *   **Orb Visibility**: Fixed the issue where the status Orb (Valera) would disappear or misalign after the "Wake Up" sequence in `AgentStatusScreen`.
 *   **Pipeline Stall**: Fixed a logic bug where `activeProfileSnapshot` was missing from `AgentState` after rehydration.
-*   **Resume Selection**: Implemented `targetResumeTitle` config and `selectOption` port method.
-*   **Universal Cover Letter**: Added reset mechanism (`clearUniversalLetter`).
 
 ## 3. Architecture & Adapters
 
@@ -26,12 +27,13 @@ The app dynamically selects adapters based on `config` and `runtimeCaps`:
 
 ### Core Logic (`AgentUseCase`)
 *   **State Machine**: Strictly typed in `types.ts` (`AgentStatus`).
-*   **Batching**: Processing happens in batches of 15-50 items to support the "Visual Scanner" effect (`BrowserViewport.tsx`).
+*   **Batching**: Processing happens in **safe batches of 15 items** (Code Limit) to ensure LLM stability, although the UI is capable of displaying larger lists.
 *   **Context Governance**: `monitorContextHealth` checks JSON size and triggers `compactSession` if limits are exceeded.
+*   **Execution Limit**: `submitApplyForm` checks `runAppliesCount` against `maxApplications`. If reached, transitions to `COMPLETED`.
 
 ## 4. UI Components & Aesthetics
 *   **Steampunk Tablet**: Vertical layout with leather/bronze textures.
-*   **Inputs**: Custom "Slot" styling for Resume Title, Salary, etc.
+*   **Inputs**: Custom "Slot" styling. Range Slider for limits.
 *   **Vacuum Tubes**: Orange/Green tubes in footer indicate readiness.
 *   **Three.js Background**: `SteamEngineBackground` runs outside React render cycle.
 *   **Scanner Mode**: `BrowserViewport` renders a scrolling list with a "laser line" effect when status is `VACANCIES_CAPTURED`.
