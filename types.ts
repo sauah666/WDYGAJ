@@ -172,4 +172,7 @@ export interface AgentConfig {
   // User Templates
   coverLetterTemplate?: string;
   autoCoverLetter?: boolean;
+  
+  // New: Search Regime
+  maxApplications?: number; // 0 or null = Infinite
 }

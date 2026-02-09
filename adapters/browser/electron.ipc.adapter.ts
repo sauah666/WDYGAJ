@@ -8,7 +8,7 @@ import { RawFormField, SearchFieldDefinition, ApplyActionType, ExecutionResult, 
 // Type definition for window.electronAPI
 declare global {
   interface Window {
-    electronAPI: {
+    electronAPI?: {
       invoke: (channel: string, data?: any) => Promise<any>;
       on: (channel: string, func: (...args: any[]) => void) => void;
     };
@@ -26,7 +26,9 @@ export class ElectronIPCAdapter implements BrowserPort {
 
   private async invoke<T>(action: string, payload: any = {}): Promise<T> {
     try {
-      return await window.electronAPI.invoke(`browser:${action}`, payload);
+      // @ts-ignore - TS might complain about optional invoke call if not strict null checks, but here we guarded in constructor (mostly)
+      // Actually with ?, we need to assert it exists or use ?.
+      return await window.electronAPI!.invoke(`browser:${action}`, payload);
     } catch (e: any) {
       console.error(`[ElectronIPC] Error calling ${action}:`, e);
       throw e;

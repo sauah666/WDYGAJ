@@ -1,5 +1,4 @@
 
-
 // Layer: ADAPTERS
 // Purpose: Generic implementation for OpenAI-compatible APIs (DeepSeek, LM Studio, Ollama, OpenAI).
 
@@ -18,6 +17,18 @@ export class OpenAILLMAdapter implements LLMProviderPort {
     this.model = model;
   }
 
+  async checkConnection(): Promise<boolean> {
+      try {
+          const result = await this.callCompletion([
+              { role: 'user', content: "respond 'test ok' if you received this message" }
+          ], false); // Don't force JSON for a simple ping
+          return result.text.toLowerCase().includes('ok');
+      } catch (e) {
+          console.error("OpenAI/Local Connection Check Failed", e);
+          return false;
+      }
+  }
+
   private async callCompletion(messages: any[], jsonMode: boolean = true): Promise<{ text: string, usage: { input: number, output: number } }> {
     const url = `${this.baseUrl}/chat/completions`;
     
@@ -32,24 +43,53 @@ export class OpenAILLMAdapter implements LLMProviderPort {
     }
 
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify(body)
-      });
+      let responseText: string;
+      let ok: boolean;
+      let status: number;
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`LLM API Error ${response.status}: ${errText}`);
+      // HYBRID FETCH STRATEGY
+      // If we are in Electron, route the request through the Main process to bypass CORS.
+      if (window.electronAPI) {
+          console.log("[OpenAILLMAdapter] Using Native Electron Fetch");
+          const result = await window.electronAPI.invoke('llm:request', {
+              url,
+              method: 'POST',
+              headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${this.apiKey}`
+              },
+              body: body // Object, Main process will stringify
+          });
+          
+          if (result.error) throw new Error(result.error);
+          ok = result.ok;
+          status = result.status;
+          responseText = result.text;
+      } else {
+          // Fallback to standard Browser Fetch (Subject to CORS)
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.apiKey}`
+            },
+            body: JSON.stringify(body)
+          });
+          ok = response.ok;
+          status = response.status;
+          responseText = await response.text();
       }
 
-      const data = await response.json();
+      if (!ok) {
+        throw new Error(`LLM API Error ${status}: ${responseText}`);
+      }
+
+      if (!responseText) throw new Error("Empty response from LLM");
+
+      const data = JSON.parse(responseText);
       const text = data.choices?.[0]?.message?.content;
       
-      if (!text) throw new Error("Empty response from LLM");
+      if (!text) throw new Error("Empty content in LLM response");
 
       const usage = {
         input: data.usage?.prompt_tokens || 0,
@@ -59,6 +99,15 @@ export class OpenAILLMAdapter implements LLMProviderPort {
       return { text, usage };
     } catch (e: any) {
       console.error("LLM Call Failed:", e);
+      
+      // Enhanced Error Reporting for Local LLMs
+      if (e.message && (e.message.includes('Failed to fetch') || e.message.includes('NetworkError'))) {
+          const helpMsg = window.electronAPI 
+            ? `Connection Failed to ${this.baseUrl}. The Electron proxy could not reach the server.`
+            : `Connection Failed to ${this.baseUrl}. CORS Error detected. 1) Is the server running? 2) Are CORS headers allowed? (Use 'lm-studio-server start' or check Ollama host)`;
+          throw new Error(helpMsg);
+      }
+      
       throw e;
     }
   }

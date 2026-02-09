@@ -1,4 +1,5 @@
 
+
 // ... existing imports ...
 import { BrowserPort, RawVacancyCard } from '../ports/browser.port';
 import { StoragePort } from '../ports/storage.port';
@@ -207,7 +208,15 @@ export class AgentUseCase {
           await this.storage.saveConfig(config);
       }
       const validDef = getSite(activeSiteId)!; 
-      let newState = await this.updateState({ ...state, status: AgentStatus.STARTING, logs: [...state.logs, `Запуск агента для ${validDef.label} (ID: ${validDef.id})...`] });
+      
+      // RESET Session Counter on New Run
+      let newState = await this.updateState({ 
+          ...state, 
+          status: AgentStatus.STARTING, 
+          runAppliesCount: 0, // Reset
+          logs: [...state.logs, `Запуск агента для ${validDef.label} (ID: ${validDef.id})...`] 
+      });
+      
       try {
           await this.browser.launch();
           await this.browser.navigateTo(validDef.baseUrl);
@@ -237,7 +246,7 @@ export class AgentUseCase {
   async checkAndCaptureProfile(state: AgentState, siteId: string): Promise<AgentState> {
       const savedProfile = await this.storage.getProfile(siteId);
       if (savedProfile) {
-          return this.updateState({ ...state, status: AgentStatus.PROFILE_CAPTURED, logs: [...state.logs, "Найден сохраненный профиль. Пропуск захвата."] });
+          return this.updateState({ ...state, status: AgentStatus.PROFILE_CAPTURED, activeProfileSnapshot: savedProfile, logs: [...state.logs, "Найден сохраненный профиль. Пропуск захвата."] });
       }
       return this.updateState({ ...state, status: AgentStatus.WAITING_FOR_PROFILE_PAGE, logs: [...state.logs, "Профиль не найден. Поиск страницы резюме..."] });
   }
@@ -268,11 +277,11 @@ export class AgentUseCase {
       const hash = await this.computeHash(normalized);
       const snapshot: ProfileSnapshot = { siteId, capturedAt: Date.now(), sourceUrl: url, rawContent: rawText, contentHash: hash };
       await this.storage.saveProfile(snapshot);
-      return this.updateState({ ...state, status: AgentStatus.PROFILE_CAPTURED, logs: [...state.logs, `Профиль захвачен! Хеш: ${hash.substring(0, 8)}`] });
+      return this.updateState({ ...state, status: AgentStatus.PROFILE_CAPTURED, activeProfileSnapshot: snapshot, logs: [...state.logs, `Профиль захвачен! Хеш: ${hash.substring(0, 8)}`] });
   }
 
   async generateTargetingSpec(state: AgentState, siteId: string): Promise<AgentState> {
-      const profile = await this.storage.getProfile(siteId);
+      const profile = state.activeProfileSnapshot || await this.storage.getProfile(siteId);
       if (!profile) return this.failSession(state, "Профиль не найден для таргетинга.");
       const config = await this.storage.getConfig();
       const summary: ProfileSummaryV1 = {
@@ -288,9 +297,15 @@ export class AgentUseCase {
           }
       };
       const roleIndex = state.currentRoleIndex || 0;
+      
+      // UX IMPROVEMENT: Extract Name/Title for better logging
+      const previewLines = profile.rawContent.split('\n').filter(l => l.trim().length > 3).slice(0, 2);
+      const cvName = previewLines.length > 0 ? previewLines[0].substring(0, 40) : "Неизвестный Кандидат";
+      const cvTitle = previewLines.length > 1 ? previewLines[1].substring(0, 40) : "";
+      
       try {
           // LLM Transition
-          await this.updateState({ ...state, status: AgentStatus.ANALYZING_PROFILE, logs: [...state.logs, "🧠 Анализирую профиль и формирую стратегию..."] });
+          await this.updateState({ ...state, status: AgentStatus.ANALYZING_PROFILE, logs: [...state.logs, `📄 Вижу резюме: ${cvName} ${cvTitle ? `(${cvTitle})` : ''}`, "🧠 Анализирую профиль и формирую стратегию..."] });
           
           const spec = await this.llm.analyzeProfile(this.pruneInput(summary));
           let nextState = state;
@@ -314,6 +329,7 @@ export class AgentUseCase {
       }
   }
 
+  // ... rest of the file unchanged ...
   async navigateToSearchPage(state: AgentState, siteId: string): Promise<AgentState> {
       const def = this.getSiteDefinition(siteId);
       const searchUrl = (def.searchEntrypoint && 'url' in def.searchEntrypoint) ? def.searchEntrypoint.url : `https://${siteId}/search/vacancy/advanced`;
@@ -761,6 +777,8 @@ export class AgentUseCase {
       const outcome = await this.browser.detectApplyOutcome();
       const queue = state.activeApplyQueue;
       let nextState = state;
+      let newAppliedCount = state.runAppliesCount || 0;
+
       if (queue) {
           const item = queue.items.find(i => i.status === 'PENDING');
           if (item) {
@@ -778,12 +796,25 @@ export class AgentUseCase {
                           status: 'APPLIED', 
                           reason: 'Full Cycle Success' 
                       };
-                      nextState = { ...nextState, appliedHistory: [...nextState.appliedHistory, record] };
+                      // Increment Session Count
+                      newAppliedCount++;
+                      nextState = { ...nextState, appliedHistory: [...nextState.appliedHistory, record], runAppliesCount: newAppliedCount };
                   }
               }
           }
       }
-      return this.updateState({ ...nextState, status: outcome === 'SUCCESS' ? AgentStatus.APPLY_SUBMIT_SUCCESS : AgentStatus.APPLY_SUBMIT_FAILED, logs: [...nextState.logs, `Результат отправки: ${outcome}`] });
+      
+      const config = await this.storage.getConfig();
+      let nextStatus = outcome === 'SUCCESS' ? AgentStatus.APPLY_SUBMIT_SUCCESS : AgentStatus.APPLY_SUBMIT_FAILED;
+      let logs = [...nextState.logs, `Результат отправки: ${outcome}`];
+
+      // CHECK LIMIT
+      if (outcome === 'SUCCESS' && config?.maxApplications && config.maxApplications > 0 && newAppliedCount >= config.maxApplications) {
+          nextStatus = AgentStatus.COMPLETED;
+          logs.push(`🏁 ЛИМИТ ДОСТИГНУТ: Отправлено ${newAppliedCount} из ${config.maxApplications} откликов.`);
+      }
+
+      return this.updateState({ ...nextState, status: nextStatus, logs });
   }
 
   async rotateSearchContext(state: AgentState, siteId: string): Promise<AgentState> {

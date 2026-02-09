@@ -545,6 +545,7 @@ export interface AgentState {
   
   // Job Rotation
   currentRoleIndex: number; // For cycling through targetingSpec.targetRoles.ruTitles
+  runAppliesCount: number; // Track applications in current session
   
   // History (48h retention handled by UseCase)
   appliedHistory: AppliedVacancyRecord[];
@@ -609,6 +610,7 @@ export const createInitialAgentState = (): AgentState => ({
   logs: [],
   isPaused: false,
   currentRoleIndex: 0,
+  runAppliesCount: 0,
   appliedHistory: [],
   tokenLedger: { inputTokens: 0, outputTokens: 0, cacheHits: 0, cacheMisses: 0, calls: 0 },
   activeDriftEvent: null

@@ -132,11 +132,17 @@ export const AgentStatusScreen: React.FC<Props> = ({
 
   useLayoutEffect(() => {
       updateOrbTarget();
-      window.addEventListener('resize', updateOrbTarget);
-      // Run immediately
-      if (avatarRef.current) updateOrbTarget();
-      return () => window.removeEventListener('resize', updateOrbTarget);
-  }, []); // Run once
+      const handleResize = () => updateOrbTarget();
+      window.addEventListener('resize', handleResize);
+      
+      // FIX: Force recalculation when panel appears to handle CSS transition race conditions
+      if (showPanel) {
+          requestAnimationFrame(updateOrbTarget);
+          setTimeout(updateOrbTarget, 200);
+      }
+      
+      return () => window.removeEventListener('resize', handleResize);
+  }, [showPanel]);
 
   const handleViewportLogin = (u: string, p: string) => {
       onConfirmLogin();
@@ -183,8 +189,13 @@ export const AgentStatusScreen: React.FC<Props> = ({
   let orbStyle: React.CSSProperties = {};
   let orbClasses = "";
 
+  // Transition Logic:
+  // Only apply long transition if expanding. 
+  // On mount/relayout, it should snap instantly.
+  const transitionClass = isOrbExpanded ? "transition-all duration-500 ease-out" : "";
+
   if (isOrbExpanded) {
-      orbClasses = "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] h-[350px] md:w-[500px] md:h-[500px] z-[60] transition-all duration-500 ease-out";
+      orbClasses = `fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] h-[350px] md:w-[500px] md:h-[500px] z-[60] ${transitionClass}`;
   } else if (orbDest) {
       orbStyle = {
           top: orbDest.top,
@@ -193,7 +204,7 @@ export const AgentStatusScreen: React.FC<Props> = ({
           height: orbDest.height,
           transform: 'none'
       };
-      orbClasses = "fixed z-50 transition-all duration-[1200ms] ease-in-out cursor-pointer hover:brightness-110";
+      orbClasses = `fixed z-50 ${transitionClass} cursor-pointer hover:brightness-110`;
   } else {
       orbClasses = "fixed opacity-0 pointer-events-none"; // Fallback if no dest
   }

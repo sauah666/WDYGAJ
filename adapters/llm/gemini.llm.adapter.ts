@@ -1,10 +1,9 @@
 
-
 // Layer: ADAPTERS
 // Purpose: Real Implementation of LLM Port using Google Gemini API.
 
 import { LLMProviderPort } from '../../core/ports/llm.port';
-import { ProfileSummaryV1, TargetingSpecV1, SearchUIAnalysisInputV1, LLMScreeningInputV1, LLMScreeningOutputV1, EvaluateExtractsInputV1, EvaluateExtractsOutputV1, QuestionnaireAnswerInputV1, QuestionnaireAnswerOutputV1 } from '../../core/domain/llm_contracts';
+import { ProfileSummaryV1, TargetingSpecV1, SearchUIAnalysisInputV1, LLMScreeningInputV1, LLMScreeningOutputV1, EvaluateExtractsInputV1, EvaluateExtractsOutputV1, QuestionnaireAnswerInputV1, QuestionnaireAnswerOutputV1, SeniorityLevel, RoleCategory, WorkMode } from '../../core/domain/llm_contracts';
 import { SearchUISpecV1 } from '../../core/domain/entities';
 
 export class GeminiLLMAdapter implements LLMProviderPort {
@@ -14,6 +13,16 @@ export class GeminiLLMAdapter implements LLMProviderPort {
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
+  }
+
+  async checkConnection(): Promise<boolean> {
+    try {
+        const result = await this.callGemini("respond 'test ok' if you received this message", "System check. Be brief.");
+        return result.text.toLowerCase().includes('ok');
+    } catch (e) {
+        console.error("Gemini Connection Check Failed", e);
+        return false;
+    }
   }
 
   private async callGemini(prompt: string, systemInstruction?: string): Promise<{ text: string, usage: { input: number, output: number } }> {
@@ -62,14 +71,34 @@ export class GeminiLLMAdapter implements LLMProviderPort {
       return { text, usage };
     } catch (e: any) {
       console.error("Gemini Call Failed:", e);
+      if (e.message && (e.message.includes('Failed to fetch') || e.message.includes('NetworkError'))) {
+          throw new Error(`Network Error: Cannot reach Google Gemini. Check your internet connection.`);
+      }
       throw e;
     }
   }
 
   async analyzeProfile(profile: ProfileSummaryV1): Promise<TargetingSpecV1> {
     const system = `You are an expert HR Data Scientist. Analyze the user profile and extract a JSON Targeting Specification.
-    Strictly follow the output schema.
-    Output JSON only.`;
+    
+    CRITICAL: You must output a valid JSON object matching the schema below exactly.
+    Ensure 'targetRoles.ruTitles' and 'targetRoles.enTitles' are always arrays of strings, even if empty.
+
+    Expected Schema:
+    {
+      "targetRoles": {
+        "ruTitles": ["..."],
+        "enTitles": ["..."]
+      },
+      "seniorityLevels": ["JUNIOR", "MIDDLE"...],
+      "roleCategories": ["ENGINEERING"...],
+      "titleMatchWeights": { "exact": 1.0, "contains": 0.8, "fuzzy": 0.6, "negativeKeywords": [] },
+      "salaryRules": { "ignoreIfMissing": true, "minThresholdStrategy": "STRICT" },
+      "workModeRules": { "strictMode": false, "allowedModes": ["REMOTE"] },
+      "confidenceThresholds": { "autoRead": 0.85, "autoIgnore": 0.4 },
+      "assumptions": ["..."]
+    }
+    `;
     
     const prompt = `
     PROFILE TEXT:
@@ -79,24 +108,31 @@ export class GeminiLLMAdapter implements LLMProviderPort {
     ${JSON.stringify(profile.userConstraints)}
 
     TASK:
-    Generate a TargetingSpecV1 JSON.
-    1. targetRoles: extract job titles in Russian and English.
-    2. seniorityLevels: INTERN, JUNIOR, MIDDLE, SENIOR, LEAD, C_LEVEL.
-    3. roleCategories: ENGINEERING, PRODUCT, DESIGN, ANALYTICS, MANAGEMENT, OTHER.
-    4. titleMatchWeights: suggest weights for exact/contains/fuzzy/negative.
-    5. salaryRules: define strategy.
-    6. workModeRules: strictMode based on user preference.
-    7. assumptions: list assumed details.
-    
-    Ensure strict JSON syntax.
+    Generate the TargetingSpecV1 JSON.
     `;
 
     const result = await this.callGemini(prompt, system);
-    const spec = JSON.parse(result.text) as TargetingSpecV1;
+    let spec: any;
+    try {
+        spec = JSON.parse(result.text);
+    } catch (e) {
+        throw new Error("Failed to parse Gemini JSON response for profile analysis.");
+    }
+
+    // Runtime Validation / Patching
+    if (!spec.targetRoles) spec.targetRoles = { ruTitles: [], enTitles: [] };
+    if (!Array.isArray(spec.targetRoles.ruTitles)) spec.targetRoles.ruTitles = [];
+    if (!Array.isArray(spec.targetRoles.enTitles)) spec.targetRoles.enTitles = [];
+    
+    // Default fallback if extracting failed completely
+    if (spec.targetRoles.ruTitles.length === 0 && spec.targetRoles.enTitles.length === 0) {
+        spec.targetRoles.enTitles = ["Specialist"];
+    }
+
     spec.userConstraints = profile.userConstraints;
     // Phase G2: Telemetry
     spec.tokenUsage = result.usage;
-    return spec;
+    return spec as TargetingSpecV1;
   }
 
   async analyzeSearchDOM(input: SearchUIAnalysisInputV1): Promise<SearchUISpecV1> {

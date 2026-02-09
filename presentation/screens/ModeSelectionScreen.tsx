@@ -1,8 +1,7 @@
-
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import Atropos from 'atropos/react';
 import { Layout } from '../components/Layout';
-import { Phone, ChevronDown, Settings, Archive, Power, Brain } from 'lucide-react';
+import { Phone, ChevronDown, Settings, Archive, Power, Brain, Infinity, AlertTriangle } from 'lucide-react';
 import { AgentConfig, WorkMode } from '../../types';
 import { JokeService } from '../services/JokeService';
 import { AppliedVacancyRecord } from '../../core/domain/entities';
@@ -138,6 +137,7 @@ export const ModeSelectionScreen: React.FC<Props> = ({
 
   useEffect(() => {
     if (config.minSalary === undefined) onConfigChange('minSalary', 0);
+    if (config.maxApplications === undefined) onConfigChange('maxApplications', 10);
   }, []);
 
   const updateOrbTarget = () => {
@@ -254,8 +254,21 @@ export const ModeSelectionScreen: React.FC<Props> = ({
       setAgentMessage(JokeService.getJoke(isAuto ? 'CL_AUTO' : 'CL_MANUAL'));
   };
 
+  const handleLimitSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = parseInt(e.target.value);
+      if (val === 101) {
+          onConfigChange('maxApplications', 0); // 0 = Infinity
+          setAgentMessage("⚠️ ВНИМАНИЕ: Безлимитный режим. Следите за расходом токенов!");
+      } else {
+          onConfigChange('maxApplications', val);
+      }
+  };
+
   let orbStyle: React.CSSProperties = {};
   let orbClasses = "";
+
+  const isAnimating = (!skipIntro && videoPhase !== 'IDLE') || isOrbExpanded;
+  const transitionClass = isAnimating ? "transition-all duration-[1200ms] ease-in-out" : "";
 
   if (isOrbExpanded) {
       orbClasses = "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] h-[350px] md:w-[500px] md:h-[500px] z-[60] transition-all duration-500 ease-out";
@@ -267,10 +280,14 @@ export const ModeSelectionScreen: React.FC<Props> = ({
           height: orbDest.height,
           transform: 'none'
       };
-      orbClasses = "fixed z-50 transition-all duration-[1200ms] ease-in-out cursor-pointer hover:brightness-110";
+      orbClasses = `fixed z-50 ${transitionClass} cursor-pointer hover:brightness-110`;
   } else {
       orbClasses = "fixed top-[33%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[265px] h-[265px] md:w-[315px] md:h-[315px] z-[5] ease-in-out";
   }
+
+  // Calculate Slider Value: 0 (infinity) -> 101 for UI
+  const sliderVal = (!config.maxApplications || config.maxApplications === 0) ? 101 : config.maxApplications;
+  const isInfinity = sliderVal === 101;
 
   return (
     <Layout title="" hideSidebar={true} onSettingsClick={onSettingsClick} onNavigate={onNavigate}>
@@ -283,6 +300,33 @@ export const ModeSelectionScreen: React.FC<Props> = ({
             animation: switchOn 0.5s ease-out forwards;
         }
         @keyframes blink { 50% { opacity: 0; } }
+        /* Custom Range Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none; 
+            width: 100%; 
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #d97706;
+            cursor: pointer;
+            margin-top: -8px;
+            box-shadow: 0 0 10px rgba(217, 119, 6, 0.5);
+            border: 2px solid #fff;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #3e2f26;
+            border-radius: 2px;
+        }
+        input[type=range]:focus {
+            outline: none;
+        }
       `}</style>
 
       {/* BACKDROP */}
@@ -384,7 +428,7 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                         <div className="h-px bg-[#4a3b32] flex-1"></div>
                     </div>
 
-                    {/* Salary & Location Row */}
+                    {/* Row 1: Salary & Location */}
                     <div className="flex gap-3 shrink-0">
                         {/* Salary */}
                         <div className="flex-[1.2] flex flex-col gap-1">
@@ -394,7 +438,7 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                                 value={config.minSalary !== undefined ? config.minSalary : 0}
                                 placeholder="0"
                                 onChange={(e) => handleSalaryChange(parseInt(e.target.value) || 0)}
-                                className="w-full h-9 bg-[#140c08] text-[#e7e5e4] font-mono text-base text-center outline-none border border-[#3e2f26] rounded-2xl focus:border-[#d97706] transition-all shadow-inner placeholder-[#2a2018]"
+                                className="w-full h-8 bg-[#140c08] text-[#e7e5e4] font-mono text-sm text-center outline-none border border-[#3e2f26] rounded-xl focus:border-[#d97706] transition-all shadow-inner placeholder-[#2a2018]"
                             />
                         </div>
                         {/* Location */}
@@ -403,7 +447,7 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                             <div className="relative">
                                 <button 
                                     onClick={() => setIsLocationOpen(!isLocationOpen)}
-                                    className="w-full h-9 flex items-center justify-between bg-[#0c0a08] border border-[#3e2f26] rounded-2xl px-3 text-[#cdbba7] font-mono text-xs shadow-inner outline-none active:bg-[#1a120e]"
+                                    className="w-full h-8 flex items-center justify-between bg-[#0c0a08] border border-[#3e2f26] rounded-xl px-3 text-[#cdbba7] font-mono text-xs shadow-inner outline-none active:bg-[#1a120e]"
                                 >
                                     <span className="truncate">{config.city || "Global"}</span>
                                     <ChevronDown size={14} className={`text-[#d97706] transition-transform ${isLocationOpen ? 'rotate-180' : ''}`} />
@@ -421,38 +465,65 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                         </div>
                     </div>
 
-                    {/* Work Mode */}
+                    {/* Row 2: Work Mode (Full Width) */}
                     <div className="flex flex-col gap-1 shrink-0">
-                        <label className="text-[9px] text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">Режим</label>
+                        <label className="text-[9px] text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">Режим Работы</label>
                         <div className="grid grid-cols-3 gap-2">
-                                {[WorkMode.REMOTE, WorkMode.HYBRID, WorkMode.OFFICE].map((mode) => {
-                                    const active = currentModes.includes(mode);
-                                    return (
-                                        <button 
-                                        key={mode}
-                                        onClick={() => toggleMode(mode)}
-                                        className={`relative h-8 border bg-[#140f0c] shadow-inner group overflow-hidden transition-all duration-200 active:scale-95 rounded-xl flex items-center justify-center ${
-                                            active ? 'border-[#d97706] bg-[#2a1a0f]' : 'border-[#3e2f26]'
-                                        }`}
-                                        >
-                                            <div className="flex items-center gap-1.5 relative z-10">
-                                                {active && <div className="w-1.5 h-1.5 rounded-full bg-[#d97706] shadow-[0_0_5px_orange]"></div>}
-                                                <span className={`text-[9px] font-bold font-serif uppercase tracking-wider ${active ? 'text-[#d97706]' : 'text-[#4a3b32] group-hover:text-[#6b5548]'}`}>
-                                                    {mode === 'REMOTE' ? 'Удаленно' : mode === 'HYBRID' ? 'Гибрид' : 'Офис'}
-                                                </span>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
+                            {[WorkMode.REMOTE, WorkMode.HYBRID, WorkMode.OFFICE].map((mode) => {
+                                const active = currentModes.includes(mode);
+                                return (
+                                    <button 
+                                    key={mode}
+                                    onClick={() => toggleMode(mode)}
+                                    className={`relative h-8 border bg-[#140f0c] shadow-inner group overflow-hidden transition-all duration-200 active:scale-95 rounded-xl flex items-center justify-center ${
+                                        active ? 'border-[#d97706] bg-[#2a1a0f]' : 'border-[#3e2f26]'
+                                    }`}
+                                    title={mode}
+                                    >
+                                        <span className={`text-[8px] md:text-[9px] font-bold font-serif uppercase tracking-wider ${active ? 'text-[#d97706]' : 'text-[#4a3b32] group-hover:text-[#6b5548]'}`}>
+                                            {mode === 'REMOTE' ? 'Удаленка' : mode === 'HYBRID' ? 'Гибрид' : 'Офис'}
+                                        </span>
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
 
-                    {/* Cover Letter - Flex Grow */}
+                    {/* Row 3: Application Limit (Slider) */}
+                    <div className="flex flex-col gap-1 shrink-0 bg-[#140c08] border border-[#3e2f26] rounded-xl p-2 px-3 shadow-inner">
+                        <div className="flex justify-between items-center mb-1">
+                            <label className="text-[9px] text-[#78685f] font-bold uppercase tracking-wider font-serif flex items-center gap-1">
+                                {isInfinity && <AlertTriangle size={10} className="text-[#ef4444] animate-pulse" />}
+                                Лимит Откликов
+                            </label>
+                            <span className={`font-mono text-xs font-bold ${isInfinity ? 'text-[#ef4444]' : 'text-[#d97706]'}`}>
+                                {isInfinity ? <Infinity size={14} /> : sliderVal}
+                            </span>
+                        </div>
+                        <div className="relative flex items-center h-6">
+                            <input 
+                                type="range" 
+                                min="1" 
+                                max="101" 
+                                value={sliderVal} 
+                                onChange={handleLimitSliderChange}
+                                className="z-10"
+                            />
+                            {/* Track marks */}
+                            <div className="absolute top-1/2 left-0 w-full h-[2px] pointer-events-none flex justify-between px-1">
+                                <div className="w-[1px] h-2 bg-[#4a3b32]"></div>
+                                <div className="w-[1px] h-2 bg-[#4a3b32]"></div>
+                                <div className="w-[1px] h-2 bg-[#ef4444]"></div> {/* Red line for Infinity */}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Row 4: Cover Letter - Compressed */}
                     <div className="flex-1 min-h-0 flex flex-col gap-1 pb-1">
                         <div className="flex justify-between items-center shrink-0">
                             <label className="text-[9px] text-[#78685f] font-bold uppercase tracking-wider font-serif ml-1">Письмо</label>
                             {/* Compact Switch */}
-                            <div className="relative h-6 w-32 bg-[#0c0a08] rounded-full border border-[#3e2f26] p-0.5 flex shadow-inner">
+                            <div className="relative h-5 w-28 bg-[#0c0a08] rounded-full border border-[#3e2f26] p-0.5 flex shadow-inner">
                                 <div className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] bg-[#2a1a0f] border border-[#d97706] rounded-full transition-all duration-300 ${isAutoCoverLetter ? 'left-[calc(50%+1px)]' : 'left-0.5'}`}></div>
                                 <button onClick={() => handleCoverLetterModeSwitch('MANUAL')} className={`relative z-10 flex-1 flex items-center justify-center font-bold text-[8px] uppercase tracking-wider transition-colors ${!isAutoCoverLetter ? 'text-[#d97706]' : 'text-[#57534e]'}`}>Ручное</button>
                                 <button onClick={() => handleCoverLetterModeSwitch('AUTO')} className={`relative z-10 flex-1 flex items-center justify-center font-bold text-[8px] uppercase tracking-wider transition-colors ${isAutoCoverLetter ? 'text-[#d97706]' : 'text-[#57534e]'}`}>Авто</button>
@@ -460,22 +531,22 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                         </div>
 
                         {/* Content Area */}
-                        <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl border border-[#3e2f26] bg-[#140c08] shadow-inner">
+                        <div className="relative flex-1 min-h-0 overflow-hidden rounded-xl border border-[#3e2f26] bg-[#140c08] shadow-inner">
                             {/* Manual */}
                             <div className={`absolute inset-0 transition-all duration-500 transform ${!isAutoCoverLetter ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
                                 <textarea 
                                     value={config.coverLetterTemplate || ''}
                                     onChange={(e) => onConfigChange('coverLetterTemplate', e.target.value)}
-                                    className="w-full h-full bg-transparent p-3 text-[#e7e5e4] font-mono text-xs outline-none resize-none custom-scrollbar placeholder-[#2a2018]"
+                                    className="w-full h-full bg-transparent p-2 text-[#e7e5e4] font-mono text-[10px] outline-none resize-none custom-scrollbar placeholder-[#2a2018] leading-tight"
                                     placeholder="Здравствуйте! Меня заинтересовала вакансия..."
                                 />
                             </div>
                             {/* Auto */}
                             <div className={`absolute inset-0 flex items-center justify-center transition-all duration-500 transform ${isAutoCoverLetter ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'}`}>
-                                <div className="flex flex-col items-center justify-center gap-2 text-center px-4">
-                                    <Brain size={24} className="text-[#d97706] animate-pulse" />
-                                    <span className="text-[#57534e] font-mono text-[10px] uppercase tracking-widest">
-                                        Нейросеть напишет письмо за вас
+                                <div className="flex flex-col items-center justify-center gap-1 text-center px-4">
+                                    <Brain size={20} className="text-[#d97706] animate-pulse" />
+                                    <span className="text-[#57534e] font-mono text-[9px] uppercase tracking-widest">
+                                        Нейросеть напишет письмо
                                     </span>
                                 </div>
                             </div>
@@ -488,14 +559,14 @@ export const ModeSelectionScreen: React.FC<Props> = ({
                     <button 
                         onClick={handleStartSearch} 
                         disabled={!canStart}
-                        className={`relative px-10 h-11 border shadow-[0_3px_8px_black] transition-all group overflow-hidden rounded-full flex items-center justify-center gap-3 ${
+                        className={`relative px-10 h-10 border shadow-[0_3px_8px_black] transition-all group overflow-hidden rounded-full flex items-center justify-center gap-3 ${
                             canStart 
                                 ? 'bg-gradient-to-b from-[#6b350f] to-[#451a03] border-[#78350f] active:translate-y-1 cursor-pointer' 
                                 : 'bg-[#292524] border-[#1c1917] opacity-60 cursor-not-allowed grayscale'
                         }`}
                     >
                          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/wood-pattern.png')] opacity-20 mix-blend-overlay"></div>
-                         <span className={`relative z-10 font-serif font-black text-base tracking-[0.15em] uppercase drop-shadow-md ${canStart ? 'text-[#fcd34d]' : 'text-[#78716c]'}`}>
+                         <span className={`relative z-10 font-serif font-black text-sm tracking-[0.15em] uppercase drop-shadow-md ${canStart ? 'text-[#fcd34d]' : 'text-[#78716c]'}`}>
                              ПОЕХАЛИ!
                          </span>
                     </button>

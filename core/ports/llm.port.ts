@@ -1,3 +1,4 @@
+
 // Layer: PORTS
 // Purpose: Define contracts for AI/LLM interaction.
 
@@ -5,6 +6,13 @@ import { SearchUISpecV1 } from '../domain/entities';
 import { ProfileSummaryV1, SearchUIAnalysisInputV1, TargetingSpecV1, LLMScreeningInputV1, LLMScreeningOutputV1, EvaluateExtractsInputV1, EvaluateExtractsOutputV1, QuestionnaireAnswerInputV1, QuestionnaireAnswerOutputV1 } from '../domain/llm_contracts';
 
 export interface LLMProviderPort {
+  /**
+   * Phase G1: Connectivity Check
+   * Sends a minimal prompt to verify API key and network reachability.
+   * Expected cost: < 10 tokens.
+   */
+  checkConnection(): Promise<boolean>;
+
   /**
    * Stage 4: Analyzes the normalized profile text and user constraints
    * to generate a targeting specification for job search.

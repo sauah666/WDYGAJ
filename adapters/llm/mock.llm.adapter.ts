@@ -1,5 +1,4 @@
 
-
 // Layer: ADAPTERS
 // Purpose: Mock implementation of LLM Port for development.
 
@@ -8,6 +7,13 @@ import { ProfileSummaryV1, TargetingSpecV1, WorkMode, SeniorityLevel, RoleCatego
 import { SearchUISpecV1 } from '../../core/domain/entities';
 
 export class MockLLMAdapter implements LLMProviderPort {
+  
+  async checkConnection(): Promise<boolean> {
+      console.log("[MockLLMAdapter] Simulating connection check...");
+      await new Promise(r => setTimeout(r, 800)); // Sim network latency
+      return true;
+  }
+
   async analyzeProfile(profile: ProfileSummaryV1): Promise<TargetingSpecV1> {
     console.log('[MockLLMAdapter] Analyzing profile...', profile.profileHash);
     

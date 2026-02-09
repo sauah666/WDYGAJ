@@ -39,6 +39,36 @@ app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit();
 });
 
+// --- NATIVE NETWORK PROXY (Bypass CORS) ---
+
+ipcMain.handle('llm:request', async (event, { url, method, headers, body }) => {
+  console.log(`[Main] Proxying LLM Request to: ${url}`);
+  try {
+    // Node 18+ has native fetch. Electron 28 uses Node 18.x.
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined
+    });
+
+    const text = await response.text();
+    
+    return {
+      ok: response.ok,
+      status: response.status,
+      text: text
+    };
+  } catch (e) {
+    console.error(`[Main] LLM Request Failed:`, e);
+    return { 
+      ok: false, 
+      status: 0, 
+      text: null,
+      error: e.message 
+    };
+  }
+});
+
 // --- PLAYWRIGHT HANDLERS (The "Hands") ---
 
 ipcMain.handle('browser:launch', async (event, { headless } = { headless: true }) => {

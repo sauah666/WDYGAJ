@@ -4,6 +4,10 @@ import { UIPort } from '../../core/ports/ui.port';
 import { AgentState, UserSearchPrefsV1 } from '../../core/domain/entities';
 import { AgentUseCase } from '../../core/usecases/agent.usecase';
 import { AgentConfig, AgentStatus } from '../../types';
+import { DEFAULT_LLM_PROVIDER, LLMProviderRegistry } from '../../core/domain/llm_registry';
+import { GeminiLLMAdapter } from '../llm/gemini.llm.adapter';
+import { OpenAILLMAdapter } from '../llm/openai.llm.adapter';
+import { MockLLMAdapter } from '../llm/mock.llm.adapter';
 
 export class AgentPresenter implements UIPort {
   private viewCallback: ((state: AgentState) => void) | null = null;
@@ -38,6 +42,36 @@ export class AgentPresenter implements UIPort {
 
   unbind() {
     this.viewCallback = null;
+  }
+
+  // --- Testing Connection (LLM Check) ---
+  async testConfiguration(config: Partial<AgentConfig>): Promise<boolean> {
+      const providerId = config.activeLLMProviderId || DEFAULT_LLM_PROVIDER;
+      const providerDef = LLMProviderRegistry[providerId] || LLMProviderRegistry[DEFAULT_LLM_PROVIDER];
+      let tempAdapter;
+
+      if (providerDef.id === 'gemini_cloud') {
+          if (!config.apiKey) return false;
+          tempAdapter = new GeminiLLMAdapter(config.apiKey);
+      } else if (['openai_cloud', 'deepseek_cloud', 'local_llm'].includes(providerDef.id)) {
+          const baseUrl = providerDef.id === 'local_llm' 
+            ? (config.localGatewayUrl || providerDef.defaultBaseUrl || '') 
+            : (providerDef.defaultBaseUrl || '');
+          const apiKey = config.apiKey || 'dummy';
+          tempAdapter = new OpenAILLMAdapter(apiKey, baseUrl, providerDef.modelId || 'gpt-4');
+      } else {
+          tempAdapter = new MockLLMAdapter();
+      }
+
+      try {
+          return await tempAdapter.checkConnection();
+      } catch (e: any) {
+          console.error("Test Config Failed:", e);
+          if (e.message && e.message.includes('Connection Failed')) {
+              console.warn("HINT: " + e.message);
+          }
+          return false;
+      }
   }
 
   // --- Automation Loop ---
